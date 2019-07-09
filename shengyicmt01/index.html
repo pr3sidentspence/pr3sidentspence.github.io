@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <title>Shengyi CMT01 Mid Drive Motor - Spences Republic</title>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+
+    <!-- Bootstrap CSS -->
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.1.2/css/bootstrap.min.css"
+        integrity="sha384-Smlep5jCw/wG7hdkwQ/Z5nLIefveQRIY9nfy6xoR1uRYBtpZgI6339F5dgvm/e9B" crossorigin="anonymous">
+</head>
+
+<body>
+
+    <!-- Optional JavaScript -->
+    <!-- jQuery first, then Popper.js, then Bootstrap JS -->
+    <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js"
+        integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous">
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.3/umd/popper.min.js"
+        integrity="sha384-ZMP7rVo3mIykV+2+9J3UJ46jBk0WLaUAdn689aCwoqbBJiSnjAK/l8WvCWPIPm49" crossorigin="anonymous">
+    </script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.2/js/bootstrap.min.js"
+        integrity="sha384-o+RDsa0aLu++PJvFqy8fFScvbHFLtbvScb8AjopnFD+iEQ7wo/CG0xlczd+2O/em" crossorigin="anonymous">
+    </script>
+
+    <!-- Nav tabs -->
+    <ul class="nav nav-tabs|pills" id="navId">
+        <li class="nav-item">
+            <a href="#tab1Id" class="nav-link active"><i class="fas fa-home    "></i> Home</a>
+        </li>
+        <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" data-toggle="dropdown" href="#" role="button" aria-haspopup="true"
+                aria-expanded="false"> </a>
+            <div class="dropdown-menu">
+                <a class="dropdown-item" href="#tab2Id">Do not use me</a>
+                <a class="dropdown-item" href="#tab3Id">Me either</a>
+                <div class="dropdown-divider"></div>
+                <a class="dropdown-item" href="#tab4Id">Seriously what's wrong with you</a>
+            </div>
+        </li>
+        <li class="nav-item">
+            <a href="#tab5Id" class="nav-link">Yet Another link you shouldn't use</a>
+        </li>
+        <li class="nav-item">
+            <a href="#" class="nav-link disabled">Disabled it now you can't use it</a>
+        </li>
+    </ul>
+
+    <!-- Tab panes -->
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="tab1Id" role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab2Id" role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab3Id" role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab4Id" role="tabpanel"></div>
+        <div class="tab-pane fade" id="tab5Id" role="tabpanel"></div>
+    </div>
+
+    <script>
+        $('#navId a').click(e => {
+            e.preventDefault();
+            $(this).tab('show');
+        });
+    </script>
+
+    <div class="jumbotron jumbotron-fluid">
+        <div class="container">
+            <h1 class="display-3">Shengyi CMT01 Motor</h1>
+            <p class="lead">What little information I can find on this ebike motor.</p>
+            <hr class="my-2">
+            <p>I bought a Junction Rapid-E ebike from Canadian tire. There is very little technical or hacking
+                information about this bike or its components available from either the bike manufacturer (Overlord
+                Bikes Canada) or the motor maker Shengyi Motor of China. I'll document what I can find here.</p>
+            <p class="lead">
+                <a class="btn btn-primary btn-lg" href="" role="button">Do not click - Does nothing</a>
+            </p>
+        </div>
+    </div>
+    <h1>Raison d'etre</h1>
+    <p>I look after <a href="https://pastforward.winnipeg.ca">PastForward</a>, a digital repository about the hisory of
+        Winnipeg. Our major, self-hosted collections are of historical postcards. Some of the work involves scanning
+        postcards and processing those images for publication. Sometimes I write scripts to help with this. These are
+        some of them.</p>
+    <ul>
+        <li>
+            <p>
+                <b><a href="postcardScanSimple.exe">postcardScanSimple.exe</a></b> - An interface to the Windows command
+                line scanning software, <a href="http://www.gssezisoft.com/main/cmdtwain/">CMDTWAIN</a> that allows for
+                scan approval and automates naming to keep document <b>f</b>ronts and <b>b</b>acks together.
+            </p>
+            <p>
+                It asks for a document set (binder) name, creates a folder for it, and outputs scans files following the
+                pattern <b>(x)f.bmp, (x)b.bmp, (x+1)f.bmp, (x+1)b.bmp, ..., (x+n)f.bmp, (x+n)b.bmp</b>.
+            </p>
+        </li>
+        <li>
+            <p>
+                <b><a
+                        href="https://gist.github.com/pr3sidentspence/c0fc5689ab48e385e0174ac96d8a1ec6">findDocsInScanAndSeparate.ps1</a></b>
+                - A <a
+                    href="https://docs.microsoft.com/en-us/powershell/scripting/powershell-scripting?view=powershell-6">PowerShell</a>
+                script to use <a href="https://imagemagick.org">ImageMagick</a> to find documents arranged vertically
+                in a
+                scanned image and crop out each into separate images.
+            </p>
+            <p>
+                It turns this <img src="samplesource.jpg" alt="Image showing scan with three postcards"> into this <img
+                    src="sampleoutput.jpg" alt="Image showing three postcards in three separate images"> given any
+                number and size of cards in the original.
+            </p>
+        </li>
+    </ul>
+
+</body>
+
+</html>
