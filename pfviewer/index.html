@@ -342,6 +342,22 @@ function detectYear(geojson){
   return `Layer ${layerGroups.length+1}`;
 }
 
+const PARAPET_W = 0.38;  // parapet wall thickness (metres)
+const PARAPET_H = 0.50;  // parapet height above roof
+
+// Inset a shapeXY ring toward its centroid by `dist` metres.
+// Centroid-based inset: artifact-free for convex/near-convex Winnipeg lots.
+function insetRing(pts, dist) {
+  const cx=pts.reduce((s,p)=>s+p[0],0)/pts.length;
+  const cz=pts.reduce((s,p)=>s+p[1],0)/pts.length;
+  return pts.map(([x,y])=>{
+    const dx=x-cx,dy=y-cz,len=Math.sqrt(dx*dx+dy*dy);
+    if(len<0.001)return[x,y];
+    const scale=Math.max(0,(len-dist)/len);
+    return[cx+dx*scale,cz+dy*scale];
+  });
+}
+
 // ── Build city geometry ────────────────────────────────────────────
 async function buildCity(geojson){
   const year=detectYear(geojson);
@@ -352,6 +368,7 @@ async function buildCity(geojson){
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
+  const parapetGeos=[],roofCapGeos=[];
 
   for(let i=0;i<total;i++){
     const feat=features[i],props=feat.properties;
@@ -397,6 +414,47 @@ async function buildCity(geojson){
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const rg=buildRoofGeometry(ring,height+0.05);if(rg)roofGeos[mat].push(rg);
       }
+
+      // ── Brick flat-roof details ──────────────────────────────────
+      // Only for brick, non-platform, tall enough to matter
+      if(mat==='brick'&&!isPlatform&&height>MIN_H+0.5){
+        // Collect outer ring in shapeXY
+        const outerPts=[];
+        for(let j=0;j<outer.length-1;j++){
+          const[sx,sy]=project(outer[j][0],outer[j][1]);outerPts.push([sx,sy]);
+        }
+
+        // Tar paper / gravel roof cap (ShapeGeometry = flat, no extrusion)
+        const capShape=new THREE.Shape();
+        capShape.moveTo(outerPts[0][0],outerPts[0][1]);
+        for(let j=1;j<outerPts.length;j++)capShape.lineTo(outerPts[j][0],outerPts[j][1]);
+        const capGeom=new THREE.ShapeGeometry(capShape);
+        capGeom.rotateX(-Math.PI/2);
+        capGeom.translate(0,height+0.02,0);  // sit just above wall top
+        roofCapGeos.push(capGeom);
+
+        // Parapet: outer ring extruded, inset ring as hole, then rotated and lifted
+        const inset=insetRing(outerPts,PARAPET_W);
+        // Only build parapet if inset didn't collapse (building wide enough)
+        const insetCx=inset.reduce((s,p)=>s+p[0],0)/inset.length;
+        const outerCx=outerPts.reduce((s,p)=>s+p[0],0)/outerPts.length;
+        const stillValid=inset.some(([x,y])=>Math.abs(x-insetCx)>0.05||Math.abs(y-insetCx)>0.05);
+        if(stillValid){
+          const pShape=new THREE.Shape();
+          pShape.moveTo(outerPts[0][0],outerPts[0][1]);
+          for(let j=1;j<outerPts.length;j++)pShape.lineTo(outerPts[j][0],outerPts[j][1]);
+          const pHole=new THREE.Path();
+          pHole.moveTo(inset[0][0],inset[0][1]);
+          for(let j=1;j<inset.length;j++)pHole.lineTo(inset[j][0],inset[j][1]);
+          pShape.holes.push(pHole);
+          try{
+            const pGeom=new THREE.ExtrudeGeometry(pShape,{depth:PARAPET_H,bevelEnabled:false});
+            pGeom.rotateX(-Math.PI/2);
+            pGeom.translate(0,height,0);
+            parapetGeos.push(pGeom);
+          }catch(e){/* skip degenerate */}
+        }
+      }
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
@@ -419,6 +477,29 @@ async function buildCity(geojson){
       rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
     }
   }
+  // ── Brick parapet (raised brick border, 0.5m above roof) ──────────
+  if(parapetGeos.length>0){
+    setProgress(74,'Merging parapets…');await tick();
+    const pMerged=mergeGeometries(parapetGeos,false);
+    for(const g of parapetGeos)g.dispose();
+    const pMesh=new THREE.Mesh(pMerged,new THREE.MeshPhongMaterial({
+      color:MATS.brick.color,shininess:MATS.brick.shininess,specular:0x1a1a1a
+    }));
+    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
+  }
+
+  // ── Tar paper / gravel flat roof cap ──────────────────────────────
+  if(roofCapGeos.length>0){
+    setProgress(74,'Merging roof caps…');await tick();
+    const cMerged=mergeGeometries(roofCapGeos,false);
+    for(const g of roofCapGeos)g.dispose();
+    const cMesh=new THREE.Mesh(cMerged,new THREE.MeshLambertMaterial({
+      color:0x38342E,  // dark grey-brown tar paper/gravel
+      side:THREE.FrontSide
+    }));
+    cMesh.receiveShadow=true;group.add(cMesh);
+  }
+
   return total;
 }
 
