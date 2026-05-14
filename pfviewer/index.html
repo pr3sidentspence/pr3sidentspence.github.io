@@ -543,8 +543,11 @@ function autoPlaceFacade(tex, filename, entry){
   const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
   const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
 
-  // Choose the longest outward-facing edge as the primary facade
-  let bestLen=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
+  // Choose the east-facing face with the most-eastward midpoint.
+  // World X = East, so outward normal nx > 0 means faces east.
+  // Require nx >= 0.5 (within 60 deg of due east); relax if none qualify.
+  // Among qualifying edges pick largest midX, tie-break by edge length.
+  const edges=[];
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
     const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
@@ -552,9 +555,15 @@ function autoPlaceFacade(tex, filename, entry){
     let nx=-dz/len,nz=dx/len;
     const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
     if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
-    if(len>bestLen){bestLen=len;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
+    edges.push({a,b,nx,nz,midX,midZ,len});
   }
-  if(!bestA)return false;
+  let candidates=edges.filter(e=>e.nx>=0.5);
+  if(!candidates.length)candidates=edges.filter(e=>e.nx>0);
+  if(!candidates.length)candidates=edges;
+  candidates.sort((p,q)=>q.midX-p.midX||q.len-p.len);
+  const best=candidates[0];
+  if(!best)return false;
+  let bestA=best.a,bestB=best.b,bestNx=best.nx,bestNz=best.nz;
 
   const edgeDx=bestB.x-bestA.x,edgeDz=bestB.z-bestA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
