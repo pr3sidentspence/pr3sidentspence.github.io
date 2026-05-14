@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>PastForward 3D — Winnipeg 1906</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#09080a;color:#e0d8c8;font-family:'Georgia',serif;overflow:hidden;height:100vh;}
+canvas{display:block;position:fixed;inset:0;}
+
+/* ── Drop zone ── */
+#drop-zone{
+  position:fixed;inset:0;z-index:100;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  background:radial-gradient(ellipse at 50% 60%,#1a1008 0%,#090608 100%);
+}
+#drop-zone h1{
+  font-size:2.8rem;color:#C8A05A;letter-spacing:0.12em;
+  text-shadow:0 0 40px rgba(200,160,90,0.3);margin-bottom:0.4rem;
+}
+#drop-zone .subtitle{color:#6a5a40;font-size:0.95rem;letter-spacing:0.06em;margin-bottom:2.5rem;}
+#drop-box{
+  border:2px dashed #3a2810;border-radius:14px;
+  padding:3rem 5rem;text-align:center;cursor:pointer;
+  transition:border-color 0.2s,background 0.2s;
+}
+#drop-box:hover,#drop-box.over{
+  border-color:#C8A05A;background:rgba(200,160,90,0.05);
+}
+.drop-icon{width:52px;height:52px;margin:0 auto 1rem;stroke:#3a2810;fill:none;stroke-width:1.5;transition:stroke 0.2s;}
+#drop-box:hover .drop-icon,#drop-box.over .drop-icon{stroke:#C8A05A;}
+#drop-box p{color:#5a4830;font-size:0.88rem;line-height:1.7;}
+#drop-box p em{color:#8a7050;}
+#file-input{display:none;}
+
+/* ── Loading ── */
+#loading{
+  display:none;position:fixed;inset:0;z-index:100;
+  flex-direction:column;align-items:center;justify-content:center;
+  background:#09080a;
+}
+#loading h2{color:#C8A05A;font-size:1.2rem;letter-spacing:0.08em;margin-bottom:1.2rem;}
+#progress-track{width:420px;height:4px;background:#1e1610;border-radius:2px;overflow:hidden;}
+#progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#8B6030,#C8A05A);border-radius:2px;transition:width 0.15s;}
+#progress-sub{color:#3a2a18;font-size:0.78rem;margin-top:0.8rem;letter-spacing:0.04em;}
+
+/* ── HUD ── */
+#hud{display:none;pointer-events:none;}
+
+#crosshair{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  display:none;
+}
+#crosshair svg{display:block;}
+
+#mode-badge{
+  position:fixed;top:18px;right:18px;pointer-events:auto;
+  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;
+  border-radius:6px;padding:6px 14px;
+  font-size:0.7rem;letter-spacing:0.18em;color:#C8A05A;
+  text-transform:uppercase;
+}
+
+#controls-hint{
+  position:fixed;top:18px;left:18px;pointer-events:none;
+  background:rgba(9,8,10,0.8);border:1px solid #2a1e0e;
+  border-radius:8px;padding:12px 16px;
+  font-size:0.74rem;color:#4a3820;line-height:2;
+}
+#controls-hint .key{
+  background:#1e1610;border:1px solid #3a2810;border-radius:3px;
+  padding:1px 6px;color:#7a6040;font-family:monospace;font-size:0.72rem;
+}
+#controls-hint b{color:#7a6040;}
+#controls-hint .fps-hint{display:none;color:#6a5030;}
+
+#stat-bar{
+  position:fixed;bottom:0;left:0;right:0;
+  text-align:center;padding:10px;
+  font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;
+  background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);
+}
+
+#info-panel{
+  position:fixed;bottom:60px;right:18px;pointer-events:none;
+  background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;
+  border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;
+  display:none;backdrop-filter:blur(4px);
+}
+.info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
+.info-row{font-size:0.78rem;color:#5a4830;line-height:1.8;}
+.info-row span{color:#a08050;}
+.info-mat-dot{
+  display:inline-block;width:8px;height:8px;
+  border-radius:2px;margin-right:5px;vertical-align:middle;
+}
+
+#legend{
+  position:fixed;bottom:60px;left:18px;pointer-events:none;
+  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;
+  border-radius:10px;padding:14px 18px;
+}
+#legend h4{
+  font-size:0.65rem;letter-spacing:0.2em;color:#3a2810;
+  text-transform:uppercase;margin-bottom:10px;
+}
+.leg-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:0.76rem;color:#5a4830;}
+.leg-swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+.leg-count{margin-left:auto;color:#2e2010;font-size:0.68rem;}
+</style>
+</head>
+<body>
+
+<!-- Drop zone -->
+<div id="drop-zone">
+  <h1>PastForward 3D</h1>
+  <p class="subtitle">Winnipeg Built Environment &nbsp;·&nbsp; 1906 Goad's Fire Insurance Atlas</p>
+  <div id="drop-box" onclick="document.getElementById('file-input').click()">
+    <svg class="drop-icon" viewBox="0 0 52 52">
+      <polyline points="26,8 26,36"/>
+      <polyline points="14,24 26,36 38,24"/>
+      <rect x="8" y="40" width="36" height="4" rx="2"/>
+    </svg>
+    <p>Drop your <em>GeoJSON</em> file here<br>or click to browse</p>
+  </div>
+  <input type="file" id="file-input" accept=".geojson,.json">
+</div>
+
+<!-- Loading screen -->
+<div id="loading">
+  <h2 id="loading-label">Reading file…</h2>
+  <div id="progress-track"><div id="progress-fill"></div></div>
+  <div id="progress-sub" id="progress-sub">—</div>
+</div>
+
+<!-- HUD (shown after load) -->
+<div id="hud">
+  <div id="crosshair">
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"
+         stroke="rgba(255,255,255,0.55)" stroke-width="1.2">
+      <line x1="11" y1="2" x2="11" y2="9"/>
+      <line x1="11" y1="13" x2="11" y2="20"/>
+      <line x1="2" y1="11" x2="9" y2="11"/>
+      <line x1="13" y1="11" x2="20" y2="11"/>
+      <circle cx="11" cy="11" r="1.5" fill="rgba(255,255,255,0.55)" stroke="none"/>
+    </svg>
+  </div>
+
+  <div id="mode-badge">Overview</div>
+
+  <div id="controls-hint">
+    <b>Orbit:</b> drag · scroll to zoom<br>
+    <span class="key">F</span> &nbsp;Enter walk mode &nbsp;&nbsp;
+    <span class="key">hover</span> building info<br>
+    <span class="fps-hint" id="fps-hint">
+      <span class="key">W A S D</span> Move &nbsp;
+      <span class="key">Mouse</span> Look<br>
+      <span class="key">Shift</span> Sprint &nbsp;
+      <span class="key">Q / E</span> Descend / Ascend<br>
+      <span class="key">Esc</span> &nbsp;Return to overview
+    </span>
+  </div>
+
+  <div id="stat-bar" style="display:none;"></div>
+
+  <div id="info-panel">
+    <div class="info-name" id="info-name"></div>
+    <div class="info-row" id="info-rows"></div>
+  </div>
+
+  <div id="legend">
+    <h4>Material</h4>
+    <div id="legend-body"></div>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+
+// ═══════════════════════════════════════════════════════════════════
+// COORDINATE SYSTEM — Up ≠ N
+//   World X  = geographic East   (+lon  → +X)
+//   World Y  = altitude / height (always up)
+//   World Z  = geographic South  (+lat  → −Z, so north = −Z)
+//   Extrusion axis = +Y (up)
+//   Camera default looks −Z = looks North
+// ═══════════════════════════════════════════════════════════════════
+const C_LON    = -97.135515;
+const C_LAT    = 49.895396;
+const COS_LAT  = Math.cos(C_LAT * Math.PI / 180);
+const M_PER_LON = 111320 * COS_LAT;   // ~71,600 m/deg at 49.9°N
+const M_PER_LAT = 111320;
+
+// Project lon/lat → shape-space XY for THREE.Shape
+// Shape lives in XY; ExtrudeGeometry extrudes along +Z.
+// After geometry.rotateX(-π/2):  (x,y,z) → (x, z, −y)
+//   shapeX →  worldX   (east)   ✓
+//   shapeY →  worldZ′  (−north) → world Z = −shapeY  (north=−Z) ✓
+//   extrudeZ → worldY  (up)     ✓
+function project(lon, lat) {
+  return [
+    (lon - C_LON) * M_PER_LON,   // shapeX → worldX
+    (lat - C_LAT) * M_PER_LAT,   // shapeY → −worldZ  (after rotate)
+  ];
+}
+
+// ── Material palette (Goad's conventions) ─────────────────────────
+const MATS = {
+  brick:    { color: 0xC0604A, label: 'Brick',           shininess: 18 },
+  wood:     { color: 0xCFA840, label: 'Wood / Frame',    shininess: 8  },
+  iron:     { color: 0x687888, label: 'Iron / Metal',    shininess: 40 },
+  stone:    { color: 0x6888A8, label: 'Stone',           shininess: 25 },
+  blue:     { color: 0x3A6898, label: 'Railway Siding',  shininess: 12 },
+  concrete: { color: 0x989890, label: 'Concrete',        shininess: 15 },
+  unknown:  { color: 0x808078, label: 'Unknown',         shininess: 6  },
+  log:      { color: 0x807040, label: 'Log',             shininess: 6  },
+};
+const FLOOR_H  = 3.5;    // metres per floor
+const MIN_H    = 2.0;    // minimum extrusion height (sheds etc.)
+const EYE_H    = 1.75;   // camera eye height in FPS
+
+// ── Renderer ──────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = false;
+document.body.appendChild(renderer.domElement);
+
+// ── Scene ─────────────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8AB8D8);
+scene.fog = new THREE.FogExp2(0x8AB8D8, 0.00035);
+
+// ── Camera ────────────────────────────────────────────────────────
+const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.5, 5000);
+// Start from SE, elevated — looking NW toward city centre
+camera.position.set(600, 450, 900);
+camera.lookAt(0, 0, 0);
+
+// ── Lighting ──────────────────────────────────────────────────────
+// Hemisphere: sky blue above, warm earth below
+scene.add(new THREE.HemisphereLight(0x8AB8D8, 0x6E5A3A, 0.55));
+// Sun: warm, from WSW at ~40° elevation (conventional map-light direction)
+const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
+sun.position.set(-500, 700, 300);
+scene.add(sun);
+// Fill light: cool from NE to soften shadows
+const fill = new THREE.DirectionalLight(0xC8D8E8, 0.25);
+fill.position.set(500, 200, -400);
+scene.add(fill);
+// Ambient
+scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+
+// ── Ground plane ──────────────────────────────────────────────────
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(10000, 10000),
+  new THREE.MeshLambertMaterial({ color: 0x2E2818 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.position.y = -0.05;
+scene.add(ground);
+
+// Subtle grid (20m spacing ≈ Winnipeg lot width)
+const grid = new THREE.GridHelper(10000, 500, 0x3E3820, 0x332E18);
+grid.position.y = 0.0;
+grid.material.opacity = 0.25;
+grid.material.transparent = true;
+scene.add(grid);
+
+// ── OrbitControls (overview) ──────────────────────────────────────
+const orbit = new OrbitControls(camera, renderer.domElement);
+orbit.enableDamping    = true;
+orbit.dampingFactor    = 0.07;
+orbit.maxPolarAngle    = Math.PI / 2 - 0.015;
+orbit.minDistance      = 15;
+orbit.maxDistance      = 3000;
+orbit.target.set(0, 0, 0);
+orbit.update();
+
+// ── FPS state ─────────────────────────────────────────────────────
+let fpsMode  = false;
+let yaw      = Math.PI;   // radians; PI = looking toward +Z (south), so we'll flip: 0 = looking north (−Z)
+let pitch    = 0;
+const keys   = {};
+let sprinting = false;
+
+// ── Raycasting / hover ────────────────────────────────────────────
+const raycaster  = new THREE.Raycaster();
+const mouseNDC   = new THREE.Vector2(-9, -9);   // off-screen initially
+let buildingMeshes = [];      // three.js Mesh objects with userData
+let hoveredPanel  = document.getElementById('info-panel');
+
+// ── Legend ────────────────────────────────────────────────────────
+const legendBody = document.getElementById('legend-body');
+for (const [key, def] of Object.entries(MATS)) {
+  const hex = '#' + def.color.toString(16).padStart(6,'0');
+  const row = document.createElement('div');
+  row.className = 'leg-row';
+  row.innerHTML =
+    `<div class="leg-swatch" style="background:${hex}"></div>${def.label}` +
+    `<span class="leg-count" id="lc-${key}">—</span>`;
+  legendBody.appendChild(row);
+}
+
+// ── Build geometry from GeoJSON ───────────────────────────────────
+async function buildCity(geojson) {
+  const features = geojson.features;
+  const total    = features.length;
+
+  const geosByMat  = {};
+  const infosByMat = {};
+  const cumsByMat  = {};  // cumulative triangle counts per building per material
+  const countByMat = {};
+
+  for (const key of Object.keys(MATS)) {
+    geosByMat[key]  = [];
+    infosByMat[key] = [];
+    cumsByMat[key]  = [0];
+    countByMat[key] = 0;
+  }
+
+  setProgress(5, `Parsing ${total.toLocaleString()} buildings…`);
+
+  for (let i = 0; i < total; i++) {
+    const feat  = features[i];
+    const props = feat.properties;
+    const mat   = MATS[props.material] ? props.material : 'unknown';
+    const floors = (props.floors != null && props.floors > 0) ? props.floors : 1;
+    const height = Math.max(floors * FLOOR_H, MIN_H);
+
+    const rings = feat.geometry.coordinates;
+    const outer = rings[0];
+    if (!outer || outer.length < 4) continue;
+
+    // Build THREE.Shape in projected XY space
+    const shape = new THREE.Shape();
+    const [sx0, sy0] = project(outer[0][0], outer[0][1]);
+    shape.moveTo(sx0, sy0);
+    for (let j = 1; j < outer.length - 1; j++) {
+      const [sx, sy] = project(outer[j][0], outer[j][1]);
+      shape.lineTo(sx, sy);
+    }
+
+    // Holes (inner rings)
+    for (let h = 1; h < rings.length; h++) {
+      const hole = new THREE.Path();
+      const [hx0, hy0] = project(rings[h][0][0], rings[h][0][1]);
+      hole.moveTo(hx0, hy0);
+      for (let j = 1; j < rings[h].length - 1; j++) {
+        const [hx, hy] = project(rings[h][j][0], rings[h][j][1]);
+        hole.lineTo(hx, hy);
+      }
+      shape.holes.push(hole);
+    }
+
+    // Extrude in XY plane along +Z, then rotate so extrusion = +Y (up)
+    const geom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+    geom.rotateX(-Math.PI / 2);  // (x,y,z)→(x,z,−y): shape→XZ plane, extrude→+Y
+
+    // Track triangle count for face→building lookup after merge
+    const triCount = geom.index
+      ? geom.index.count / 3
+      : geom.attributes.position.count / 3;
+    const prev = cumsByMat[mat][cumsByMat[mat].length - 1];
+    cumsByMat[mat].push(prev + triCount);
+
+    geosByMat[mat].push(geom);
+    infosByMat[mat].push({
+      name:     props.name    || null,
+      floors:   props.floors,
+      material: mat,
+      area_m2:  props.area_m2,
+      source:   props.source_file,
+      id:       props.id,
+    });
+    countByMat[mat]++;
+
+    if (i % 250 === 0) {
+      const pct = 5 + Math.round(i / total * 70);
+      setProgress(pct, `Geometry: ${i.toLocaleString()} / ${total.toLocaleString()}`);
+      await tick();
+    }
+  }
+
+  setProgress(78, 'Merging geometry by material…');
+  await tick();
+
+  // Create Three.js materials
+  const threeMats = {};
+  for (const [key, def] of Object.entries(MATS)) {
+    threeMats[key] = new THREE.MeshPhongMaterial({
+      color:      def.color,
+      shininess:  def.shininess,
+      specular:   0x1a1a1a,
+    });
+  }
+
+  // Merge each material group into a single draw call
+  let mergeStep = 0;
+  const matKeys = Object.keys(MATS);
+  for (const mat of matKeys) {
+    if (geosByMat[mat].length === 0) continue;
+    mergeStep++;
+    setProgress(78 + mergeStep * 2, `Merging: ${MATS[mat].label}…`);
+    await tick();
+
+    let merged;
+    try {
+      merged = mergeGeometries(geosByMat[mat], false);
+    } catch (err) {
+      console.warn(`mergeGeometries failed for ${mat}:`, err);
+      continue;
+    }
+    // Free per-building geometries
+    for (const g of geosByMat[mat]) g.dispose();
+
+    const mesh = new THREE.Mesh(merged, threeMats[mat]);
+    mesh.userData = {
+      mat,
+      cums:  cumsByMat[mat],
+      infos: infosByMat[mat],
+    };
+    scene.add(mesh);
+    buildingMeshes.push(mesh);
+
+    // Update legend count
+    const countEl = document.getElementById(`lc-${mat}`);
+    if (countEl) countEl.textContent = countByMat[mat].toLocaleString();
+  }
+
+  setProgress(100, `${total.toLocaleString()} buildings loaded.`);
+  await tick();
+
+  // Show HUD
+  document.getElementById('loading').style.display  = 'none';
+  document.getElementById('hud').style.display      = 'block';
+  const statBar = document.getElementById('stat-bar');
+  statBar.style.display = 'block';
+  statBar.textContent   =
+    `${total.toLocaleString()} buildings · Winnipeg 1906 · Goad's Fire Insurance Atlas`;
+
+  startLoop();
+}
+
+// ── Face → building lookup ────────────────────────────────────────
+// mergeGeometries concatenates triangles in order of input geometries.
+// cumsByMat[mat] is a cumulative sum: cums[i] = total tris before building i.
+// Binary search faceIndex to find which building was hit.
+function queryBuilding(faceIndex, mesh) {
+  const cums = mesh.userData.cums;
+  let lo = 0, hi = cums.length - 2;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    cums[mid] <= faceIndex ? (lo = mid) : (hi = mid - 1);
+  }
+  return mesh.userData.infos[lo] || null;
+}
+
+function updateHover() {
+  raycaster.setFromCamera(mouseNDC, camera);
+  const hits = raycaster.intersectObjects(buildingMeshes);
+  if (hits.length === 0) {
+    hoveredPanel.style.display = 'none';
+    return;
+  }
+  const hit  = hits[0];
+  const info = queryBuilding(hit.faceIndex, hit.object);
+  if (!info) { hoveredPanel.style.display = 'none'; return; }
+
+  const hex   = '#' + MATS[info.material].color.toString(16).padStart(6,'0');
+  const label = MATS[info.material]?.label || info.material;
+
+  document.getElementById('info-name').textContent = info.name || '(unnamed building)';
+  document.getElementById('info-rows').innerHTML = [
+    `<span class="info-mat-dot" style="background:${hex}"></span>` +
+      `Material: <span>${label}</span>`,
+    info.floors  != null ? `Floors: <span>${info.floors}</span>`              : '',
+    info.area_m2 != null ? `Footprint: <span>${info.area_m2.toFixed(0)} m²</span>` : '',
+    info.source  ? `Sheet: <span>${info.source.replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>` : '',
+  ].filter(Boolean).join('<br>');
+
+  hoveredPanel.style.display = 'block';
+}
+
+// ── FPS camera ────────────────────────────────────────────────────
+function enterFPS() {
+  fpsMode = true;
+  orbit.enabled = false;
+
+  // Snap to ground if coming from bird's eye
+  if (camera.position.y > 80) {
+    camera.position.y = EYE_H;
+  } else {
+    camera.position.y = Math.max(camera.position.y, EYE_H);
+  }
+
+  // Read current camera yaw/pitch into FPS state
+  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+  yaw   = Math.atan2(-fwd.x, -fwd.z);
+  pitch = Math.asin(Math.max(-1, Math.min(1, fwd.y)));
+
+  renderer.domElement.requestPointerLock();
+  document.getElementById('crosshair').style.display = 'flex';
+  document.getElementById('mode-badge').textContent   = 'Walk Mode';
+  document.getElementById('fps-hint').style.display   = 'block';
+  hoveredPanel.style.display = 'none';
+}
+
+function exitFPS() {
+  fpsMode = false;
+  document.exitPointerLock();
+  orbit.enabled = true;
+  document.getElementById('crosshair').style.display  = 'none';
+  document.getElementById('mode-badge').textContent    = 'Overview';
+  document.getElementById('fps-hint').style.display    = 'none';
+}
+
+document.addEventListener('pointerlockchange', () => {
+  if (!document.pointerLockElement && fpsMode) exitFPS();
+});
+
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  sprinting = e.shiftKey;
+  if (e.code === 'KeyF' && !fpsMode) enterFPS();
+  if (e.code === 'Escape' && fpsMode) exitFPS();
+  if (e.code === 'KeyH') {            // H = go home (reset view)
+    if (!fpsMode) {
+      camera.position.set(600, 450, 900);
+      orbit.target.set(0, 0, 0);
+      orbit.update();
+    }
+  }
+});
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+  sprinting = e.shiftKey;
+});
+
+document.addEventListener('mousemove', e => {
+  if (fpsMode && document.pointerLockElement === renderer.domElement) {
+    // FPS look — yaw around world Y, pitch around local X
+    yaw   -= e.movementX * 0.0016;
+    pitch -= e.movementY * 0.0016;
+    pitch  = Math.max(-1.48, Math.min(1.48, pitch));
+    // Keep mouseNDC stale so hover doesn't fire in FPS
+    mouseNDC.set(-9, -9);
+  } else if (!fpsMode) {
+    const r = renderer.domElement.getBoundingClientRect();
+    mouseNDC.x =  ((e.clientX - r.left) / r.width)  * 2 - 1;
+    mouseNDC.y = -((e.clientY - r.top)  / r.height) * 2 + 1;
+  }
+});
+
+// ── Main loop ─────────────────────────────────────────────────────
+let lastTime = performance.now();
+
+function startLoop() {
+  function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = Math.min((now - lastTime) * 0.001, 0.1);
+    lastTime = now;
+
+    if (fpsMode) {
+      // ── FPS camera update ──────────────────────────────────
+      // Yaw ONLY around world Y (no roll/tilt when strafing)
+      // Pitch around local X after yaw applied
+      const qYaw   = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(0, 1, 0), yaw);
+      const qPitch = new THREE.Quaternion().setFromAxisAngle(
+        new THREE.Vector3(1, 0, 0), pitch);
+      camera.quaternion.copy(qYaw).multiply(qPitch);
+
+      // Horizontal movement uses only yaw-rotated forward/right (no pitch tilt)
+      const fwd   = new THREE.Vector3(0, 0, -1).applyQuaternion(qYaw);
+      const right = new THREE.Vector3(1, 0,  0).applyQuaternion(qYaw);
+      const speed = (sprinting ? 35 : 9) * dt;
+
+      if (keys['KeyW'] || keys['ArrowUp'])    camera.position.addScaledVector(fwd,    speed);
+      if (keys['KeyS'] || keys['ArrowDown'])  camera.position.addScaledVector(fwd,   -speed);
+      if (keys['KeyA'] || keys['ArrowLeft'])  camera.position.addScaledVector(right, -speed);
+      if (keys['KeyD'] || keys['ArrowRight']) camera.position.addScaledVector(right,  speed);
+      if (keys['KeyQ'])                        camera.position.y -= speed;
+      if (keys['KeyE'])                        camera.position.y += speed;
+
+      // Floor clamp
+      camera.position.y = Math.max(EYE_H, camera.position.y);
+
+    } else {
+      orbit.update();
+      updateHover();
+    }
+
+    renderer.render(scene, camera);
+  }
+  lastTime = performance.now();
+  requestAnimationFrame(loop);
+}
+
+// ── File loading ──────────────────────────────────────────────────
+async function loadFile(file) {
+  document.getElementById('drop-zone').style.display = 'none';
+  const loadEl = document.getElementById('loading');
+  loadEl.style.display = 'flex';
+
+  setProgress(2, 'Reading file…');
+  await tick();
+
+  const text    = await file.text();
+  setProgress(4, 'Parsing JSON…');
+  await tick();
+
+  const geojson = JSON.parse(text);
+  await buildCity(geojson);
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('loading-label').textContent = msg;
+}
+
+function tick() { return new Promise(r => setTimeout(r, 0)); }
+
+// ── Drop / file input ─────────────────────────────────────────────
+const dropBox  = document.getElementById('drop-box');
+const fileInput = document.getElementById('file-input');
+
+dropBox.addEventListener('dragover',  e => { e.preventDefault(); dropBox.classList.add('over'); });
+dropBox.addEventListener('dragleave', () => dropBox.classList.remove('over'));
+dropBox.addEventListener('drop', e => {
+  e.preventDefault();
+  dropBox.classList.remove('over');
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+fileInput.addEventListener('change', e => {
+  if (e.target.files[0]) loadFile(e.target.files[0]);
+});
+
+// ── Resize ────────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+// ── Idle render (show drop screen against live 3D bg) ─────────────
+renderer.render(scene, camera);
+</script>
+</body>
+</html>
