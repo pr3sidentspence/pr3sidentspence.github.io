@@ -16,102 +16,73 @@
 body{background:#09080a;color:#e0d8c8;font-family:'Georgia',serif;overflow:hidden;height:100vh;}
 canvas{display:block;position:fixed;inset:0;}
 
-/* ── Drop zone ── */
 #drop-zone{
   position:fixed;inset:0;z-index:100;
   display:flex;flex-direction:column;align-items:center;justify-content:center;
   background:radial-gradient(ellipse at 50% 60%,#1a1008 0%,#090608 100%);
 }
-#drop-zone h1{
-  font-size:2.8rem;color:#C8A05A;letter-spacing:0.12em;
-  text-shadow:0 0 40px rgba(200,160,90,0.3);margin-bottom:0.4rem;
-}
-#drop-zone .subtitle{color:#6a5a40;font-size:0.95rem;letter-spacing:0.06em;margin-bottom:2.5rem;}
+#drop-zone h1{font-size:2.8rem;color:#C8A05A;letter-spacing:0.12em;text-shadow:0 0 40px rgba(200,160,90,0.3);margin-bottom:0.4rem;}
+#drop-zone .subtitle{color:#6a5a40;font-size:0.9rem;letter-spacing:0.06em;margin-bottom:2.5rem;}
 #drop-box{
-  border:2px dashed #3a2810;border-radius:14px;
-  padding:3rem 5rem;text-align:center;cursor:pointer;
-  transition:border-color 0.2s,background 0.2s;
+  border:2px dashed #3a2810;border-radius:14px;padding:3rem 5rem;text-align:center;
+  cursor:pointer;transition:border-color 0.2s,background 0.2s;
 }
-#drop-box:hover,#drop-box.over{
-  border-color:#C8A05A;background:rgba(200,160,90,0.05);
-}
+#drop-box:hover,#drop-box.over{border-color:#C8A05A;background:rgba(200,160,90,0.05);}
 .drop-icon{width:52px;height:52px;margin:0 auto 1rem;stroke:#3a2810;fill:none;stroke-width:1.5;transition:stroke 0.2s;}
 #drop-box:hover .drop-icon,#drop-box.over .drop-icon{stroke:#C8A05A;}
-#drop-box p{color:#5a4830;font-size:0.88rem;line-height:1.7;}
-#drop-box p em{color:#8a7050;}
+#drop-box p{color:#5a4830;font-size:0.85rem;line-height:1.8;}
+#drop-box em{color:#8a7050;font-style:normal;}
 #file-input{display:none;}
 
-/* ── Loading ── */
 #loading{
   display:none;position:fixed;inset:0;z-index:100;
-  flex-direction:column;align-items:center;justify-content:center;
-  background:#09080a;
+  flex-direction:column;align-items:center;justify-content:center;background:#09080a;
 }
-#loading h2{color:#C8A05A;font-size:1.2rem;letter-spacing:0.08em;margin-bottom:1.2rem;}
-#progress-track{width:420px;height:4px;background:#1e1610;border-radius:2px;overflow:hidden;}
-#progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#8B6030,#C8A05A);border-radius:2px;transition:width 0.15s;}
-#progress-sub{color:#3a2a18;font-size:0.78rem;margin-top:0.8rem;letter-spacing:0.04em;}
+#loading h2{color:#C8A05A;font-size:1.1rem;letter-spacing:0.08em;margin-bottom:1.2rem;}
+#progress-track{width:440px;height:4px;background:#1e1610;border-radius:2px;overflow:hidden;}
+#progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#8B6030,#C8A05A);border-radius:2px;transition:width 0.12s;}
+#progress-sub{color:#3a2a18;font-size:0.75rem;margin-top:0.8rem;letter-spacing:0.04em;}
 
-/* ── HUD ── */
 #hud{display:none;pointer-events:none;}
 
-#crosshair{
-  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-  display:none;
-}
-#crosshair svg{display:block;}
+#crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:none;}
 
 #mode-badge{
   position:fixed;top:18px;right:18px;pointer-events:auto;
-  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;
-  border-radius:6px;padding:6px 14px;
-  font-size:0.7rem;letter-spacing:0.18em;color:#C8A05A;
-  text-transform:uppercase;
+  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;
+  padding:6px 14px;font-size:0.7rem;letter-spacing:0.18em;color:#C8A05A;text-transform:uppercase;
 }
 
 #controls-hint{
-  position:fixed;top:18px;left:18px;pointer-events:none;
-  background:rgba(9,8,10,0.8);border:1px solid #2a1e0e;
-  border-radius:8px;padding:12px 16px;
-  font-size:0.74rem;color:#4a3820;line-height:2;
+  position:fixed;top:18px;left:18px;
+  background:rgba(9,8,10,0.8);border:1px solid #2a1e0e;border-radius:8px;
+  padding:12px 16px;font-size:0.74rem;color:#4a3820;line-height:2;
 }
-#controls-hint .key{
-  background:#1e1610;border:1px solid #3a2810;border-radius:3px;
-  padding:1px 6px;color:#7a6040;font-family:monospace;font-size:0.72rem;
-}
+.key{background:#1e1610;border:1px solid #3a2810;border-radius:3px;padding:1px 6px;color:#7a6040;font-family:monospace;font-size:0.72rem;}
 #controls-hint b{color:#7a6040;}
-#controls-hint .fps-hint{display:none;color:#6a5030;}
+#fps-hint{display:none;color:#5a4030;}
 
 #stat-bar{
-  position:fixed;bottom:0;left:0;right:0;
-  text-align:center;padding:10px;
+  position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;
   font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;
-  background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);
+  background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;
 }
 
 #info-panel{
-  position:fixed;bottom:60px;right:18px;pointer-events:none;
-  background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;
-  border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;
-  display:none;backdrop-filter:blur(4px);
+  position:fixed;bottom:60px;right:18px;
+  background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;
+  padding:16px 20px;min-width:240px;max-width:320px;display:none;
 }
 .info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
-.info-row{font-size:0.78rem;color:#5a4830;line-height:1.8;}
+.info-row{font-size:0.78rem;color:#5a4830;line-height:1.9;}
 .info-row span{color:#a08050;}
-.info-mat-dot{
-  display:inline-block;width:8px;height:8px;
-  border-radius:2px;margin-right:5px;vertical-align:middle;
-}
+.info-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle;}
 
 #legend{
-  position:fixed;bottom:60px;left:18px;pointer-events:none;
-  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;
-  border-radius:10px;padding:14px 18px;
+  position:fixed;bottom:60px;left:18px;
+  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:10px;padding:14px 18px;
 }
-#legend h4{
-  font-size:0.65rem;letter-spacing:0.2em;color:#3a2810;
-  text-transform:uppercase;margin-bottom:10px;
-}
+#legend h4{font-size:0.65rem;letter-spacing:0.2em;color:#3a2810;text-transform:uppercase;margin-bottom:10px;}
 .leg-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:0.76rem;color:#5a4830;}
 .leg-swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
 .leg-count{margin-left:auto;color:#2e2010;font-size:0.68rem;}
@@ -119,67 +90,54 @@ canvas{display:block;position:fixed;inset:0;}
 </head>
 <body>
 
-<!-- Drop zone -->
 <div id="drop-zone">
   <h1>PastForward 3D</h1>
   <p class="subtitle">Winnipeg Built Environment &nbsp;·&nbsp; 1906 Goad's Fire Insurance Atlas</p>
   <div id="drop-box" onclick="document.getElementById('file-input').click()">
     <svg class="drop-icon" viewBox="0 0 52 52">
-      <polyline points="26,8 26,36"/>
-      <polyline points="14,24 26,36 38,24"/>
+      <polyline points="26,8 26,36"/><polyline points="14,24 26,36 38,24"/>
       <rect x="8" y="40" width="36" height="4" rx="2"/>
     </svg>
-    <p>Drop your <em>GeoJSON</em> file here<br>or click to browse</p>
+    <p>Drop <em>buildings GeoJSON</em> here — or click to browse<br>
+    Also accepts road network file: drop both at once</p>
   </div>
-  <input type="file" id="file-input" accept=".geojson,.json">
+  <input type="file" id="file-input" accept=".geojson,.json" multiple>
 </div>
 
-<!-- Loading screen -->
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
   <div id="progress-track"><div id="progress-fill"></div></div>
-  <div id="progress-sub" id="progress-sub">—</div>
+  <div id="progress-sub" id="progress-sub"></div>
 </div>
 
-<!-- HUD (shown after load) -->
 <div id="hud">
   <div id="crosshair">
     <svg width="22" height="22" viewBox="0 0 22 22" fill="none"
-         stroke="rgba(255,255,255,0.55)" stroke-width="1.2">
-      <line x1="11" y1="2" x2="11" y2="9"/>
-      <line x1="11" y1="13" x2="11" y2="20"/>
-      <line x1="2" y1="11" x2="9" y2="11"/>
-      <line x1="13" y1="11" x2="20" y2="11"/>
-      <circle cx="11" cy="11" r="1.5" fill="rgba(255,255,255,0.55)" stroke="none"/>
+         stroke="rgba(255,255,255,0.5)" stroke-width="1.2">
+      <line x1="11" y1="2" x2="11" y2="9"/><line x1="11" y1="13" x2="11" y2="20"/>
+      <line x1="2" y1="11" x2="9" y2="11"/><line x1="13" y1="11" x2="20" y2="11"/>
+      <circle cx="11" cy="11" r="1.5" fill="rgba(255,255,255,0.5)" stroke="none"/>
     </svg>
   </div>
-
   <div id="mode-badge">Overview</div>
-
   <div id="controls-hint">
     <b>Orbit:</b> drag · scroll to zoom<br>
-    <span class="key">F</span> &nbsp;Enter walk mode &nbsp;&nbsp;
+    <span class="key">F</span>&nbsp; Enter walk mode &nbsp;&nbsp;
     <span class="key">hover</span> building info<br>
-    <span class="fps-hint" id="fps-hint">
+    <span id="fps-hint">
       <span class="key">W A S D</span> Move &nbsp;
       <span class="key">Mouse</span> Look<br>
       <span class="key">Shift</span> Sprint &nbsp;
       <span class="key">Q / E</span> Descend / Ascend<br>
-      <span class="key">Esc</span> &nbsp;Return to overview
+      <span class="key">Esc</span>&nbsp; Return to overview
     </span>
   </div>
-
-  <div id="stat-bar" style="display:none;"></div>
-
+  <div id="stat-bar"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
     <div class="info-row" id="info-rows"></div>
   </div>
-
-  <div id="legend">
-    <h4>Material</h4>
-    <div id="legend-body"></div>
-  </div>
+  <div id="legend"><h4>Material</h4><div id="legend-body"></div></div>
 </div>
 
 <script type="module">
@@ -187,123 +145,137 @@ import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════
 // COORDINATE SYSTEM — Up ≠ N
-//   World X  = geographic East   (+lon  → +X)
-//   World Y  = altitude / height (always up)
-//   World Z  = geographic South  (+lat  → −Z, so north = −Z)
-//   Extrusion axis = +Y (up)
-//   Camera default looks −Z = looks North
-// ═══════════════════════════════════════════════════════════════════
-const C_LON    = -97.135515;
-const C_LAT    = 49.895396;
-const COS_LAT  = Math.cos(C_LAT * Math.PI / 180);
-const M_PER_LON = 111320 * COS_LAT;   // ~71,600 m/deg at 49.9°N
+//   World X  = geographic East   (+lon → +X)
+//   World Y  = altitude / up     (always vertical)
+//   World Z  = geographic South  (north = −Z)
+//
+//   project(lon, lat) → [shapeX, shapeY] for THREE.Shape (XY plane)
+//   ExtrudeGeometry extrudes along +Z (shape's depth axis)
+//   geometry.rotateX(−π/2): (x,y,z)→(x,z,−y)
+//     shapeX → worldX  ✓
+//     shapeY → worldZ = −shapeY → north is −Z  ✓
+//     extrudeZ → worldY (up)  ✓
+//
+//   Roof geometry is built directly in world XZ, no rotation needed.
+//   Ring for roof: [worldX, worldZ] = [shapeX, −shapeY]
+// ═══════════════════════════════════════════════════════════════════════════
+
+const C_LON     = -97.135515;
+const C_LAT     = 49.895396;
+const COS_LAT   = Math.cos(C_LAT * Math.PI / 180);
+const M_PER_LON = 111320 * COS_LAT;
 const M_PER_LAT = 111320;
 
-// Project lon/lat → shape-space XY for THREE.Shape
-// Shape lives in XY; ExtrudeGeometry extrudes along +Z.
-// After geometry.rotateX(-π/2):  (x,y,z) → (x, z, −y)
-//   shapeX →  worldX   (east)   ✓
-//   shapeY →  worldZ′  (−north) → world Z = −shapeY  (north=−Z) ✓
-//   extrudeZ → worldY  (up)     ✓
+/** Returns [shapeX, shapeY] — use directly for THREE.Shape.
+ *  World positions: worldX = shapeX, worldZ = −shapeY */
 function project(lon, lat) {
   return [
-    (lon - C_LON) * M_PER_LON,   // shapeX → worldX
-    (lat - C_LAT) * M_PER_LAT,   // shapeY → −worldZ  (after rotate)
+    (lon - C_LON) * M_PER_LON,
+    (lat - C_LAT) * M_PER_LAT,
   ];
 }
 
-// ── Material palette (Goad's conventions) ─────────────────────────
+// ── Material palette ───────────────────────────────────────────────
 const MATS = {
-  brick:    { color: 0xC0604A, label: 'Brick',           shininess: 18 },
-  wood:     { color: 0xCFA840, label: 'Wood / Frame',    shininess: 8  },
-  iron:     { color: 0x687888, label: 'Iron / Metal',    shininess: 40 },
-  stone:    { color: 0x6888A8, label: 'Stone',           shininess: 25 },
-  blue:     { color: 0x3A6898, label: 'Railway Siding',  shininess: 12 },
-  concrete: { color: 0x989890, label: 'Concrete',        shininess: 15 },
-  unknown:  { color: 0x808078, label: 'Unknown',         shininess: 6  },
-  log:      { color: 0x807040, label: 'Log',             shininess: 6  },
+  brick:    { color: 0xC0604A, label: 'Brick',          shininess: 20 },
+  wood:     { color: 0xCFA840, label: 'Wood / Frame',   shininess: 6  },
+  iron:     { color: 0x687888, label: 'Iron / Metal',   shininess: 45 },
+  stone:    { color: 0x6888A8, label: 'Stone',          shininess: 28 },
+  blue:     { color: 0x3A6898, label: 'Railway Siding', shininess: 35 },
+  concrete: { color: 0x989890, label: 'Concrete',       shininess: 18 },
+  unknown:  { color: 0x808078, label: 'Unknown',        shininess: 5  },
+  log:      { color: 0x807040, label: 'Log',            shininess: 4  },
 };
-const FLOOR_H  = 3.5;    // metres per floor
-const MIN_H    = 2.0;    // minimum extrusion height (sheds etc.)
-const EYE_H    = 1.75;   // camera eye height in FPS
 
-// ── Renderer ──────────────────────────────────────────────────────
+// Materials that get peaked roofs (non-masonry light-framed structures)
+const PEAKED_ROOF_MATS = new Set(['wood', 'log', 'concrete', 'unknown']);
+
+const FLOOR_H  = 3.5;   // metres per floor
+const PLATFORM_H = 0.6; // railways, platforms, walkways (floors ≤ 0.2)
+const MIN_H    = 2.0;   // minimum wall height for anything else
+const EYE_H    = 1.75;  // FPS camera eye height
+
+// Road widths by st_type (metres, representing dirt/gravel surface width)
+const ROAD_W = {
+  BLVD: 18, HWY: 16, AVE: 12, ST: 10, RD: 10,
+  DR: 10,  CRES: 9, WAY: 9,  ROW: 8, LANE: 6,
+  PL: 9,   BAY: 9,  PATH: 5, TRAIL: 5,
+};
+
+// ── Renderer ───────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = false;
 document.body.appendChild(renderer.domElement);
 
-// ── Scene ─────────────────────────────────────────────────────────
+// ── Scene ──────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8AB8D8);
-scene.fog = new THREE.FogExp2(0x8AB8D8, 0.00035);
+scene.background = new THREE.Color(0x8AB8D0);
+scene.fog = new THREE.FogExp2(0x8AB8D0, 0.00032);
 
-// ── Camera ────────────────────────────────────────────────────────
+// ── Camera ─────────────────────────────────────────────────────────
 const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.5, 5000);
-// Start from SE, elevated — looking NW toward city centre
 camera.position.set(600, 450, 900);
 camera.lookAt(0, 0, 0);
 
-// ── Lighting ──────────────────────────────────────────────────────
-// Hemisphere: sky blue above, warm earth below
-scene.add(new THREE.HemisphereLight(0x8AB8D8, 0x6E5A3A, 0.55));
-// Sun: warm, from WSW at ~40° elevation (conventional map-light direction)
+// ── Lighting ───────────────────────────────────────────────────────
+// Hemisphere: prairie sky above, grass below
+scene.add(new THREE.HemisphereLight(0x88C0E8, 0x3A5A20, 0.55));
+// Sun: warm, from WSW — conventional map illumination
 const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
 sun.position.set(-500, 700, 300);
 scene.add(sun);
-// Fill light: cool from NE to soften shadows
-const fill = new THREE.DirectionalLight(0xC8D8E8, 0.25);
+// Cool fill from NE
+const fill = new THREE.DirectionalLight(0xC8D8E8, 0.22);
 fill.position.set(500, 200, -400);
 scene.add(fill);
-// Ambient
-scene.add(new THREE.AmbientLight(0xffffff, 0.15));
+scene.add(new THREE.AmbientLight(0xffffff, 0.12));
 
-// ── Ground plane ──────────────────────────────────────────────────
+// ── Ground (grass) ─────────────────────────────────────────────────
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(10000, 10000),
-  new THREE.MeshLambertMaterial({ color: 0x2E2818 })
+  new THREE.PlaneGeometry(12000, 12000),
+  new THREE.MeshLambertMaterial({ color: 0x2D4A1A })
 );
 ground.rotation.x = -Math.PI / 2;
 ground.position.y = -0.05;
 scene.add(ground);
 
-// Subtle grid (20m spacing ≈ Winnipeg lot width)
-const grid = new THREE.GridHelper(10000, 500, 0x3E3820, 0x332E18);
-grid.position.y = 0.0;
-grid.material.opacity = 0.25;
+// Subtle grid at lot scale (~10m)
+const grid = new THREE.GridHelper(12000, 1200, 0x3A5A22, 0x324A1C);
+grid.position.y = 0.01;
+grid.material.opacity = 0.18;
 grid.material.transparent = true;
 scene.add(grid);
 
-// ── OrbitControls (overview) ──────────────────────────────────────
+// ── Orbit controls ─────────────────────────────────────────────────
 const orbit = new OrbitControls(camera, renderer.domElement);
-orbit.enableDamping    = true;
-orbit.dampingFactor    = 0.07;
-orbit.maxPolarAngle    = Math.PI / 2 - 0.015;
-orbit.minDistance      = 15;
-orbit.maxDistance      = 3000;
+orbit.enableDamping  = true;
+orbit.dampingFactor  = 0.07;
+orbit.zoomSpeed      = 0.15;    // fix: desktop mouse wheel was jumping 0→∞
+orbit.maxPolarAngle  = Math.PI / 2 - 0.015;
+orbit.minDistance    = 15;
+orbit.maxDistance    = 3000;
 orbit.target.set(0, 0, 0);
 orbit.update();
 
-// ── FPS state ─────────────────────────────────────────────────────
+// ── FPS state ──────────────────────────────────────────────────────
 let fpsMode  = false;
-let yaw      = Math.PI;   // radians; PI = looking toward +Z (south), so we'll flip: 0 = looking north (−Z)
+let yaw      = Math.PI;
 let pitch    = 0;
 const keys   = {};
 let sprinting = false;
 
-// ── Raycasting / hover ────────────────────────────────────────────
-const raycaster  = new THREE.Raycaster();
-const mouseNDC   = new THREE.Vector2(-9, -9);   // off-screen initially
-let buildingMeshes = [];      // three.js Mesh objects with userData
-let hoveredPanel  = document.getElementById('info-panel');
+// ── Raycasting / hover ─────────────────────────────────────────────
+const raycaster   = new THREE.Raycaster();
+const mouseNDC    = new THREE.Vector2(-9, -9);
+let buildingMeshes = [];   // wall meshes only — raycasted for hover info
 
-// ── Legend ────────────────────────────────────────────────────────
+// ── Legend ─────────────────────────────────────────────────────────
 const legendBody = document.getElementById('legend-body');
 for (const [key, def] of Object.entries(MATS)) {
-  const hex = '#' + def.color.toString(16).padStart(6,'0');
+  const hex = '#' + def.color.toString(16).padStart(6, '0');
   const row = document.createElement('div');
   row.className = 'leg-row';
   row.innerHTML =
@@ -312,37 +284,115 @@ for (const [key, def] of Object.entries(MATS)) {
   legendBody.appendChild(row);
 }
 
-// ── Build geometry from GeoJSON ───────────────────────────────────
+// ── Roof geometry helper ───────────────────────────────────────────
+// ring: [[worldX, worldZ], ...] polygon vertices (world XZ, no repeat of first)
+// roofBaseY: Y of the roof base (= wall height)
+// Returns BufferGeometry with ridge roof, or null if too few points.
+// Ridge direction = longest edge. Gable ends clamp naturally.
+function buildRoofGeometry(ring, roofBaseY) {
+  const n = ring.length;
+  if (n < 3) return null;
+
+  // Centroid in world XZ
+  let cx = 0, cz = 0;
+  for (const [x, z] of ring) { cx += x; cz += z; }
+  cx /= n; cz /= n;
+
+  // Longest edge → ridge axis direction (world XZ)
+  let bestLen = 0, ax = 1, az = 0;
+  for (let i = 0; i < n; i++) {
+    const [x1, z1] = ring[i], [x2, z2] = ring[(i + 1) % n];
+    const dx = x2 - x1, dz = z2 - z1;
+    const len = Math.sqrt(dx * dx + dz * dz);
+    if (len > bestLen) { bestLen = len; ax = dx / len; az = dz / len; }
+  }
+
+  // Extent of polygon along ridge axis, centered on centroid
+  let tMin = Infinity, tMax = -Infinity;
+  for (const [x, z] of ring) {
+    const t = (x - cx) * ax + (z - cz) * az;
+    tMin = Math.min(tMin, t);
+    tMax = Math.max(tMax, t);
+  }
+  // Ridge spans 90% of extent — leaves gable ends
+  const margin = (tMax - tMin) * 0.05;
+  const rMin = tMin + margin, rMax = tMax - margin;
+
+  // Ridge height: steep enough for Winnipeg snow loads
+  const ridgeH = FLOOR_H * 0.48;
+
+  // For a vertex, find its clamped point on the ridge line (world XZ, raised to apex)
+  function ridgePt(x, z) {
+    const t = Math.max(rMin, Math.min(rMax, (x - cx) * ax + (z - cz) * az));
+    return { x: cx + ax * t, y: roofBaseY + ridgeH, z: cz + az * t };
+  }
+
+  const pos = [];
+  function tri(a, b, c) {
+    pos.push(a.x, a.y, a.z,  b.x, b.y, b.z,  c.x, c.y, c.z);
+  }
+
+  for (let i = 0; i < n; i++) {
+    const [x1, z1] = ring[i], [x2, z2] = ring[(i + 1) % n];
+    const v1 = { x: x1, y: roofBaseY, z: z1 };
+    const v2 = { x: x2, y: roofBaseY, z: z2 };
+    const r1 = ridgePt(x1, z1);
+    const r2 = ridgePt(x2, z2);
+    const sameRidge = Math.abs(r1.x - r2.x) + Math.abs(r1.z - r2.z) < 0.05;
+
+    tri(v1, v2, r1);
+    if (!sameRidge) tri(v2, r2, r1);
+  }
+
+  if (pos.length === 0) return null;
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geom.computeVertexNormals();
+  return geom;
+}
+
+// Darken a hex colour for roof shingles (less saturated, darker)
+function roofColor(hex) {
+  const r = (hex >> 16) & 0xff;
+  const g = (hex >> 8)  & 0xff;
+  const b =  hex        & 0xff;
+  const avg = (r + g + b) / 3;
+  // 55% of original + slight grey pull (weathered shingles)
+  return (Math.floor(r * 0.55 + avg * 0.12) << 16) |
+         (Math.floor(g * 0.55 + avg * 0.12) << 8)  |
+          Math.floor(b * 0.55 + avg * 0.12);
+}
+
+// ── Build city geometry ────────────────────────────────────────────
 async function buildCity(geojson) {
   const features = geojson.features;
   const total    = features.length;
+  const matKeys  = Object.keys(MATS);
 
-  const geosByMat  = {};
-  const infosByMat = {};
-  const cumsByMat  = {};  // cumulative triangle counts per building per material
-  const countByMat = {};
-
-  for (const key of Object.keys(MATS)) {
-    geosByMat[key]  = [];
-    infosByMat[key] = [];
-    cumsByMat[key]  = [0];
-    countByMat[key] = 0;
+  const wallGeos = {}, roofGeos = {}, wallInfos = {}, wallCums = {}, matCounts = {};
+  for (const k of matKeys) {
+    wallGeos[k] = []; roofGeos[k] = [];
+    wallInfos[k] = []; wallCums[k] = [0]; matCounts[k] = 0;
   }
 
-  setProgress(5, `Parsing ${total.toLocaleString()} buildings…`);
-
+  // ── Pass 1: create per-building geometry ─────────────────────────
   for (let i = 0; i < total; i++) {
     const feat  = features[i];
     const props = feat.properties;
     const mat   = MATS[props.material] ? props.material : 'unknown';
-    const floors = (props.floors != null && props.floors > 0) ? props.floors : 1;
-    const height = Math.max(floors * FLOOR_H, MIN_H);
+    const floors = props.floors ?? 1;
+
+    // Railways, platforms, walkways: very low, no peaked roof
+    const isPlatform = floors <= 0.2;
+    const height = isPlatform
+      ? PLATFORM_H
+      : Math.max(floors * FLOOR_H, MIN_H);
 
     const rings = feat.geometry.coordinates;
     const outer = rings[0];
     if (!outer || outer.length < 4) continue;
 
-    // Build THREE.Shape in projected XY space
+    // ── Wall extrusion (XY shape, extruded along +Z, then rotateX(−π/2)) ──
     const shape = new THREE.Shape();
     const [sx0, sy0] = project(outer[0][0], outer[0][1]);
     shape.moveTo(sx0, sy0);
@@ -350,8 +400,6 @@ async function buildCity(geojson) {
       const [sx, sy] = project(outer[j][0], outer[j][1]);
       shape.lineTo(sx, sy);
     }
-
-    // Holes (inner rings)
     for (let h = 1; h < rings.length; h++) {
       const hole = new THREE.Path();
       const [hx0, hy0] = project(rings[h][0][0], rings[h][0][1]);
@@ -363,99 +411,144 @@ async function buildCity(geojson) {
       shape.holes.push(hole);
     }
 
-    // Extrude in XY plane along +Z, then rotate so extrusion = +Y (up)
-    const geom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
-    geom.rotateX(-Math.PI / 2);  // (x,y,z)→(x,z,−y): shape→XZ plane, extrude→+Y
+    const wallGeom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+    wallGeom.rotateX(-Math.PI / 2);
 
-    // Track triangle count for face→building lookup after merge
-    const triCount = geom.index
-      ? geom.index.count / 3
-      : geom.attributes.position.count / 3;
-    const prev = cumsByMat[mat][cumsByMat[mat].length - 1];
-    cumsByMat[mat].push(prev + triCount);
-
-    geosByMat[mat].push(geom);
-    infosByMat[mat].push({
+    const tris = wallGeom.index
+      ? wallGeom.index.count / 3
+      : wallGeom.attributes.position.count / 3;
+    wallCums[mat].push(wallCums[mat][wallCums[mat].length - 1] + tris);
+    wallGeos[mat].push(wallGeom);
+    wallInfos[mat].push({
       name:     props.name    || null,
       floors:   props.floors,
       material: mat,
       area_m2:  props.area_m2,
       source:   props.source_file,
-      id:       props.id,
     });
-    countByMat[mat]++;
+    matCounts[mat]++;
 
-    if (i % 250 === 0) {
-      const pct = 5 + Math.round(i / total * 70);
-      setProgress(pct, `Geometry: ${i.toLocaleString()} / ${total.toLocaleString()}`);
+    // ── Peaked roof (world XZ, no rotation) ─────────────────────────
+    // Eligible: light-frame materials, not platform, ≤2.5 floors,
+    //           sensible area, not too complex a polygon
+    if (!isPlatform &&
+        PEAKED_ROOF_MATS.has(mat) &&
+        floors > 0.2 &&
+        floors <= 2.5 &&
+        (props.area_m2 ?? 0) > 25 &&
+        outer.length <= 14) {
+
+      // Build world-XZ ring (roofBaseY + 0.05 to avoid z-fighting flat cap)
+      const ring = [];
+      for (let j = 0; j < outer.length - 1; j++) {
+        const [sx, sy] = project(outer[j][0], outer[j][1]);
+        ring.push([sx, -sy]);  // worldX = sx, worldZ = −shapeY
+      }
+      const rg = buildRoofGeometry(ring, height + 0.05);
+      if (rg) roofGeos[mat].push(rg);
+    }
+
+    if (i % 300 === 0) {
+      setProgress(5 + Math.round(i / total * 68), `Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);
       await tick();
     }
   }
 
-  setProgress(78, 'Merging geometry by material…');
+  // ── Pass 2: merge and add to scene ──────────────────────────────
+  setProgress(74, 'Merging wall geometry…');
   await tick();
 
-  // Create Three.js materials
-  const threeMats = {};
-  for (const [key, def] of Object.entries(MATS)) {
-    threeMats[key] = new THREE.MeshPhongMaterial({
-      color:      def.color,
-      shininess:  def.shininess,
-      specular:   0x1a1a1a,
-    });
-  }
-
-  // Merge each material group into a single draw call
-  let mergeStep = 0;
-  const matKeys = Object.keys(MATS);
   for (const mat of matKeys) {
-    if (geosByMat[mat].length === 0) continue;
-    mergeStep++;
-    setProgress(78 + mergeStep * 2, `Merging: ${MATS[mat].label}…`);
-    await tick();
+    if (wallGeos[mat].length === 0) continue;
 
-    let merged;
-    try {
-      merged = mergeGeometries(geosByMat[mat], false);
-    } catch (err) {
-      console.warn(`mergeGeometries failed for ${mat}:`, err);
-      continue;
+    // Wall mesh (raycasted for hover)
+    const wMerged = mergeGeometries(wallGeos[mat], false);
+    for (const g of wallGeos[mat]) g.dispose();
+
+    const wMesh = new THREE.Mesh(wMerged, new THREE.MeshPhongMaterial({
+      color:     MATS[mat].color,
+      shininess: MATS[mat].shininess,
+      specular:  0x1a1a1a,
+    }));
+    wMesh.userData = { mat, cums: wallCums[mat], infos: wallInfos[mat] };
+    scene.add(wMesh);
+    buildingMeshes.push(wMesh);
+
+    const lcEl = document.getElementById(`lc-${mat}`);
+    if (lcEl) lcEl.textContent = matCounts[mat].toLocaleString();
+
+    // Roof mesh (visual only, not raycasted)
+    if (roofGeos[mat].length > 0) {
+      setProgress(74, `Merging roofs: ${MATS[mat].label}…`);
+      await tick();
+
+      const rMerged = mergeGeometries(roofGeos[mat], false);
+      for (const g of roofGeos[mat]) g.dispose();
+
+      const rMesh = new THREE.Mesh(rMerged, new THREE.MeshPhongMaterial({
+        color:     roofColor(MATS[mat].color),
+        shininess: 5,
+        specular:  0x080808,
+        side:      THREE.DoubleSide,   // safe against winding variation
+      }));
+      scene.add(rMesh);
     }
-    // Free per-building geometries
-    for (const g of geosByMat[mat]) g.dispose();
-
-    const mesh = new THREE.Mesh(merged, threeMats[mat]);
-    mesh.userData = {
-      mat,
-      cums:  cumsByMat[mat],
-      infos: infosByMat[mat],
-    };
-    scene.add(mesh);
-    buildingMeshes.push(mesh);
-
-    // Update legend count
-    const countEl = document.getElementById(`lc-${mat}`);
-    if (countEl) countEl.textContent = countByMat[mat].toLocaleString();
   }
 
-  setProgress(100, `${total.toLocaleString()} buildings loaded.`);
-  await tick();
-
-  // Show HUD
-  document.getElementById('loading').style.display  = 'none';
-  document.getElementById('hud').style.display      = 'block';
-  const statBar = document.getElementById('stat-bar');
-  statBar.style.display = 'block';
-  statBar.textContent   =
-    `${total.toLocaleString()} buildings · Winnipeg 1906 · Goad's Fire Insurance Atlas`;
-
-  startLoop();
+  return total;
 }
 
-// ── Face → building lookup ────────────────────────────────────────
-// mergeGeometries concatenates triangles in order of input geometries.
-// cumsByMat[mat] is a cumulative sum: cums[i] = total tris before building i.
-// Binary search faceIndex to find which building was hit.
+// ── Build road surface ─────────────────────────────────────────────
+async function buildRoads(geojson) {
+  setProgress(88, 'Building road network…');
+  await tick();
+
+  const MAX_R2 = 4000 * 4000;
+  const pos    = [];
+
+  for (const feat of geojson.features) {
+    const w = ROAD_W[feat.properties.st_type] ?? 9;
+
+    for (const line of feat.geometry.coordinates) {
+      for (let i = 0; i < line.length - 1; i++) {
+        const [sx1, sy1] = project(line[i][0],     line[i][1]);
+        const [sx2, sy2] = project(line[i+1][0],   line[i+1][1]);
+        const x1 = sx1, z1 = -sy1;
+        const x2 = sx2, z2 = -sy2;
+
+        // Skip segments outside 4km radius
+        if (x1*x1 + z1*z1 > MAX_R2 && x2*x2 + z2*z2 > MAX_R2) continue;
+
+        // Ribbon perpendicular (in world XZ)
+        const dx = x2 - x1, dz = z2 - z1;
+        const len = Math.sqrt(dx*dx + dz*dz);
+        if (len < 0.1) continue;
+        const px = (-dz / len) * (w * 0.5);
+        const pz = ( dx / len) * (w * 0.5);
+        const y = 0.08;   // float just above ground
+
+        // Two triangles per segment quad
+        pos.push(
+          x1+px, y, z1+pz,   x2+px, y, z2+pz,   x1-px, y, z1-pz,
+          x2+px, y, z2+pz,   x2-px, y, z2-pz,   x1-px, y, z1-pz
+        );
+      }
+    }
+  }
+
+  if (pos.length === 0) return;
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geom.computeVertexNormals();
+
+  const mesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
+    color: 0x8B7450,   // packed dirt / gravel
+  }));
+  scene.add(mesh);
+}
+
+// ── Face → building lookup ─────────────────────────────────────────
 function queryBuilding(faceIndex, mesh) {
   const cums = mesh.userData.cums;
   let lo = 0, hi = cums.length - 2;
@@ -469,42 +562,32 @@ function queryBuilding(faceIndex, mesh) {
 function updateHover() {
   raycaster.setFromCamera(mouseNDC, camera);
   const hits = raycaster.intersectObjects(buildingMeshes);
-  if (hits.length === 0) {
-    hoveredPanel.style.display = 'none';
-    return;
-  }
-  const hit  = hits[0];
-  const info = queryBuilding(hit.faceIndex, hit.object);
-  if (!info) { hoveredPanel.style.display = 'none'; return; }
+  const panel = document.getElementById('info-panel');
+  if (hits.length === 0) { panel.style.display = 'none'; return; }
 
-  const hex   = '#' + MATS[info.material].color.toString(16).padStart(6,'0');
+  const info  = queryBuilding(hits[0].faceIndex, hits[0].object);
+  if (!info)  { panel.style.display = 'none'; return; }
+
+  const hex   = '#' + MATS[info.material].color.toString(16).padStart(6, '0');
   const label = MATS[info.material]?.label || info.material;
 
   document.getElementById('info-name').textContent = info.name || '(unnamed building)';
   document.getElementById('info-rows').innerHTML = [
-    `<span class="info-mat-dot" style="background:${hex}"></span>` +
-      `Material: <span>${label}</span>`,
-    info.floors  != null ? `Floors: <span>${info.floors}</span>`              : '',
+    `<span class="info-dot" style="background:${hex}"></span>Material: <span>${label}</span>`,
+    info.floors  != null ? `Floors: <span>${info.floors}</span>` : '',
     info.area_m2 != null ? `Footprint: <span>${info.area_m2.toFixed(0)} m²</span>` : '',
     info.source  ? `Sheet: <span>${info.source.replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>` : '',
   ].filter(Boolean).join('<br>');
-
-  hoveredPanel.style.display = 'block';
+  panel.style.display = 'block';
 }
 
-// ── FPS camera ────────────────────────────────────────────────────
+// ── FPS ────────────────────────────────────────────────────────────
 function enterFPS() {
   fpsMode = true;
   orbit.enabled = false;
+  if (camera.position.y > 80) camera.position.y = EYE_H;
+  else camera.position.y = Math.max(camera.position.y, EYE_H);
 
-  // Snap to ground if coming from bird's eye
-  if (camera.position.y > 80) {
-    camera.position.y = EYE_H;
-  } else {
-    camera.position.y = Math.max(camera.position.y, EYE_H);
-  }
-
-  // Read current camera yaw/pitch into FPS state
   const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
   yaw   = Math.atan2(-fwd.x, -fwd.z);
   pitch = Math.asin(Math.max(-1, Math.min(1, fwd.y)));
@@ -513,7 +596,7 @@ function enterFPS() {
   document.getElementById('crosshair').style.display = 'flex';
   document.getElementById('mode-badge').textContent   = 'Walk Mode';
   document.getElementById('fps-hint').style.display   = 'block';
-  hoveredPanel.style.display = 'none';
+  document.getElementById('info-panel').style.display = 'none';
 }
 
 function exitFPS() {
@@ -534,13 +617,12 @@ window.addEventListener('keydown', e => {
   sprinting = e.shiftKey;
   if (e.code === 'KeyF' && !fpsMode) enterFPS();
   if (e.code === 'Escape' && fpsMode) exitFPS();
-  if (e.code === 'KeyH') {            // H = go home (reset view)
-    if (!fpsMode) {
-      camera.position.set(600, 450, 900);
-      orbit.target.set(0, 0, 0);
-      orbit.update();
-    }
+  if (e.code === 'KeyH' && !fpsMode) {
+    camera.position.set(600, 450, 900);
+    orbit.target.set(0, 0, 0);
+    orbit.update();
   }
+  initAudio();  // first keypress starts audio
 });
 window.addEventListener('keyup', e => {
   keys[e.code] = false;
@@ -549,11 +631,10 @@ window.addEventListener('keyup', e => {
 
 document.addEventListener('mousemove', e => {
   if (fpsMode && document.pointerLockElement === renderer.domElement) {
-    // FPS look — yaw around world Y, pitch around local X
+    // Yaw around world Y; pitch around local X — Up ≠ N, these are separate axes
     yaw   -= e.movementX * 0.0016;
     pitch -= e.movementY * 0.0016;
     pitch  = Math.max(-1.48, Math.min(1.48, pitch));
-    // Keep mouseNDC stale so hover doesn't fire in FPS
     mouseNDC.set(-9, -9);
   } else if (!fpsMode) {
     const r = renderer.domElement.getBoundingClientRect();
@@ -562,7 +643,85 @@ document.addEventListener('mousemove', e => {
   }
 });
 
-// ── Main loop ─────────────────────────────────────────────────────
+// First click also starts audio
+renderer.domElement.addEventListener('click', initAudio, { once: true });
+
+// ── Ambient audio (Web Audio synthesis, no external files) ─────────
+let audioCtx = null;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Brownian noise → lowpass → city rumble
+  const sr  = audioCtx.sampleRate;
+  const buf = audioCtx.createBuffer(1, sr * 5, sr);
+  const d   = buf.getChannelData(0);
+  let last  = 0;
+  for (let i = 0; i < d.length; i++) {
+    last = (last + 0.018 * (Math.random() * 2 - 1)) / 1.018;
+    d[i] = last * 4;
+  }
+  const noise = audioCtx.createBufferSource();
+  noise.buffer = buf;
+  noise.loop   = true;
+
+  const lp = audioCtx.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.value = 280;
+  lp.Q.value = 0.6;
+
+  const rumbleGain = audioCtx.createGain();
+  rumbleGain.gain.value = 0.09;
+
+  noise.connect(lp).connect(rumbleGain).connect(audioCtx.destination);
+  noise.start();
+
+  // Occasional distant bell (clock tower / church)
+  function bell() {
+    const t   = audioCtx.currentTime;
+    const osc = audioCtx.createOscillator();
+    const env = audioCtx.createGain();
+    // Church bell harmonic chord
+    const freqs = [220, 330, 440, 550];
+    freqs.forEach((f, idx) => {
+      const o2  = audioCtx.createOscillator();
+      const g2  = audioCtx.createGain();
+      o2.frequency.value = f + idx * 3;
+      o2.type = 'sine';
+      g2.gain.setValueAtTime(0, t);
+      g2.gain.linearRampToValueAtTime(0.04 / (idx + 1), t + 0.03);
+      g2.gain.exponentialRampToValueAtTime(0.0001, t + 4 + idx * 0.5);
+      o2.connect(g2).connect(audioCtx.destination);
+      o2.start(t); o2.stop(t + 5 + idx * 0.5);
+    });
+    setTimeout(bell, 20000 + Math.random() * 40000);
+  }
+  setTimeout(bell, 6000 + Math.random() * 8000);
+
+  // Periodic horse-drawn carriage rhythm (filtered impulses)
+  function hooves() {
+    if (!fpsMode) { setTimeout(hooves, 3000 + Math.random() * 5000); return; }
+    const t   = audioCtx.currentTime;
+    const gap = 0.22;
+    [0, 1, 2, 3].forEach(i => {
+      const osc = audioCtx.createOscillator();
+      const env = audioCtx.createGain();
+      osc.frequency.value = 80 + Math.random() * 40;
+      osc.type = 'sine';
+      env.gain.setValueAtTime(0, t + i * gap);
+      env.gain.linearRampToValueAtTime(0.15, t + i * gap + 0.01);
+      env.gain.exponentialRampToValueAtTime(0.001, t + i * gap + 0.18);
+      osc.connect(env).connect(audioCtx.destination);
+      osc.start(t + i * gap);
+      osc.stop(t + i * gap + 0.2);
+    });
+    setTimeout(hooves, 8000 + Math.random() * 15000);
+  }
+  setTimeout(hooves, 12000);
+}
+
+// ── Main loop ──────────────────────────────────────────────────────
 let lastTime = performance.now();
 
 function startLoop() {
@@ -572,19 +731,14 @@ function startLoop() {
     lastTime = now;
 
     if (fpsMode) {
-      // ── FPS camera update ──────────────────────────────────
-      // Yaw ONLY around world Y (no roll/tilt when strafing)
-      // Pitch around local X after yaw applied
-      const qYaw   = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0), yaw);
-      const qPitch = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), pitch);
+      // FPS: yaw around world Y, pitch around local X — axes kept separate (Up ≠ N)
+      const qYaw   = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+      const qPitch = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), pitch);
       camera.quaternion.copy(qYaw).multiply(qPitch);
 
-      // Horizontal movement uses only yaw-rotated forward/right (no pitch tilt)
-      const fwd   = new THREE.Vector3(0, 0, -1).applyQuaternion(qYaw);
+      const fwd   = new THREE.Vector3(0, 0, -1).applyQuaternion(qYaw);  // horizontal only
       const right = new THREE.Vector3(1, 0,  0).applyQuaternion(qYaw);
-      const speed = (sprinting ? 35 : 9) * dt;
+      const speed = (sprinting ? 38 : 9) * dt;
 
       if (keys['KeyW'] || keys['ArrowUp'])    camera.position.addScaledVector(fwd,    speed);
       if (keys['KeyS'] || keys['ArrowDown'])  camera.position.addScaledVector(fwd,   -speed);
@@ -592,8 +746,6 @@ function startLoop() {
       if (keys['KeyD'] || keys['ArrowRight']) camera.position.addScaledVector(right,  speed);
       if (keys['KeyQ'])                        camera.position.y -= speed;
       if (keys['KeyE'])                        camera.position.y += speed;
-
-      // Floor clamp
       camera.position.y = Math.max(EYE_H, camera.position.y);
 
     } else {
@@ -607,32 +759,48 @@ function startLoop() {
   requestAnimationFrame(loop);
 }
 
-// ── File loading ──────────────────────────────────────────────────
-async function loadFile(file) {
+// ── File loading ───────────────────────────────────────────────────
+async function loadFiles(fileList) {
   document.getElementById('drop-zone').style.display = 'none';
-  const loadEl = document.getElementById('loading');
-  loadEl.style.display = 'flex';
+  document.getElementById('loading').style.display   = 'flex';
 
-  setProgress(2, 'Reading file…');
+  let buildingGJ, roadGJ;
+
+  for (const f of fileList) {
+    setProgress(2, `Reading ${f.name}…`);
+    await tick();
+    const gj = JSON.parse(await f.text());
+    if (!gj.features?.length) continue;
+    const p = gj.features[0].properties;
+    if ('material' in p)    buildingGJ = gj;
+    else if ('segment_id' in p) roadGJ = gj;
+  }
+
+  let total = 0;
+  if (buildingGJ) total = await buildCity(buildingGJ);
+  if (roadGJ)     await buildRoads(roadGJ);
+
+  setProgress(100, 'Done.');
   await tick();
 
-  const text    = await file.text();
-  setProgress(4, 'Parsing JSON…');
-  await tick();
+  // Show HUD
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('hud').style.display     = 'block';
+  const sb = document.getElementById('stat-bar');
+  sb.style.display = 'block';
+  sb.textContent =
+    `${total.toLocaleString()} buildings · ${roadGJ ? 'road network loaded · ' : ''}Winnipeg 1906 · Goad's Fire Insurance Atlas`;
 
-  const geojson = JSON.parse(text);
-  await buildCity(geojson);
+  startLoop();
 }
 
 function setProgress(pct, msg) {
   document.getElementById('progress-fill').style.width = pct + '%';
   document.getElementById('loading-label').textContent = msg;
 }
-
 function tick() { return new Promise(r => setTimeout(r, 0)); }
 
-// ── Drop / file input ─────────────────────────────────────────────
-const dropBox  = document.getElementById('drop-box');
+const dropBox   = document.getElementById('drop-box');
 const fileInput = document.getElementById('file-input');
 
 dropBox.addEventListener('dragover',  e => { e.preventDefault(); dropBox.classList.add('over'); });
@@ -640,21 +808,16 @@ dropBox.addEventListener('dragleave', () => dropBox.classList.remove('over'));
 dropBox.addEventListener('drop', e => {
   e.preventDefault();
   dropBox.classList.remove('over');
-  const f = e.dataTransfer.files[0];
-  if (f) loadFile(f);
+  loadFiles([...e.dataTransfer.files]);
 });
-fileInput.addEventListener('change', e => {
-  if (e.target.files[0]) loadFile(e.target.files[0]);
-});
+fileInput.addEventListener('change', e => loadFiles([...e.target.files]));
 
-// ── Resize ────────────────────────────────────────────────────────
 window.addEventListener('resize', () => {
   camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
 });
 
-// ── Idle render (show drop screen against live 3D bg) ─────────────
 renderer.render(scene, camera);
 </script>
 </body>
