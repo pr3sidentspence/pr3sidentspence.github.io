@@ -253,12 +253,32 @@ scene.add(grid);
 const orbit = new OrbitControls(camera, renderer.domElement);
 orbit.enableDamping  = true;
 orbit.dampingFactor  = 0.07;
-orbit.zoomSpeed      = 0.15;    // fix: desktop mouse wheel was jumping 0→∞
 orbit.maxPolarAngle  = Math.PI / 2 - 0.015;
 orbit.minDistance    = 15;
 orbit.maxDistance    = 3000;
 orbit.target.set(0, 0, 0);
 orbit.update();
+// Replace OrbitControls zoom with a normalized handler.
+// Raw deltaY varies from ~3 (trackpad) to 400+ (some mice) depending on
+// browser, OS, and deltaMode. Cap per-event contribution then apply smoothly.
+orbit.enableZoom = false;
+
+renderer.domElement.addEventListener('wheel', e => {
+e.preventDefault();
+if (!orbit.enabled) return;
+let d = e.deltaY;
+if (e.deltaMode === 1) d *= 10;   // DOM_DELTA_LINE → approx pixels
+if (e.deltaMode === 2) d *= 300;  // DOM_DELTA_PAGE → approx pixels
+const capped = Math.sign(d) * Math.min(Math.abs(d), 120);
+const factor = Math.pow(0.998, -capped * 0.5);
+const offset = camera.position.clone().sub(orbit.target);
+const newLen = THREE.MathUtils.clamp(
+  offset.length() * factor,
+  orbit.minDistance, orbit.maxDistance
+);
+camera.position.copy(orbit.target).addScaledVector(offset.normalize(), newLen);
+orbit.update();
+}, { passive: false });
 
 // ── FPS state ──────────────────────────────────────────────────────
 let fpsMode  = false;
