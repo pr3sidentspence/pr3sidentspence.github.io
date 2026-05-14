@@ -223,9 +223,20 @@ scene.add(hemiLight);
 const ambLight = new THREE.AmbientLight(0xffffff,0.12);
 scene.add(ambLight);
 function setTimeOfDay(t){
+  // Exact equinox solar arc for Winnipeg 49.895°N — Up ≠ N (X=east, Y=up, Z=south)
+  // Hour angle h: −π/2 at sunrise (t=0.10), 0 at solar noon (t=0.50), +π/2 at sunset (t=0.90)
+  // From standard formulae with declination δ=0 (equinox):
+  //   east  = −sin(h)              [+1 at dawn, 0 at noon, −1 at dusk]
+  //   up    = cos(lat)·cos(h)      peaks at cos(49.9°)=0.643 → 40.1° max elevation
+  //   south = sin(lat)·cos(h)      sun always in southern sky (lat>0)
+  const LAT=49.895396*Math.PI/180;
   const dayFrac=Math.max(0,Math.min(1,(t-0.10)/0.80));
-  const elev=Math.sin(dayFrac*Math.PI),azim=dayFrac*Math.PI,R=900;
-  sun.position.set(R*Math.cos(azim),R*Math.max(0.05,elev),-R*Math.sin(azim)*0.6);
+  const h=(dayFrac-0.5)*Math.PI,R=900;
+  sun.position.set(
+    R*-Math.sin(h),
+    R*Math.max(0.05,Math.cos(LAT)*Math.cos(h)),
+    R*Math.sin(LAT)*Math.cos(h)
+  );
   const s=sampleSky(t);
   scene.background.setHex(s.sky);scene.fog.color.setHex(s.fog);
   sun.color.setHex(s.sunCol);sun.intensity=s.sunInt;
@@ -494,8 +505,11 @@ async function buildCity(geojson){
     const cMerged=mergeGeometries(roofCapGeos,false);
     for(const g of roofCapGeos)g.dispose();
     const cMesh=new THREE.Mesh(cMerged,new THREE.MeshLambertMaterial({
-      color:0x38342E,  // dark grey-brown tar paper/gravel
-      side:THREE.FrontSide
+      color:0x38342E,
+      side:THREE.FrontSide,
+      polygonOffset:true,
+      polygonOffsetFactor:-2,
+      polygonOffsetUnits:-2,
     }));
     cMesh.receiveShadow=true;group.add(cMesh);
   }
