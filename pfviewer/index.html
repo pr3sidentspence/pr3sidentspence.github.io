@@ -93,17 +93,18 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="tod-control">
-    <span class="lbl">TIME</span>
-    <input type="range" id="tod-slider" min="0" max="1" step="0.002" value="0.42">
-    <span id="tod-label">10:00</span>
-  </div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
     <div class="info-row" id="info-rows"></div>
   </div>
   <div id="legend"><h4>Material</h4><div id="legend-body"></div></div>
+</div>
+
+<div id="tod-control" style="display:none;position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.82);border:1px solid #2a1e0e;border-radius:10px;padding:10px 20px;align-items:center;gap:14px;pointer-events:auto;z-index:10;">
+  <span style="font-size:0.7rem;letter-spacing:0.15em;color:#8a7040;">TIME</span>
+  <input type="range" id="tod-slider" min="0" max="1" step="0.002" value="0.42" style="width:180px;accent-color:#C8A05A;cursor:pointer;">
+  <span id="tod-label" style="font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;">11:34</span>
 </div>
 
 <script type="module">
@@ -294,7 +295,7 @@ function buildRoofGeometry(ring,roofBaseY){
   let tMin=Infinity,tMax=-Infinity;
   for(const[x,z]of ring){const t=(x-cx)*ax+(z-cz)*az;tMin=Math.min(tMin,t);tMax=Math.max(tMax,t);}
   const margin=(tMax-tMin)*0.05,rMin=tMin+margin,rMax=tMax-margin;
-  const ridgeH=FLOOR_H*0.48;
+  const ridgeH=FLOOR_H*0.96;
   function ridgePt(x,z){const t=Math.max(rMin,Math.min(rMax,(x-cx)*ax+(z-cz)*az));return{x:cx+ax*t,y:roofBaseY+ridgeH,z:cz+az*t};}
   const pos=[];
   const tri=(a,b,c)=>pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
@@ -460,18 +461,23 @@ function makeTransparentCanvas(imageFile){
 }
 
 async function loadFacade(imageFile){
-  // Match filename stem to building name or id
-  const stem=normName(imageFile.name.replace(/\.[^.]+$/,''));
-  let match=buildingIndex.get(stem);
+  const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,''));
+
+  // Optional ID suffix: "tailor_shop_42" → try id="42" first, name="tailor shop"
+  const idSuffixMatch=rawStem.match(/^(.+?)\s+(\d+)$/);
+  const nameStem = idSuffixMatch ? idSuffixMatch[1] : rawStem;
+  const idSuffix  = idSuffixMatch ? idSuffixMatch[2] : null;
+
+  let match = idSuffix ? buildingIndex.get(idSuffix) : null;
+  if(!match) match=buildingIndex.get(nameStem);
   if(!match){
-    // Partial match: filename contains building name or vice versa
     for(const[key,val]of buildingIndex){
-      if(stem.includes(key)||key.includes(stem)){match=val;break;}
+      if(nameStem.includes(key)||key.includes(nameStem)){match=val;break;}
     }
   }
   if(!match){
-    console.warn(`No building match for facade: "${imageFile.name}" (stem: "${stem}")`);
-    console.log('Available keys (first 20):',[...buildingIndex.keys()].slice(0,20));
+    console.warn(`No match for facade "${imageFile.name}" — stem:"${nameStem}" id:${idSuffix}`);
+    console.log('Index keys (first 20):',[...buildingIndex.keys()].slice(0,20));
     return;
   }
   const{feat,props,height}=match;
@@ -733,6 +739,23 @@ async function loadFiles(fileList){
   todSlider.addEventListener('input',()=>setTimeOfDay(parseFloat(todSlider.value)));
   const sb=document.getElementById('stat-bar');sb.style.display='block';
   updateStatBar();startLoop();enableLiveDrops();
+
+  // ── Start position ────────────────────────────────────────────────
+  // Up ≠ N: convert geographic start to world XZ, azimuth to FPS yaw.
+  // yaw = −azimuth_rad (derived: fwd = Ry(yaw)·(0,0,−1) = (−sin y, 0, −cos y)
+  //   must equal geographic direction (sin az, 0, −cos az) → yaw = −az)
+  const START_LON = -97.13825789731372, START_LAT = 49.89558496264514;
+  const START_AZ  = 255 * Math.PI / 180;
+  const [ssx, ssy] = project(START_LON, START_LAT);
+  const startX = ssx, startZ = -ssy;
+  camera.position.set(startX, EYE_H, startZ);
+  yaw   = -START_AZ;
+  pitch = 0;
+  // Pre-orient camera so orbit view also faces correctly, and F-key FPS inherits it
+  const fwdX = Math.sin(START_AZ), fwdZ = -Math.cos(START_AZ);
+  camera.lookAt(startX + fwdX * 200, EYE_H, startZ + fwdZ * 200);
+  orbit.target.set(startX, 0, startZ);
+  orbit.update();
 }
 
 function setProgress(pct,msg){
