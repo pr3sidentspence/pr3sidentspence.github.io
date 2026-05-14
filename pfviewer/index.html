@@ -468,7 +468,7 @@ for (const rings of polygons) {
         PEAKED_ROOF_MATS.has(mat) &&
         floors > 0.2 &&
         floors <= 2.5 &&
-        (props.area_m2 ?? 0) > 25 &&
+        (props.area_m2 == null || props.area_m2 > 25) &&
         outer.length <= 14) {
 
       // Build world-XZ ring (roofBaseY + 0.05 to avoid z-fighting flat cap)
