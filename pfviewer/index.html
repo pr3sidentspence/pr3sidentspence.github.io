@@ -136,6 +136,12 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
+  <div id="live-toast" style="
+    display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    background:rgba(9,8,10,0.92);border:1px solid #C8A05A;border-radius:10px;
+    padding:18px 32px;font-size:0.85rem;color:#C8A05A;letter-spacing:0.1em;
+    pointer-events:none;z-index:50;text-align:center;
+  "></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
     <div class="info-row" id="info-rows"></div>
@@ -756,7 +762,65 @@ function startLoop() {
   requestAnimationFrame(loop);
 }
 
-// ── File loading ───────────────────────────────────────────────────
+// ── Live drop (post-load) ──────────────────────────────────────────
+// Tracks total buildings across all loaded files for the stat bar
+let totalBuildings = 0;
+let roadsLoaded    = false;
+
+function showToast(msg) {
+  const t = document.getElementById('live-toast');
+  if (!t) return;
+  if (msg) { t.textContent = msg; t.style.display = 'block'; }
+  else      { t.style.display = 'none'; }
+}
+
+function enableLiveDrops() {
+  // Overlay hint on drag-over while in 3D view
+  document.body.addEventListener('dragover', e => {
+    e.preventDefault();
+    showToast('Drop GeoJSON to add layer…');
+  });
+  document.body.addEventListener('dragleave', e => {
+    // Only hide if leaving the window entirely
+    if (!e.relatedTarget) showToast('');
+  });
+  document.body.addEventListener('drop', async e => {
+    e.preventDefault();
+    showToast('Loading…');
+    await liveLoad([...e.dataTransfer.files]);
+    showToast('');
+  });
+}
+
+async function liveLoad(fileList) {
+  for (const f of fileList) {
+    showToast(`Loading ${f.name}…`);
+    let gj;
+    try { gj = JSON.parse(await f.text()); }
+    catch (err) { showToast(`Parse error: ${f.name}`); await sleep(1800); continue; }
+    if (!gj.features?.length) continue;
+
+    const p = gj.features[0].properties;
+    if ('material' in p) {
+      const n = await buildCity(gj);
+      totalBuildings += n;
+    } else if ('segment_id' in p) {
+      await buildRoads(gj);
+      roadsLoaded = true;
+    }
+
+    // Update stat bar
+    const sb = document.getElementById('stat-bar');
+    if (sb) sb.textContent =
+      `${totalBuildings.toLocaleString()} buildings` +
+      (roadsLoaded ? ' · road network' : '') +
+      ' · Winnipeg · Goad\'s & McPhillips';
+  }
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ── File loading (initial) ─────────────────────────────────────────
 async function loadFiles(fileList) {
   document.getElementById('drop-zone').style.display = 'none';
   document.getElementById('loading').style.display   = 'flex';
@@ -773,9 +837,12 @@ async function loadFiles(fileList) {
     else if ('segment_id' in p)  roadGJ     = gj;
   }
 
-  let total = 0;
-  if (buildingGJ) total = await buildCity(buildingGJ);
+  let n = 0;
+  if (buildingGJ) n = await buildCity(buildingGJ);
   if (roadGJ)     await buildRoads(roadGJ);
+
+  totalBuildings += n;
+  if (roadGJ) roadsLoaded = true;
 
   setProgress(100, 'Done.');
   await tick();
@@ -785,11 +852,12 @@ async function loadFiles(fileList) {
   const sb = document.getElementById('stat-bar');
   sb.style.display = 'block';
   sb.textContent =
-    `${total.toLocaleString()} buildings` +
-    (roadGJ ? ' · road network' : '') +
+    `${totalBuildings.toLocaleString()} buildings` +
+    (roadsLoaded ? ' · road network' : '') +
     ' · Winnipeg · Goad\'s & McPhillips';
 
   startLoop();
+  enableLiveDrops();
 }
 
 function setProgress(pct, msg) {
