@@ -15,143 +15,90 @@
 *{margin:0;padding:0;box-sizing:border-box;}
 body{background:#09080a;color:#e0d8c8;font-family:'Georgia',serif;overflow:hidden;height:100vh;}
 canvas{display:block;position:fixed;inset:0;}
-
-#drop-zone{
-  position:fixed;inset:0;z-index:100;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  background:radial-gradient(ellipse at 50% 60%,#1a1008 0%,#090608 100%);
-}
-#drop-zone h1{font-size:2.8rem;color:#C8A05A;letter-spacing:0.12em;
-  text-shadow:0 0 40px rgba(200,160,90,0.3);margin-bottom:0.4rem;}
+#drop-zone{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 60%,#1a1008 0%,#090608 100%);}
+#drop-zone h1{font-size:2.8rem;color:#C8A05A;letter-spacing:0.12em;text-shadow:0 0 40px rgba(200,160,90,0.3);margin-bottom:0.4rem;}
 #drop-zone .subtitle{color:#6a5a40;font-size:0.9rem;letter-spacing:0.06em;margin-bottom:2.5rem;}
-#drop-box{
-  border:2px dashed #3a2810;border-radius:14px;padding:3rem 5rem;
-  text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;
-}
+#drop-box{border:2px dashed #3a2810;border-radius:14px;padding:3rem 5rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;}
 #drop-box:hover,#drop-box.over{border-color:#C8A05A;background:rgba(200,160,90,0.05);}
-.drop-icon{width:52px;height:52px;margin:0 auto 1rem;stroke:#3a2810;fill:none;
-  stroke-width:1.5;transition:stroke 0.2s;}
+.drop-icon{width:52px;height:52px;margin:0 auto 1rem;stroke:#3a2810;fill:none;stroke-width:1.5;transition:stroke 0.2s;}
 #drop-box:hover .drop-icon,#drop-box.over .drop-icon{stroke:#C8A05A;}
 #drop-box p{color:#5a4830;font-size:0.85rem;line-height:1.8;}
 #drop-box em{color:#8a7050;font-style:normal;}
 #file-input{display:none;}
-
-#loading{
-  display:none;position:fixed;inset:0;z-index:100;
-  flex-direction:column;align-items:center;justify-content:center;background:#09080a;
-}
+#loading{display:none;position:fixed;inset:0;z-index:100;flex-direction:column;align-items:center;justify-content:center;background:#09080a;}
 #loading h2{color:#C8A05A;font-size:1.1rem;letter-spacing:0.08em;margin-bottom:1.2rem;}
 #progress-track{width:440px;height:4px;background:#1e1610;border-radius:2px;overflow:hidden;}
-#progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#8B6030,#C8A05A);
-  border-radius:2px;transition:width 0.12s;}
+#progress-fill{height:100%;width:0%;background:linear-gradient(90deg,#8B6030,#C8A05A);border-radius:2px;transition:width 0.12s;}
 #progress-sub{color:#3a2a18;font-size:0.75rem;margin-top:0.8rem;letter-spacing:0.04em;}
-
 #hud{display:none;pointer-events:none;}
 #crosshair{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);display:none;}
-#mode-badge{
-  position:fixed;top:18px;right:18px;pointer-events:auto;
-  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;
-  padding:6px 14px;font-size:0.7rem;letter-spacing:0.18em;color:#C8A05A;text-transform:uppercase;
-}
-#controls-hint{
-  position:fixed;top:18px;left:18px;
-  background:rgba(9,8,10,0.8);border:1px solid #2a1e0e;border-radius:8px;
-  padding:12px 16px;font-size:0.74rem;color:#4a3820;line-height:2;
-}
-.key{background:#1e1610;border:1px solid #3a2810;border-radius:3px;
-  padding:1px 6px;color:#7a6040;font-family:monospace;font-size:0.72rem;}
+#mode-badge{position:fixed;top:18px;right:18px;pointer-events:auto;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.18em;color:#C8A05A;text-transform:uppercase;}
+#controls-hint{position:fixed;top:18px;left:18px;background:rgba(9,8,10,0.8);border:1px solid #2a1e0e;border-radius:8px;padding:12px 16px;font-size:0.74rem;color:#4a3820;line-height:2;}
+.key{background:#1e1610;border:1px solid #3a2810;border-radius:3px;padding:1px 6px;color:#7a6040;font-family:monospace;font-size:0.72rem;}
 #controls-hint b{color:#7a6040;}
 #fps-hint{display:none;color:#5a4030;}
-#stat-bar{
-  position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;
-  font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;
-  background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;
-}
-#info-panel{
-  position:fixed;bottom:60px;right:18px;
-  background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;
-  padding:16px 20px;min-width:240px;max-width:320px;display:none;
-}
+#stat-bar{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;}
+#info-panel{position:fixed;bottom:60px;right:18px;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;display:none;}
 .info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
 .info-row{font-size:0.78rem;color:#5a4830;line-height:1.9;}
 .info-row span{color:#a08050;}
-.info-dot{display:inline-block;width:8px;height:8px;border-radius:2px;
-  margin-right:5px;vertical-align:middle;}
-#legend{
-  position:fixed;bottom:60px;left:18px;
-  background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:10px;padding:14px 18px;
-}
-#legend h4{font-size:0.65rem;letter-spacing:0.2em;color:#3a2810;
-  text-transform:uppercase;margin-bottom:10px;}
+.info-dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;vertical-align:middle;}
+#legend{position:fixed;bottom:60px;left:18px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:10px;padding:14px 18px;}
+#legend h4{font-size:0.65rem;letter-spacing:0.2em;color:#3a2810;text-transform:uppercase;margin-bottom:10px;}
 .leg-row{display:flex;align-items:center;gap:8px;margin-bottom:5px;font-size:0.76rem;color:#5a4830;}
 .leg-swatch{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
 .leg-count{margin-left:auto;color:#2e2010;font-size:0.68rem;}
+#tod-control{position:fixed;bottom:60px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.82);border:1px solid #2a1e0e;border-radius:10px;padding:10px 20px;display:none;align-items:center;gap:14px;pointer-events:auto;}
+#tod-control span.lbl{font-size:0.7rem;letter-spacing:0.15em;color:#4a3820;}
+#tod-slider{width:180px;accent-color:#C8A05A;cursor:pointer;}
+#tod-label{font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;}
+#live-toast{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(9,8,10,0.92);border:1px solid #C8A05A;border-radius:10px;padding:18px 32px;font-size:0.85rem;color:#C8A05A;letter-spacing:0.1em;pointer-events:none;z-index:50;text-align:center;}
 </style>
 </head>
 <body>
-
 <div id="drop-zone">
   <h1>PastForward 3D</h1>
   <p class="subtitle">Winnipeg Built Environment &nbsp;·&nbsp; Goad's &amp; McPhillips</p>
   <div id="drop-box" onclick="document.getElementById('file-input').click()">
     <svg class="drop-icon" viewBox="0 0 52 52">
-      <polyline points="26,8 26,36"/>
-      <polyline points="14,24 26,36 38,24"/>
+      <polyline points="26,8 26,36"/><polyline points="14,24 26,36 38,24"/>
       <rect x="8" y="40" width="36" height="4" rx="2"/>
     </svg>
-    <p>Drop <em>buildings GeoJSON</em> here — or click to browse<br>
-    Accepts multiple files: drop roads GeoJSON alongside buildings</p>
+    <p>Drop <em>GeoJSON</em> files here — or click to browse<br>
+    Also accepts <em>road network</em> GeoJSON and <em>facade images</em> (JPG/PNG)</p>
   </div>
-  <input type="file" id="file-input" accept=".geojson,.json" multiple>
+  <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
 </div>
-
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
   <div id="progress-track"><div id="progress-fill"></div></div>
   <div id="progress-sub"></div>
 </div>
-
 <div id="hud">
   <div id="crosshair">
-    <svg width="22" height="22" viewBox="0 0 22 22" fill="none"
-         stroke="rgba(255,255,255,0.5)" stroke-width="1.2">
-      <line x1="11" y1="2" x2="11" y2="9"/>
-      <line x1="11" y1="13" x2="11" y2="20"/>
-      <line x1="2" y1="11" x2="9" y2="11"/>
-      <line x1="13" y1="11" x2="20" y2="11"/>
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" stroke="rgba(255,255,255,0.5)" stroke-width="1.2">
+      <line x1="11" y1="2" x2="11" y2="9"/><line x1="11" y1="13" x2="11" y2="20"/>
+      <line x1="2" y1="11" x2="9" y2="11"/><line x1="13" y1="11" x2="20" y2="11"/>
       <circle cx="11" cy="11" r="1.5" fill="rgba(255,255,255,0.5)" stroke="none"/>
     </svg>
   </div>
   <div id="mode-badge">Overview</div>
   <div id="controls-hint">
     <b>Orbit:</b> drag · scroll to zoom<br>
-    <span class="key">F</span>&nbsp; Walk mode &nbsp;&nbsp;
-    <span class="key">hover</span> building info<br>
+    <span class="key">F</span>&nbsp; Walk mode &nbsp;&nbsp;<span class="key">hover</span> building info<br>
     <span id="fps-hint">
-      <span class="key">W A S D</span> Move &nbsp;
-      <span class="key">Mouse</span> Look<br>
-      <span class="key">Shift</span> Sprint &nbsp;
-      <span class="key">Q / E</span> Down / Up<br>
+      <span class="key">W A S D</span> Move &nbsp;<span class="key">Mouse</span> Look<br>
+      <span class="key">Shift</span> Sprint &nbsp;<span class="key">Q / E</span> Down / Up<br>
       <span class="key">Esc</span>&nbsp; Overview
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="tod-control" style="
-    position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
-    background:rgba(9,8,10,0.82);border:1px solid #2a1e0e;border-radius:10px;
-    padding:10px 20px;display:none;align-items:center;gap:14px;pointer-events:auto;
-  ">
-    <span style="font-size:0.7rem;letter-spacing:0.15em;color:#4a3820;">TIME</span>
-    <input type="range" id="tod-slider" min="0" max="1" step="0.002" value="0.42"
-      style="width:180px;accent-color:#C8A05A;cursor:pointer;">
-    <span id="tod-label" style="font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;">10:00</span>
+  <div id="tod-control">
+    <span class="lbl">TIME</span>
+    <input type="range" id="tod-slider" min="0" max="1" step="0.002" value="0.42">
+    <span id="tod-label">10:00</span>
   </div>
-  <div id="live-toast" style="
-    display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:rgba(9,8,10,0.92);border:1px solid #C8A05A;border-radius:10px;
-    padding:18px 32px;font-size:0.85rem;color:#C8A05A;letter-spacing:0.1em;
-    pointer-events:none;z-index:50;text-align:center;
-  "></div>
+  <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
     <div class="info-row" id="info-rows"></div>
@@ -166,61 +113,44 @@ import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // COORDINATE SYSTEM — Up ≠ N
+//   World X = East  (+lon → +X)
+//   World Y = Up    (always vertical)
+//   World Z = South (north = −Z)
 //
-//   World X  = geographic East   (+lon → +X)
-//   World Y  = altitude / up     (always vertical — not north)
-//   World Z  = geographic South  (north = −Z)
+//   project(lon,lat) → [shapeX, shapeY] for THREE.Shape (XY plane).
+//   ExtrudeGeometry extrudes along local +Z.
+//   geometry.rotateX(−π/2): shapeX→worldX, shapeY→−worldZ, extrudeZ→worldY ✓
 //
-//   project(lon, lat) → [shapeX, shapeY] for THREE.Shape (XY plane).
-//   ExtrudeGeometry extrudes along its local +Z.
-//   After geometry.rotateX(−π/2):
-//     shapeX  → worldX  (east)   ✓
-//     shapeY  → −worldZ (north = −Z when shapeY > 0)  ✓
-//     extrudeZ→  worldY (up)     ✓
-//
-//   Roof geometry is built directly in world XZ — no rotation needed.
-//   To convert a shape coordinate to world XZ:
-//     worldX = shapeX,  worldZ = −shapeY
+//   Roof & facade geometry built in world XZ directly — no rotation needed.
+//   worldX = shapeX,  worldZ = −shapeY
 // ═══════════════════════════════════════════════════════════════════════
 
-const C_LON     = -97.135515;   // Portage & Main area centroid
+const C_LON     = -97.135515;
 const C_LAT     =  49.895396;
 const COS_LAT   = Math.cos(C_LAT * Math.PI / 180);
 const M_PER_LON = 111320 * COS_LAT;
 const M_PER_LAT = 111320;
 
 function project(lon, lat) {
-  return [
-    (lon - C_LON) * M_PER_LON,   // shapeX → worldX
-    (lat - C_LAT) * M_PER_LAT,   // shapeY → −worldZ (after rotateX)
-  ];
+  return [(lon - C_LON) * M_PER_LON, (lat - C_LAT) * M_PER_LAT];
 }
 
-// ── Material palette (Goad's conventions) ─────────────────────────
 const MATS = {
-  brick:    { color: 0xC0604A, label: 'Brick',           shininess: 20 },
-  wood:     { color: 0xCFA840, label: 'Wood / Frame',    shininess: 6  },
-  iron:     { color: 0x687888, label: 'Iron / Metal',    shininess: 45 },
-  stone:    { color: 0x6888A8, label: 'Stone',           shininess: 28 },
-  blue:     { color: 0x3A6898, label: 'Railway Siding',  shininess: 35 },
-  concrete: { color: 0x989890, label: 'Concrete',        shininess: 18 },
-  unknown:  { color: 0x808078, label: 'Unknown',         shininess: 5  },
-  log:      { color: 0x807040, label: 'Log',             shininess: 4  },
+  brick:    { color: 0xC0604A, label: 'Brick',          shininess: 20 },
+  wood:     { color: 0xCFA840, label: 'Wood / Frame',   shininess: 6  },
+  iron:     { color: 0x687888, label: 'Iron / Metal',   shininess: 45 },
+  stone:    { color: 0x6888A8, label: 'Stone',          shininess: 28 },
+  blue:     { color: 0x3A6898, label: 'Railway Siding', shininess: 35 },
+  concrete: { color: 0x989890, label: 'Concrete',       shininess: 18 },
+  unknown:  { color: 0x808078, label: 'Unknown',        shininess: 5  },
+  log:      { color: 0x807040, label: 'Log',            shininess: 4  },
 };
-
-// Light-frame materials that get peaked roofs
-const PEAKED_MATS = new Set(['wood', 'log', 'concrete', 'unknown']);
-
-const FLOOR_H   = 3.5;   // metres per storey
-const PLATFORM_H = 0.6;  // railways, loading platforms, walkways (floors ≤ 0.2)
-const MIN_H     = 2.0;   // minimum wall height for anything else
-const EYE_H     = 1.75;  // FPS eye height
-
-const ROAD_W = {
-  BLVD: 18, HWY: 16, AVE: 12, ST: 10, RD: 10,
-  DR: 10, CRES: 9, WAY: 9, ROW: 8, LANE: 6,
-  PL: 9, BAY: 9, PATH: 5, TRAIL: 5,
-};
+const PEAKED_MATS = new Set(['wood','log','concrete','unknown']);
+const FLOOR_H    = 3.5;
+const PLATFORM_H = 0.6;
+const MIN_H      = 2.0;
+const EYE_H      = 1.75;
+const ROAD_W = { BLVD:18,HWY:16,AVE:12,ST:10,RD:10,DR:10,CRES:9,WAY:9,ROW:8,LANE:6,PL:9,BAY:9,PATH:5,TRAIL:5 };
 
 // ── Renderer ───────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -236,7 +166,7 @@ scene.background = new THREE.Color(0x8AB8D0);
 scene.fog = new THREE.FogExp2(0x8AB8D0, 0.00032);
 
 // ── Camera ─────────────────────────────────────────────────────────
-const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.5, 5000);
+const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.5, 5000);
 camera.position.set(600, 450, 900);
 camera.lookAt(0, 0, 0);
 
@@ -245,731 +175,585 @@ const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
 sun.castShadow = true;
 sun.shadow.mapSize.width  = 2048;
 sun.shadow.mapSize.height = 2048;
-sun.shadow.camera.near   = 10;
-sun.shadow.camera.far    = 2200;
-sun.shadow.camera.left   = -900;
-sun.shadow.camera.right  =  900;
-sun.shadow.camera.top    =  900;
-sun.shadow.camera.bottom = -900;
-sun.shadow.bias          = -0.0003;
+sun.shadow.camera.near = 10; sun.shadow.camera.far  = 2200;
+sun.shadow.camera.left = -900; sun.shadow.camera.right  = 900;
+sun.shadow.camera.top  =  900; sun.shadow.camera.bottom = -900;
+sun.shadow.bias = -0.0003;
 scene.add(sun);
 
 // ── Time of day ────────────────────────────────────────────────────
-// t = 0..1 spans 04:00–22:00. Sun arc in world space:
-//   Up ≠ N — east = +X, south = −Z, up = +Y.
-//   Sunrise: sun in +X, noon: overhead biased toward −Z, sunset: −X.
-const TOD_START_H = 4;
-const TOD_RANGE_H = 18;
-
+// t=0..1 spans 04:00–22:00.
+// Sun arc: Up ≠ N. East=+X, south=−Z, up=+Y.
+// Sunrise: +X; noon: above, biased −Z; sunset: −X.
+const TOD_START_H = 4, TOD_RANGE_H = 18;
 const SKY_KEYS = [
-  // [t,  skyHex,   fogHex,   sunHex,   sunInt, ambInt]
-  [0.00, 0x0A0510, 0x0A0510, 0xFF6020, 0.00, 0.04],  // 04:00 pre-dawn
-  [0.10, 0xFF7030, 0xE85010, 0xFF9040, 0.50, 0.08],  // 05:48 sunrise
-  [0.18, 0xF0A060, 0xD08040, 0xFFD080, 1.00, 0.14],  // 07:14 golden hour
-  [0.28, 0x88C0E8, 0x88C0E8, 0xFFF0D0, 1.35, 0.18],  // 09:02 morning
-  [0.42, 0x7AB8E0, 0x7AB8E0, 0xFFF4DC, 1.45, 0.20],  // 11:34 default
-  [0.52, 0x6AAED8, 0x6AAED8, 0xFFFAF0, 1.50, 0.22],  // 13:22 noon
-  [0.70, 0x88B0D8, 0x88B0D8, 0xFFF0C0, 1.30, 0.18],  // 16:36 afternoon
-  [0.82, 0xF08030, 0xD06020, 0xFF8030, 0.90, 0.12],  // 18:46 golden
-  [0.90, 0xC04020, 0x902010, 0xFF5010, 0.40, 0.06],  // 20:12 dusk
-  [1.00, 0x080310, 0x080310, 0xFF3000, 0.00, 0.03],  // 22:00 night
+  [0.00,0x0A0510,0x0A0510,0xFF6020,0.00,0.04],
+  [0.10,0xFF7030,0xE85010,0xFF9040,0.50,0.08],
+  [0.18,0xF0A060,0xD08040,0xFFD080,1.00,0.14],
+  [0.28,0x88C0E8,0x88C0E8,0xFFF0D0,1.35,0.18],
+  [0.42,0x7AB8E0,0x7AB8E0,0xFFF4DC,1.45,0.20],
+  [0.52,0x6AAED8,0x6AAED8,0xFFFAF0,1.50,0.22],
+  [0.70,0x88B0D8,0x88B0D8,0xFFF0C0,1.30,0.18],
+  [0.82,0xF08030,0xD06020,0xFF8030,0.90,0.12],
+  [0.90,0xC04020,0x902010,0xFF5010,0.40,0.06],
+  [1.00,0x080310,0x080310,0xFF3000,0.00,0.03],
 ];
-
-function lerpHex(a, b, t) {
-  const ar=(a>>16)&0xff, ag=(a>>8)&0xff, ab=a&0xff;
-  const br=(b>>16)&0xff, bg=(b>>8)&0xff, bb=b&0xff;
-  return (Math.round(ar+(br-ar)*t)<<16)|(Math.round(ag+(bg-ag)*t)<<8)|Math.round(ab+(bb-ab)*t);
+function lerpHex(a,b,t){
+  const ar=(a>>16)&0xff,ag=(a>>8)&0xff,ab=a&0xff;
+  const br=(b>>16)&0xff,bg=(b>>8)&0xff,bb=b&0xff;
+  return(Math.round(ar+(br-ar)*t)<<16)|(Math.round(ag+(bg-ag)*t)<<8)|Math.round(ab+(bb-ab)*t);
 }
-
-function sampleSky(t) {
-  let lo=SKY_KEYS[0], hi=SKY_KEYS[SKY_KEYS.length-1];
-  for (let i=0; i<SKY_KEYS.length-1; i++) {
-    if (t>=SKY_KEYS[i][0] && t<=SKY_KEYS[i+1][0]) { lo=SKY_KEYS[i]; hi=SKY_KEYS[i+1]; break; }
-  }
-  const f = lo[0]===hi[0] ? 0 : (t-lo[0])/(hi[0]-lo[0]);
-  return {
-    sky:    lerpHex(lo[1],hi[1],f),  fog:    lerpHex(lo[2],hi[2],f),
-    sunCol: lerpHex(lo[3],hi[3],f),  sunInt: lo[4]+(hi[4]-lo[4])*f,
-    ambInt: lo[5]+(hi[5]-lo[5])*f,
-  };
+function sampleSky(t){
+  let lo=SKY_KEYS[0],hi=SKY_KEYS[SKY_KEYS.length-1];
+  for(let i=0;i<SKY_KEYS.length-1;i++){if(t>=SKY_KEYS[i][0]&&t<=SKY_KEYS[i+1][0]){lo=SKY_KEYS[i];hi=SKY_KEYS[i+1];break;}}
+  const f=lo[0]===hi[0]?0:(t-lo[0])/(hi[0]-lo[0]);
+  return{sky:lerpHex(lo[1],hi[1],f),fog:lerpHex(lo[2],hi[2],f),sunCol:lerpHex(lo[3],hi[3],f),sunInt:lo[4]+(hi[4]-lo[4])*f,ambInt:lo[5]+(hi[5]-lo[5])*f};
 }
-
-const hemiLight = new THREE.HemisphereLight(0x88C0E8, 0x3A5A20, 0.55);
+const hemiLight = new THREE.HemisphereLight(0x88C0E8,0x3A5A20,0.55);
 scene.add(hemiLight);
-const ambLight  = new THREE.AmbientLight(0xffffff, 0.12);
+const ambLight = new THREE.AmbientLight(0xffffff,0.12);
 scene.add(ambLight);
-
-function setTimeOfDay(t) {
-  // Sun arc: dayFrac 0=sunrise, 1=sunset. Elevation sine-peaks at noon.
-  // Azimuth sweeps +X(east) → −Z(south) → −X(west) — Up ≠ N.
-  const dayFrac = Math.max(0, Math.min(1, (t-0.10)/0.80));
-  const elev    = Math.sin(dayFrac * Math.PI);
-  const azim    = dayFrac * Math.PI;
-  const R = 900;
-  sun.position.set(
-     R * Math.cos(azim),
-     R * Math.max(0.05, elev),
-    -R * Math.sin(azim) * 0.6   // foreshortened south component for Winnipeg lat
-  );
-
-  const s = sampleSky(t);
-  scene.background.setHex(s.sky);
-  scene.fog.color.setHex(s.fog);
-  sun.color.setHex(s.sunCol);
-  sun.intensity  = s.sunInt;
-  ambLight.intensity = s.ambInt;
-  hemiLight.color.setHex(s.sky);
-
-  const hour = TOD_START_H + t * TOD_RANGE_H;
-  const hh=Math.floor(hour), mm=Math.round((hour-hh)*60);
-  const lbl = document.getElementById('tod-label');
-  if (lbl) lbl.textContent = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+function setTimeOfDay(t){
+  const dayFrac=Math.max(0,Math.min(1,(t-0.10)/0.80));
+  const elev=Math.sin(dayFrac*Math.PI),azim=dayFrac*Math.PI,R=900;
+  sun.position.set(R*Math.cos(azim),R*Math.max(0.05,elev),-R*Math.sin(azim)*0.6);
+  const s=sampleSky(t);
+  scene.background.setHex(s.sky);scene.fog.color.setHex(s.fog);
+  sun.color.setHex(s.sunCol);sun.intensity=s.sunInt;
+  ambLight.intensity=s.ambInt;hemiLight.color.setHex(s.sky);
+  const hour=TOD_START_H+t*TOD_RANGE_H,hh=Math.floor(hour),mm=Math.round((hour-hh)*60);
+  const lbl=document.getElementById('tod-label');
+  if(lbl)lbl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
 }
+setTimeOfDay(0.42);
 
-setTimeOfDay(0.42);  // default: ~11:30am
-
-// ── Ground (grass) ─────────────────────────────────────────────────
+// ── Ground ─────────────────────────────────────────────────────────
 const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(12000, 12000),
-  new THREE.MeshLambertMaterial({ color: 0x2D4A1A })
+  new THREE.PlaneGeometry(12000,12000),
+  new THREE.MeshLambertMaterial({color:0x2D4A1A})
 );
-ground.rotation.x = -Math.PI / 2;
-ground.position.y = -0.05;
-ground.receiveShadow = true;
+ground.rotation.x=-Math.PI/2; ground.position.y=-0.05; ground.receiveShadow=true;
 scene.add(ground);
-
-const grid = new THREE.GridHelper(12000, 1200, 0x3A5A22, 0x324A1C);
-grid.position.y = 0.01;
-grid.material.opacity = 0.18;
-grid.material.transparent = true;
+const grid=new THREE.GridHelper(12000,1200,0x3A5A22,0x324A1C);
+grid.position.y=0.01;grid.material.opacity=0.18;grid.material.transparent=true;
 scene.add(grid);
 
 // ── Orbit controls ─────────────────────────────────────────────────
-const orbit = new OrbitControls(camera, renderer.domElement);
-orbit.enableDamping  = true;
-orbit.dampingFactor  = 0.07;
-orbit.enableZoom     = false;   // replaced by normalised custom handler below
-orbit.maxPolarAngle  = Math.PI / 2 - 0.015;
-orbit.minDistance    = 15;
-orbit.maxDistance    = 3000;
-orbit.target.set(0, 0, 0);
-orbit.update();
+const orbit=new OrbitControls(camera,renderer.domElement);
+orbit.enableDamping=true;orbit.dampingFactor=0.07;
+orbit.enableZoom=false;
+orbit.maxPolarAngle=Math.PI/2-0.015;orbit.minDistance=15;orbit.maxDistance=3000;
+orbit.target.set(0,0,0);orbit.update();
 
-// Custom scroll zoom — normalises deltaMode and caps per-event contribution.
-// Raw deltaY varies from ~3 (trackpad) to 400+ (some mice/browsers).
-// With orbit.enableZoom=false OrbitControls never sees wheel events.
-renderer.domElement.addEventListener('wheel', e => {
-  e.preventDefault();
-  if (!orbit.enabled) return;
-  let d = e.deltaY;
-  if (e.deltaMode === 1) d *= 10;   // DOM_DELTA_LINE  → approx pixels
-  if (e.deltaMode === 2) d *= 300;  // DOM_DELTA_PAGE  → approx pixels
-  const capped = Math.sign(d) * Math.min(Math.abs(d), 120);
-  // ~12% distance change per standard mouse click; ~0.3% per trackpad pixel
-  const factor = Math.pow(0.998, -capped * 0.5);
-  const offset = camera.position.clone().sub(orbit.target);
-  const newLen = THREE.MathUtils.clamp(
-    offset.length() * factor, orbit.minDistance, orbit.maxDistance
-  );
-  camera.position.copy(orbit.target).addScaledVector(offset.normalize(), newLen);
+renderer.domElement.addEventListener('wheel',e=>{
+  e.preventDefault();if(!orbit.enabled)return;
+  let d=e.deltaY;
+  if(e.deltaMode===1)d*=10;if(e.deltaMode===2)d*=300;
+  const capped=Math.sign(d)*Math.min(Math.abs(d),120);
+  const factor=Math.pow(0.998,-capped*0.5);
+  const offset=camera.position.clone().sub(orbit.target);
+  const newLen=THREE.MathUtils.clamp(offset.length()*factor,orbit.minDistance,orbit.maxDistance);
+  camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
   orbit.update();
-}, { passive: false });
+},{passive:false});
 
-// ── FPS state ──────────────────────────────────────────────────────
-let fpsMode   = false;
-let yaw       = Math.PI;
-let pitch     = 0;
-const keys    = {};
-let sprinting = false;
+// ── FPS ────────────────────────────────────────────────────────────
+let fpsMode=false,yaw=Math.PI,pitch=0,sprinting=false;
+const keys={};
+const raycaster=new THREE.Raycaster();
+const mouseNDC=new THREE.Vector2(-9,-9);
+let buildingMeshes=[];
 
-// ── Raycasting ─────────────────────────────────────────────────────
-const raycaster    = new THREE.Raycaster();
-const mouseNDC     = new THREE.Vector2(-9, -9);
-let buildingMeshes = [];
+// ── Building index for facade matching ─────────────────────────────
+// Keyed by normalised name and by string id.
+const buildingIndex = new Map();
+
+function normName(s){
+  return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
+}
 
 // ── Legend ─────────────────────────────────────────────────────────
-const legendBody = document.getElementById('legend-body');
-for (const [key, def] of Object.entries(MATS)) {
-  const hex = '#' + def.color.toString(16).padStart(6, '0');
-  const row = document.createElement('div');
-  row.className = 'leg-row';
-  row.innerHTML =
-    `<div class="leg-swatch" style="background:${hex}"></div>${def.label}` +
-    `<span class="leg-count" id="lc-${key}">—</span>`;
+const legendBody=document.getElementById('legend-body');
+for(const[key,def]of Object.entries(MATS)){
+  const hex='#'+def.color.toString(16).padStart(6,'0');
+  const row=document.createElement('div');row.className='leg-row';
+  row.innerHTML=`<div class="leg-swatch" style="background:${hex}"></div>${def.label}<span class="leg-count" id="lc-${key}">—</span>`;
   legendBody.appendChild(row);
 }
 
 // ── Roof geometry ──────────────────────────────────────────────────
-// ring: [[worldX, worldZ], ...] closed polygon (no duplicate last vertex)
-// Ridge axis = longest polygon edge. Gable ends form naturally via clamping.
-function buildRoofGeometry(ring, roofBaseY) {
-  const n = ring.length;
-  if (n < 3) return null;
-
-  let cx = 0, cz = 0;
-  for (const [x, z] of ring) { cx += x; cz += z; }
-  cx /= n; cz /= n;
-
-  // Ridge axis: direction of longest edge (reliable on Winnipeg grid)
-  let bestLen = 0, ax = 1, az = 0;
-  for (let i = 0; i < n; i++) {
-    const [x1, z1] = ring[i], [x2, z2] = ring[(i + 1) % n];
-    const dx = x2 - x1, dz = z2 - z1;
-    const len = Math.sqrt(dx * dx + dz * dz);
-    if (len > bestLen) { bestLen = len; ax = dx / len; az = dz / len; }
+function buildRoofGeometry(ring,roofBaseY){
+  const n=ring.length;if(n<3)return null;
+  let cx=0,cz=0;for(const[x,z]of ring){cx+=x;cz+=z;}cx/=n;cz/=n;
+  let bestLen=0,ax=1,az=0;
+  for(let i=0;i<n;i++){
+    const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n];
+    const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+    if(len>bestLen){bestLen=len;ax=dx/len;az=dz/len;}
   }
-
-  // Ridge extent: 90% of polygon's projection along ridge axis → gable ends
-  let tMin = Infinity, tMax = -Infinity;
-  for (const [x, z] of ring) {
-    const t = (x - cx) * ax + (z - cz) * az;
-    tMin = Math.min(tMin, t); tMax = Math.max(tMax, t);
+  let tMin=Infinity,tMax=-Infinity;
+  for(const[x,z]of ring){const t=(x-cx)*ax+(z-cz)*az;tMin=Math.min(tMin,t);tMax=Math.max(tMax,t);}
+  const margin=(tMax-tMin)*0.05,rMin=tMin+margin,rMax=tMax-margin;
+  const ridgeH=FLOOR_H*0.48;
+  function ridgePt(x,z){const t=Math.max(rMin,Math.min(rMax,(x-cx)*ax+(z-cz)*az));return{x:cx+ax*t,y:roofBaseY+ridgeH,z:cz+az*t};}
+  const pos=[];
+  const tri=(a,b,c)=>pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  for(let i=0;i<n;i++){
+    const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n];
+    const v1={x:x1,y:roofBaseY,z:z1},v2={x:x2,y:roofBaseY,z:z2};
+    const r1=ridgePt(x1,z1),r2=ridgePt(x2,z2);
+    tri(v1,v2,r1);
+    if(Math.abs(r1.x-r2.x)+Math.abs(r1.z-r2.z)>0.05)tri(v2,r2,r1);
   }
-  const margin = (tMax - tMin) * 0.05;
-  const rMin = tMin + margin, rMax = tMax - margin;
-
-  // Steep pitch — Winnipeg snow loads
-  const ridgeH = FLOOR_H * 0.48;
-
-  function ridgePt(x, z) {
-    const t = Math.max(rMin, Math.min(rMax, (x - cx) * ax + (z - cz) * az));
-    return { x: cx + ax * t, y: roofBaseY + ridgeH, z: cz + az * t };
-  }
-
-  const pos = [];
-  const tri = (a, b, c) => pos.push(a.x,a.y,a.z, b.x,b.y,b.z, c.x,c.y,c.z);
-
-  for (let i = 0; i < n; i++) {
-    const [x1, z1] = ring[i], [x2, z2] = ring[(i + 1) % n];
-    const v1 = { x: x1, y: roofBaseY, z: z1 };
-    const v2 = { x: x2, y: roofBaseY, z: z2 };
-    const r1 = ridgePt(x1, z1);
-    const r2 = ridgePt(x2, z2);
-    tri(v1, v2, r1);
-    if (Math.abs(r1.x - r2.x) + Math.abs(r1.z - r2.z) > 0.05) tri(v2, r2, r1);
-  }
-
-  if (pos.length === 0) return null;
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geom.computeVertexNormals();
-  return geom;
+  if(pos.length===0)return null;
+  const geom=new THREE.BufferGeometry();
+  geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geom.computeVertexNormals();return geom;
 }
-
-function roofColor(hex) {
-  const r = (hex >> 16) & 0xff, g = (hex >> 8) & 0xff, b = hex & 0xff;
-  const avg = (r + g + b) / 3;
-  return (Math.floor(r * 0.55 + avg * 0.12) << 16) |
-         (Math.floor(g * 0.55 + avg * 0.12) << 8)  |
-          Math.floor(b * 0.55 + avg * 0.12);
+function roofColor(hex){
+  const r=(hex>>16)&0xff,g=(hex>>8)&0xff,b=hex&0xff,avg=(r+g+b)/3;
+  return(Math.floor(r*0.55+avg*0.12)<<16)|(Math.floor(g*0.55+avg*0.12)<<8)|Math.floor(b*0.55+avg*0.12);
 }
 
 // ── Build city geometry ────────────────────────────────────────────
-async function buildCity(geojson) {
-  const features = geojson.features;
-  const total    = features.length;
-  const matKeys  = Object.keys(MATS);
+async function buildCity(geojson){
+  const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
+  const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
+  for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
 
-  const wallGeos = {}, roofGeos = {}, wallInfos = {}, wallCums = {}, matCounts = {};
-  for (const k of matKeys) {
-    wallGeos[k]  = []; roofGeos[k]  = [];
-    wallInfos[k] = []; wallCums[k]  = [0]; matCounts[k] = 0;
-  }
+  for(let i=0;i<total;i++){
+    const feat=features[i],props=feat.properties;
+    const mat=MATS[props.material]?props.material:'unknown';
+    const floors=props.floors??1,isPlatform=floors<=0.2;
+    const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
 
-  for (let i = 0; i < total; i++) {
-    const feat  = features[i];
-    const props = feat.properties;
-    const mat   = MATS[props.material] ? props.material : 'unknown';
-    const floors = props.floors ?? 1;
-    const isPlatform = floors <= 0.2;
-    const height = isPlatform ? PLATFORM_H : Math.max(floors * FLOOR_H, MIN_H);
+    // Index for facade matching — by normalised name and by id
+    if(props.name) buildingIndex.set(normName(props.name),{feat,props,height});
+    if(props.id!=null) buildingIndex.set(String(props.id),{feat,props,height});
 
-    // ── Normalise to array of ring-sets ─────────────────────────────
-    // Polygon:      coordinates = [outerRing, ...holes]
-    // MultiPolygon: coordinates = [[outerRing, ...holes], ...]
-    // After normalisation, `polygons` is always an array of ring-sets.
-    const polygons = feat.geometry.type === 'MultiPolygon'
-      ? feat.geometry.coordinates
-      : [feat.geometry.coordinates];
-
-    for (const rings of polygons) {
-      const outer = rings[0];
-      // Need at least 3 unique vertices (ring is closed, so length ≥ 4)
-      if (!outer || outer.length < 4) continue;
-
-      // ── Wall extrusion ────────────────────────────────────────────
-      const shape = new THREE.Shape();
-      const [sx0, sy0] = project(outer[0][0], outer[0][1]);
-      shape.moveTo(sx0, sy0);
-      for (let j = 1; j < outer.length - 1; j++) {
-        const [sx, sy] = project(outer[j][0], outer[j][1]);
-        shape.lineTo(sx, sy);
-      }
-      for (let h = 1; h < rings.length; h++) {
-        const hole = new THREE.Path();
-        const [hx0, hy0] = project(rings[h][0][0], rings[h][0][1]);
-        hole.moveTo(hx0, hy0);
-        for (let j = 1; j < rings[h].length - 1; j++) {
-          const [hx, hy] = project(rings[h][j][0], rings[h][j][1]);
-          hole.lineTo(hx, hy);
-        }
+    const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
+    for(const rings of polygons){
+      const outer=rings[0];
+      if(!outer||outer.length<4)continue;
+      const shape=new THREE.Shape();
+      const[sx0,sy0]=project(outer[0][0],outer[0][1]);shape.moveTo(sx0,sy0);
+      for(let j=1;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);shape.lineTo(sx,sy);}
+      for(let h=1;h<rings.length;h++){
+        const hole=new THREE.Path();
+        const[hx0,hy0]=project(rings[h][0][0],rings[h][0][1]);hole.moveTo(hx0,hy0);
+        for(let j=1;j<rings[h].length-1;j++){const[hx,hy]=project(rings[h][j][0],rings[h][j][1]);hole.lineTo(hx,hy);}
         shape.holes.push(hole);
       }
-
-      // Guard against earcut failure on thin/degenerate polygons
       let wallGeom;
-      try {
-        wallGeom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
-      } catch (err) {
-        console.warn('earcut failed — skipping id:', props.id, err.message);
-        continue;
-      }
-
-      wallGeom.rotateX(-Math.PI / 2);
-
-      // ExtrudeGeometry may be indexed or non-indexed depending on Three.js version
-      const tris = wallGeom.index
-        ? wallGeom.index.count / 3
-        : wallGeom.attributes.position.count / 3;
-      if (tris === 0) { wallGeom.dispose(); continue; }
-      wallCums[mat].push(wallCums[mat][wallCums[mat].length - 1] + tris);
+      try{wallGeom=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false});}
+      catch(err){console.warn('earcut failed id:',props.id,err.message);continue;}
+      wallGeom.rotateX(-Math.PI/2);
+      const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
+      if(tris===0){wallGeom.dispose();continue;}
+      wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
       wallGeos[mat].push(wallGeom);
-      wallInfos[mat].push({
-        name:    props.name    || null,
-        floors:  props.floors,
-        material: mat,
-        area_m2: props.area_m2,
-        source:  props.source_file,
-      });
+      wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file});
       matCounts[mat]++;
-
-      // ── Peaked roof ───────────────────────────────────────────────
-      // Eligible: light-frame material, not platform, ≤2.5 floors,
-      //           area OK (skip only if explicitly tiny), polygon not too complex.
-      // area_m2 null → allow (1880 data lacks this field).
-      const areaOk = props.area_m2 == null || props.area_m2 > 25;
-      if (!isPlatform &&
-          PEAKED_MATS.has(mat) &&
-          floors > 0.2 && floors <= 2.5 &&
-          areaOk &&
-          outer.length <= 14) {
-        const ring = [];
-        for (let j = 0; j < outer.length - 1; j++) {
-          const [sx, sy] = project(outer[j][0], outer[j][1]);
-          ring.push([sx, -sy]);   // worldX = shapeX, worldZ = −shapeY
-        }
-        const rg = buildRoofGeometry(ring, height + 0.05);
-        if (rg) roofGeos[mat].push(rg);
+      const areaOk=props.area_m2==null||props.area_m2>25;
+      if(!isPlatform&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
+        const ring=[];
+        for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
+        const rg=buildRoofGeometry(ring,height+0.05);if(rg)roofGeos[mat].push(rg);
       }
-    } // end polygon loop
-
-    if (i % 300 === 0) {
-      setProgress(5 + Math.round(i / total * 68),
-        `Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);
-      await tick();
     }
+    if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
 
-  // ── Merge and add to scene ───────────────────────────────────────
-  setProgress(74, 'Merging wall geometry…');
-  await tick();
-
-  for (const mat of matKeys) {
-    if (wallGeos[mat].length === 0) continue;
-
-    const wMerged = mergeGeometries(wallGeos[mat], false);
-    for (const g of wallGeos[mat]) g.dispose();
-
-    const wMesh = new THREE.Mesh(wMerged, new THREE.MeshPhongMaterial({
-      color:     MATS[mat].color,
-      shininess: MATS[mat].shininess,
-      specular:  0x1a1a1a,
-    }));
-    wMesh.userData = { mat, cums: wallCums[mat], infos: wallInfos[mat] };
-    wMesh.castShadow    = true;
-    wMesh.receiveShadow = true;
-    scene.add(wMesh);
-    buildingMeshes.push(wMesh);
-
-    const lcEl = document.getElementById(`lc-${mat}`);
-    if (lcEl) lcEl.textContent = matCounts[mat].toLocaleString();
-
-    if (roofGeos[mat].length > 0) {
-      setProgress(74, `Merging roofs: ${MATS[mat].label}…`);
-      await tick();
-      const rMerged = mergeGeometries(roofGeos[mat], false);
-      for (const g of roofGeos[mat]) g.dispose();
-      const rMesh = new THREE.Mesh(rMerged, new THREE.MeshPhongMaterial({
-        color:    roofColor(MATS[mat].color),
-        shininess: 5, specular: 0x080808,
-        side: THREE.DoubleSide,
-      }));
-      rMesh.castShadow    = true;
-      rMesh.receiveShadow = true;
-      scene.add(rMesh);
+  setProgress(74,'Merging geometry…');await tick();
+  for(const mat of matKeys){
+    if(wallGeos[mat].length===0)continue;
+    const wMerged=mergeGeometries(wallGeos[mat],false);
+    for(const g of wallGeos[mat])g.dispose();
+    const wMesh=new THREE.Mesh(wMerged,new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a}));
+    wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
+    wMesh.castShadow=true;wMesh.receiveShadow=true;
+    scene.add(wMesh);buildingMeshes.push(wMesh);
+    const lcEl=document.getElementById(`lc-${mat}`);if(lcEl)lcEl.textContent=matCounts[mat].toLocaleString();
+    if(roofGeos[mat].length>0){
+      setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
+      const rMerged=mergeGeometries(roofGeos[mat],false);
+      for(const g of roofGeos[mat])g.dispose();
+      const rMesh=new THREE.Mesh(rMerged,new THREE.MeshPhongMaterial({color:roofColor(MATS[mat].color),shininess:5,specular:0x080808,side:THREE.DoubleSide}));
+      rMesh.castShadow=true;rMesh.receiveShadow=true;scene.add(rMesh);
     }
   }
-
   return total;
 }
 
 // ── Road surface ───────────────────────────────────────────────────
-async function buildRoads(geojson) {
-  setProgress(88, 'Building road network…');
-  await tick();
-
-  const MAX_R2 = 4000 * 4000;
-  const pos = [];
-
-  for (const feat of geojson.features) {
-    const w = ROAD_W[feat.properties.st_type] ?? 9;
-    for (const line of feat.geometry.coordinates) {
-      for (let i = 0; i < line.length - 1; i++) {
-        const [sx1, sy1] = project(line[i][0],   line[i][1]);
-        const [sx2, sy2] = project(line[i+1][0], line[i+1][1]);
-        const x1 = sx1, z1 = -sy1, x2 = sx2, z2 = -sy2;
-        if (x1*x1 + z1*z1 > MAX_R2 && x2*x2 + z2*z2 > MAX_R2) continue;
-        const dx = x2 - x1, dz = z2 - z1;
-        const len = Math.sqrt(dx*dx + dz*dz);
-        if (len < 0.1) continue;
-        const px = (-dz / len) * (w * 0.5);
-        const pz = ( dx / len) * (w * 0.5);
-        const y = 0.18;   // raised; polygon offset handles residual depth fighting
-        pos.push(
-          x1+px, y, z1+pz,  x2+px, y, z2+pz,  x1-px, y, z1-pz,
-          x2+px, y, z2+pz,  x2-px, y, z2-pz,  x1-px, y, z1-pz
-        );
+async function buildRoads(geojson){
+  setProgress(88,'Building road network…');await tick();
+  const MAX_R2=4000*4000,pos=[];
+  for(const feat of geojson.features){
+    const w=ROAD_W[feat.properties.st_type]??9;
+    for(const line of feat.geometry.coordinates){
+      for(let i=0;i<line.length-1;i++){
+        const[sx1,sy1]=project(line[i][0],line[i][1]);
+        const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
+        const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+        if(x1*x1+z1*z1>MAX_R2&&x2*x2+z2*z2>MAX_R2)continue;
+        const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+        if(len<0.1)continue;
+        const px=(-dz/len)*(w*0.5),pz=(dx/len)*(w*0.5),y=0.18;
+        pos.push(x1+px,y,z1+pz,x2+px,y,z2+pz,x1-px,y,z1-pz,x2+px,y,z2+pz,x2-px,y,z2-pz,x1-px,y,z1-pz);
       }
     }
   }
-
-  if (pos.length === 0) return;
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  if(pos.length===0)return;
+  const geom=new THREE.BufferGeometry();
+  geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.computeVertexNormals();
-  const roadMesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
-    color: 0x8B7450,
-    polygonOffset: true,
-    polygonOffsetFactor: -2,
-    polygonOffsetUnits:  -2,
-  }));
-  roadMesh.receiveShadow = true;
-  scene.add(roadMesh);
+  const roadMesh=new THREE.Mesh(geom,new THREE.MeshLambertMaterial({color:0x8B7450,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  roadMesh.receiveShadow=true;scene.add(roadMesh);
 }
 
-// ── Face → building lookup (binary search into cumulative tri counts) ──
-function queryBuilding(faceIndex, mesh) {
-  const cums = mesh.userData.cums;
-  let lo = 0, hi = cums.length - 2;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    cums[mid] <= faceIndex ? (lo = mid) : (hi = mid - 1);
+// ── Facade system ──────────────────────────────────────────────────
+// Up ≠ N: the facade plane lives in world XZ.
+//   Width axis  = edge direction (horizontal, in XZ)
+//   Height axis = world Y (up)
+//   Face normal = outward from building (horizontal, in XZ)
+//
+// Front-face detection: edge whose outward normal points most toward +X (east).
+// This is correct for Main St. west-side buildings (fronts face east).
+// Filename → building name matching: normalised lowercase stem.
+// Background removal: samples corner pixels for bg colour, thresholds by RGB distance.
+
+function makeTransparentCanvas(imageFile){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(imageFile);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      const c=document.createElement('canvas');
+      c.width=img.naturalWidth;c.height=img.naturalHeight;
+      const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
+      const data=ctx.getImageData(0,0,c.width,c.height),d=data.data;
+      const W=c.width,H=c.height;
+      // Sample bg from four corners (3×3 average each)
+      let bgR=0,bgG=0,bgB=0,n=0;
+      for(const[ox,oy]of[[0,0],[W-3,0],[0,H-3],[W-3,H-3]]){
+        for(let dy=0;dy<3;dy++)for(let dx=0;dx<3;dx++){
+          const idx=((oy+dy)*W+(ox+dx))*4;
+          bgR+=d[idx];bgG+=d[idx+1];bgB+=d[idx+2];n++;
+        }
+      }
+      bgR/=n;bgG/=n;bgB/=n;
+      // Remove pixels within threshold of background colour
+      const thresh=40;
+      for(let i=0;i<d.length;i+=4){
+        const dr=d[i]-bgR,dg=d[i+1]-bgG,db=d[i+2]-bgB;
+        const dist=Math.sqrt(dr*dr+dg*dg+db*db);
+        if(dist<thresh){
+          // Soft edge: linear fade
+          d[i+3]=Math.round(Math.max(0,Math.min(255,(dist/thresh-0.3)*255/0.7)));
+        }
+      }
+      ctx.putImageData(data,0,0);resolve(c);
+    };
+    img.onerror=reject;img.src=url;
+  });
+}
+
+async function loadFacade(imageFile){
+  // Match filename stem to building name or id
+  const stem=normName(imageFile.name.replace(/\.[^.]+$/,''));
+  let match=buildingIndex.get(stem);
+  if(!match){
+    // Partial match: filename contains building name or vice versa
+    for(const[key,val]of buildingIndex){
+      if(stem.includes(key)||key.includes(stem)){match=val;break;}
+    }
   }
-  return mesh.userData.infos[lo] || null;
+  if(!match){
+    console.warn(`No building match for facade: "${imageFile.name}" (stem: "${stem}")`);
+    console.log('Available keys (first 20):',[...buildingIndex.keys()].slice(0,20));
+    return;
+  }
+  const{feat,props,height}=match;
+
+  // Get polygon outer ring in world XZ
+  const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
+  const outer=polygons[0][0];
+  if(!outer||outer.length<4)return;
+
+  const verts=outer.slice(0,-1).map(c=>{
+    const[sx,sy]=project(c[0],c[1]);
+    return{x:sx,z:-sy};   // worldX=shapeX, worldZ=−shapeY  (Up ≠ N)
+  });
+
+  // Centroid for outward-normal disambiguation
+  const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
+  const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
+
+  // Find edge whose outward normal points most toward +X (east = street side for Main St. west side)
+  let bestScore=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
+  for(let i=0;i<verts.length;i++){
+    const a=verts[i],b=verts[(i+1)%verts.length];
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
+    if(len<0.3)continue;
+    // Candidate outward normals (both sides of edge)
+    let nx=-dz/len,nz=dx/len;
+    const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
+    // Ensure normal points away from centroid
+    if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
+    const score=nx;   // most eastward-facing wins
+    if(score>bestScore){bestScore=score;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
+  }
+  if(!bestA)return;
+
+  const edgeDx=bestB.x-bestA.x,edgeDz=bestB.z-bestA.z;
+  const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
+  const midX=(bestA.x+bestB.x)/2,midZ=(bestA.z+bestB.z)/2;
+
+  // Background removal and texture
+  let canvas;
+  try{canvas=await makeTransparentCanvas(imageFile);}
+  catch(e){console.warn('Image load failed:',e);return;}
+
+  const tex=new THREE.CanvasTexture(canvas);
+  tex.colorSpace=THREE.SRGBColorSpace;
+
+  const facadeMat=new THREE.MeshPhongMaterial({
+    map:tex,transparent:true,alphaTest:0.1,
+    side:THREE.FrontSide,shininess:0,
+  });
+
+  // PlaneGeometry is in local XY facing +Z.
+  // Orient so: local +X → edge direction, local +Y → world up, local +Z → outward normal.
+  // This keeps height axis vertical (Up ≠ N) and face pointing toward the street.
+  const edgeDir=new THREE.Vector3(edgeDx/edgeLen,0,edgeDz/edgeLen);
+  const upVec  =new THREE.Vector3(0,1,0);
+  const normVec=new THREE.Vector3(bestNx,0,bestNz);
+
+  const geo=new THREE.PlaneGeometry(edgeLen,height);
+  const mesh=new THREE.Mesh(geo,facadeMat);
+  // Sit 0.15m outward from wall to avoid z-fighting
+  mesh.position.set(midX+bestNx*0.15, height/2, midZ+bestNz*0.15);
+  mesh.setRotationFromMatrix(new THREE.Matrix4().makeBasis(edgeDir,upVec,normVec));
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+  console.log(`Facade: "${imageFile.name}" → "${props.name||props.id}" | frontage ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
 }
 
-function updateHover() {
-  raycaster.setFromCamera(mouseNDC, camera);
-  const hits  = raycaster.intersectObjects(buildingMeshes);
-  const panel = document.getElementById('info-panel');
-  if (!hits.length) { panel.style.display = 'none'; return; }
-
-  const info  = queryBuilding(hits[0].faceIndex, hits[0].object);
-  if (!info)  { panel.style.display = 'none'; return; }
-
-  const hex   = '#' + MATS[info.material].color.toString(16).padStart(6, '0');
-  const label = MATS[info.material]?.label || info.material;
-  document.getElementById('info-name').textContent = info.name || '(unnamed building)';
-  document.getElementById('info-rows').innerHTML = [
+// ── Hover ──────────────────────────────────────────────────────────
+function queryBuilding(faceIndex,mesh){
+  const cums=mesh.userData.cums;let lo=0,hi=cums.length-2;
+  while(lo<hi){const mid=(lo+hi+1)>>1;cums[mid]<=faceIndex?(lo=mid):(hi=mid-1);}
+  return mesh.userData.infos[lo]||null;
+}
+function updateHover(){
+  raycaster.setFromCamera(mouseNDC,camera);
+  const hits=raycaster.intersectObjects(buildingMeshes);
+  const panel=document.getElementById('info-panel');
+  if(!hits.length){panel.style.display='none';return;}
+  const info=queryBuilding(hits[0].faceIndex,hits[0].object);
+  if(!info){panel.style.display='none';return;}
+  const hex='#'+MATS[info.material].color.toString(16).padStart(6,'0');
+  const label=MATS[info.material]?.label||info.material;
+  document.getElementById('info-name').textContent=info.name||'(unnamed building)';
+  document.getElementById('info-rows').innerHTML=[
     `<span class="info-dot" style="background:${hex}"></span>Material: <span>${label}</span>`,
-    info.floors  != null ? `Floors: <span>${info.floors}</span>` : '',
-    info.area_m2 != null ? `Footprint: <span>${info.area_m2.toFixed(0)} m²</span>` : '',
-    info.source  ? `Sheet: <span>${(info.source||'').replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>` : '',
+    info.floors!=null?`Floors: <span>${info.floors}</span>`:'',
+    info.area_m2!=null?`Footprint: <span>${info.area_m2.toFixed(0)} m²</span>`:'',
+    info.source?`Sheet: <span>${(info.source||'').replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>`:'',
   ].filter(Boolean).join('<br>');
-  panel.style.display = 'block';
+  panel.style.display='block';
 }
 
-// ── FPS camera ─────────────────────────────────────────────────────
-function enterFPS() {
-  fpsMode = true;
-  orbit.enabled = false;
-  camera.position.y = camera.position.y > 80 ? EYE_H : Math.max(camera.position.y, EYE_H);
-  const fwd = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
-  yaw   = Math.atan2(-fwd.x, -fwd.z);
-  pitch = Math.asin(Math.max(-1, Math.min(1, fwd.y)));
+// ── FPS ────────────────────────────────────────────────────────────
+function enterFPS(){
+  fpsMode=true;orbit.enabled=false;
+  camera.position.y=camera.position.y>80?EYE_H:Math.max(camera.position.y,EYE_H);
+  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  yaw=Math.atan2(-fwd.x,-fwd.z);pitch=Math.asin(Math.max(-1,Math.min(1,fwd.y)));
   renderer.domElement.requestPointerLock();
-  document.getElementById('crosshair').style.display  = 'flex';
-  document.getElementById('mode-badge').textContent    = 'Walk Mode';
-  document.getElementById('fps-hint').style.display    = 'block';
-  document.getElementById('info-panel').style.display  = 'none';
+  document.getElementById('crosshair').style.display='flex';
+  document.getElementById('mode-badge').textContent='Walk Mode';
+  document.getElementById('fps-hint').style.display='block';
+  document.getElementById('info-panel').style.display='none';
 }
-
-function exitFPS() {
-  fpsMode = false;
-  document.exitPointerLock();
-  orbit.enabled = true;
-  document.getElementById('crosshair').style.display  = 'none';
-  document.getElementById('mode-badge').textContent    = 'Overview';
-  document.getElementById('fps-hint').style.display    = 'none';
+function exitFPS(){
+  fpsMode=false;document.exitPointerLock();orbit.enabled=true;
+  document.getElementById('crosshair').style.display='none';
+  document.getElementById('mode-badge').textContent='Overview';
+  document.getElementById('fps-hint').style.display='none';
 }
-
-document.addEventListener('pointerlockchange', () => {
-  if (!document.pointerLockElement && fpsMode) exitFPS();
-});
-
-window.addEventListener('keydown', e => {
-  keys[e.code] = true;
-  sprinting = e.shiftKey;
-  if (e.code === 'KeyF' && !fpsMode) enterFPS();
-  if (e.code === 'Escape' && fpsMode) exitFPS();
-  if (e.code === 'KeyH' && !fpsMode) {
-    camera.position.set(600, 450, 900);
-    orbit.target.set(0, 0, 0);
-    orbit.update();
-  }
+document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&fpsMode)exitFPS();});
+window.addEventListener('keydown',e=>{
+  keys[e.code]=true;sprinting=e.shiftKey;
+  if(e.code==='KeyF'&&!fpsMode)enterFPS();
+  if(e.code==='Escape'&&fpsMode)exitFPS();
+  if(e.code==='KeyH'&&!fpsMode){camera.position.set(600,450,900);orbit.target.set(0,0,0);orbit.update();}
   initAudio();
 });
-window.addEventListener('keyup', e => { keys[e.code] = false; sprinting = e.shiftKey; });
-
-document.addEventListener('mousemove', e => {
-  if (fpsMode && document.pointerLockElement === renderer.domElement) {
-    // Yaw around world Y; pitch around local X — kept separate (Up ≠ N)
-    yaw   -= e.movementX * 0.0016;
-    pitch -= e.movementY * 0.0016;
-    pitch  = Math.max(-1.48, Math.min(1.48, pitch));
-    mouseNDC.set(-9, -9);
-  } else if (!fpsMode) {
-    const r = renderer.domElement.getBoundingClientRect();
-    mouseNDC.x =  ((e.clientX - r.left) / r.width)  * 2 - 1;
-    mouseNDC.y = -((e.clientY - r.top)  / r.height) * 2 + 1;
+window.addEventListener('keyup',e=>{keys[e.code]=false;sprinting=e.shiftKey;});
+document.addEventListener('mousemove',e=>{
+  if(fpsMode&&document.pointerLockElement===renderer.domElement){
+    yaw-=e.movementX*0.0016;pitch-=e.movementY*0.0016;
+    pitch=Math.max(-1.48,Math.min(1.48,pitch));mouseNDC.set(-9,-9);
+  }else if(!fpsMode){
+    const r=renderer.domElement.getBoundingClientRect();
+    mouseNDC.x=((e.clientX-r.left)/r.width)*2-1;
+    mouseNDC.y=-((e.clientY-r.top)/r.height)*2+1;
   }
 });
+renderer.domElement.addEventListener('click',initAudio,{once:true});
 
-renderer.domElement.addEventListener('click', initAudio, { once: true });
-
-// ── Ambient audio (Web Audio synthesis, no external files) ─────────
-let audioCtx = null;
-function initAudio() {
-  if (audioCtx) return;
-  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-  // Brownian noise → lowpass → distant city rumble
-  const sr  = audioCtx.sampleRate;
-  const buf = audioCtx.createBuffer(1, sr * 5, sr);
-  const d   = buf.getChannelData(0);
-  let last  = 0;
-  for (let i = 0; i < d.length; i++) {
-    last = (last + 0.018 * (Math.random() * 2 - 1)) / 1.018;
-    d[i] = last * 4;
-  }
-  const noise = audioCtx.createBufferSource();
-  noise.buffer = buf; noise.loop = true;
-  const lp = audioCtx.createBiquadFilter();
-  lp.type = 'lowpass'; lp.frequency.value = 280; lp.Q.value = 0.6;
-  const rGain = audioCtx.createGain(); rGain.gain.value = 0.09;
-  noise.connect(lp).connect(rGain).connect(audioCtx.destination);
-  noise.start();
-
-  // Occasional church bell
-  function bell() {
-    const t = audioCtx.currentTime;
-    [220, 330, 440, 550].forEach((f, idx) => {
-      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      o.frequency.value = f + idx * 3; o.type = 'sine';
-      g.gain.setValueAtTime(0, t);
-      g.gain.linearRampToValueAtTime(0.04 / (idx + 1), t + 0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 4 + idx * 0.5);
-      o.connect(g).connect(audioCtx.destination);
-      o.start(t); o.stop(t + 5 + idx * 0.5);
+// ── Audio ──────────────────────────────────────────────────────────
+let audioCtx=null;
+function initAudio(){
+  if(audioCtx)return;
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  const sr=audioCtx.sampleRate,buf=audioCtx.createBuffer(1,sr*5,sr),d=buf.getChannelData(0);
+  let last=0;for(let i=0;i<d.length;i++){last=(last+0.018*(Math.random()*2-1))/1.018;d[i]=last*4;}
+  const noise=audioCtx.createBufferSource();noise.buffer=buf;noise.loop=true;
+  const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=280;lp.Q.value=0.6;
+  const rGain=audioCtx.createGain();rGain.gain.value=0.09;
+  noise.connect(lp).connect(rGain).connect(audioCtx.destination);noise.start();
+  function bell(){
+    const t=audioCtx.currentTime;
+    [220,330,440,550].forEach((f,idx)=>{
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.frequency.value=f+idx*3;o.type='sine';
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.04/(idx+1),t+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+4+idx*0.5);
+      o.connect(g).connect(audioCtx.destination);o.start(t);o.stop(t+5+idx*0.5);
     });
-    setTimeout(bell, 20000 + Math.random() * 40000);
+    setTimeout(bell,20000+Math.random()*40000);
   }
-  setTimeout(bell, 6000 + Math.random() * 8000);
-
-  // Horse hooves (walk mode only)
-  function hooves() {
-    if (!fpsMode) { setTimeout(hooves, 3000 + Math.random() * 5000); return; }
-    const t = audioCtx.currentTime, gap = 0.22;
-    [0, 1, 2, 3].forEach(i => {
-      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-      o.frequency.value = 80 + Math.random() * 40; o.type = 'sine';
-      g.gain.setValueAtTime(0, t + i * gap);
-      g.gain.linearRampToValueAtTime(0.15, t + i * gap + 0.01);
-      g.gain.exponentialRampToValueAtTime(0.001, t + i * gap + 0.18);
-      o.connect(g).connect(audioCtx.destination);
-      o.start(t + i * gap); o.stop(t + i * gap + 0.2);
+  setTimeout(bell,6000+Math.random()*8000);
+  function hooves(){
+    if(!fpsMode){setTimeout(hooves,3000+Math.random()*5000);return;}
+    const t=audioCtx.currentTime,gap=0.22;
+    [0,1,2,3].forEach(i=>{
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.frequency.value=80+Math.random()*40;o.type='sine';
+      g.gain.setValueAtTime(0,t+i*gap);g.gain.linearRampToValueAtTime(0.15,t+i*gap+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+i*gap+0.18);
+      o.connect(g).connect(audioCtx.destination);o.start(t+i*gap);o.stop(t+i*gap+0.2);
     });
-    setTimeout(hooves, 8000 + Math.random() * 15000);
+    setTimeout(hooves,8000+Math.random()*15000);
   }
-  setTimeout(hooves, 12000);
+  setTimeout(hooves,12000);
 }
 
 // ── Render loop ────────────────────────────────────────────────────
-let lastTime = performance.now();
-
-function startLoop() {
-  function loop(now) {
+let lastTime=performance.now();
+function startLoop(){
+  function loop(now){
     requestAnimationFrame(loop);
-    const dt = Math.min((now - lastTime) * 0.001, 0.1);
-    lastTime = now;
-
-    if (fpsMode) {
-      // Yaw around world Y; pitch around local X — Up ≠ N, axes kept separate
-      const qYaw   = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(0, 1, 0), yaw);
-      const qPitch = new THREE.Quaternion().setFromAxisAngle(
-        new THREE.Vector3(1, 0, 0), pitch);
+    const dt=Math.min((now-lastTime)*0.001,0.1);lastTime=now;
+    if(fpsMode){
+      const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
+      const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pitch);
       camera.quaternion.copy(qYaw).multiply(qPitch);
-
-      // Movement uses yaw-only forward/right so strafing stays level
-      const fwd   = new THREE.Vector3(0, 0, -1).applyQuaternion(qYaw);
-      const right = new THREE.Vector3(1, 0,  0).applyQuaternion(qYaw);
-      const spd   = (sprinting ? 38 : 9) * dt;
-
-      if (keys['KeyW'] || keys['ArrowUp'])    camera.position.addScaledVector(fwd,    spd);
-      if (keys['KeyS'] || keys['ArrowDown'])  camera.position.addScaledVector(fwd,   -spd);
-      if (keys['KeyA'] || keys['ArrowLeft'])  camera.position.addScaledVector(right, -spd);
-      if (keys['KeyD'] || keys['ArrowRight']) camera.position.addScaledVector(right,  spd);
-      if (keys['KeyQ'])                        camera.position.y -= spd;
-      if (keys['KeyE'])                        camera.position.y += spd;
-      camera.position.y = Math.max(EYE_H, camera.position.y);
-
-    } else {
-      orbit.update();
-      updateHover();
-    }
-
-    renderer.render(scene, camera);
+      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
+      const right=new THREE.Vector3(1,0,0).applyQuaternion(qYaw);
+      const spd=(sprinting?38:9)*dt;
+      if(keys['KeyW']||keys['ArrowUp'])camera.position.addScaledVector(fwd,spd);
+      if(keys['KeyS']||keys['ArrowDown'])camera.position.addScaledVector(fwd,-spd);
+      if(keys['KeyA']||keys['ArrowLeft'])camera.position.addScaledVector(right,-spd);
+      if(keys['KeyD']||keys['ArrowRight'])camera.position.addScaledVector(right,spd);
+      if(keys['KeyQ'])camera.position.y-=spd;
+      if(keys['KeyE'])camera.position.y+=spd;
+      camera.position.y=Math.max(EYE_H,camera.position.y);
+    }else{orbit.update();updateHover();}
+    renderer.render(scene,camera);
   }
-  lastTime = performance.now();
-  requestAnimationFrame(loop);
+  lastTime=performance.now();requestAnimationFrame(loop);
 }
 
-// ── Live drop (post-load) ──────────────────────────────────────────
-// Tracks total buildings across all loaded files for the stat bar
-let totalBuildings = 0;
-let roadsLoaded    = false;
-
-function showToast(msg) {
-  const t = document.getElementById('live-toast');
-  if (!t) return;
-  if (msg) { t.textContent = msg; t.style.display = 'block'; }
-  else      { t.style.display = 'none'; }
+// ── File loading ───────────────────────────────────────────────────
+let totalBuildings=0,roadsLoaded=false;
+function showToast(msg){const t=document.getElementById('live-toast');if(!t)return;if(msg){t.textContent=msg;t.style.display='block';}else t.style.display='none';}
+function isImage(f){return f.type.startsWith('image/')||/\.(jpe?g|png|webp)$/i.test(f.name);}
+function isGeoJSON(f){return f.type==='application/json'||/\.(geojson|json)$/i.test(f.name);}
+function updateStatBar(){
+  const sb=document.getElementById('stat-bar');if(!sb)return;
+  sb.textContent=`${totalBuildings.toLocaleString()} buildings`+(roadsLoaded?' · road network':'')+' · Winnipeg · Goad\'s & McPhillips';
 }
 
-function enableLiveDrops() {
-  // Overlay hint on drag-over while in 3D view
-  document.body.addEventListener('dragover', e => {
-    e.preventDefault();
-    showToast('Drop GeoJSON to add layer…');
-  });
-  document.body.addEventListener('dragleave', e => {
-    // Only hide if leaving the window entirely
-    if (!e.relatedTarget) showToast('');
-  });
-  document.body.addEventListener('drop', async e => {
-    e.preventDefault();
-    showToast('Loading…');
-    await liveLoad([...e.dataTransfer.files]);
-    showToast('');
+function enableLiveDrops(){
+  document.body.addEventListener('dragover',e=>{e.preventDefault();showToast('Drop files to add layer…');});
+  document.body.addEventListener('dragleave',e=>{if(!e.relatedTarget)showToast('');});
+  document.body.addEventListener('drop',async e=>{
+    e.preventDefault();showToast('Loading…');
+    await liveLoad([...e.dataTransfer.files]);showToast('');
   });
 }
 
-async function liveLoad(fileList) {
-  for (const f of fileList) {
+async function liveLoad(fileList){
+  for(const f of fileList){
+    if(isImage(f)){
+      showToast(`Applying facade: ${f.name}…`);
+      await loadFacade(f);
+      continue;
+    }
+    if(!isGeoJSON(f))continue;
     showToast(`Loading ${f.name}…`);
     let gj;
-    try { gj = JSON.parse(await f.text()); }
-    catch (err) { showToast(`Parse error: ${f.name}`); await sleep(1800); continue; }
-    if (!gj.features?.length) continue;
-
-    const p = gj.features[0].properties;
-    if ('material' in p) {
-      const n = await buildCity(gj);
-      totalBuildings += n;
-    } else if ('segment_id' in p) {
-      await buildRoads(gj);
-      roadsLoaded = true;
-    }
-
-    // Update stat bar
-    const sb = document.getElementById('stat-bar');
-    if (sb) sb.textContent =
-      `${totalBuildings.toLocaleString()} buildings` +
-      (roadsLoaded ? ' · road network' : '') +
-      ' · Winnipeg · Goad\'s & McPhillips';
+    try{gj=JSON.parse(await f.text());}
+    catch(err){showToast(`Parse error: ${f.name}`);await sleep(1800);continue;}
+    if(!gj.features?.length)continue;
+    const p=gj.features[0].properties;
+    if('material'in p){const n=await buildCity(gj);totalBuildings+=n;}
+    else if('segment_id'in p){await buildRoads(gj);roadsLoaded=true;}
+    updateStatBar();
   }
 }
 
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
 
-// ── File loading (initial) ─────────────────────────────────────────
-async function loadFiles(fileList) {
-  document.getElementById('drop-zone').style.display = 'none';
-  document.getElementById('loading').style.display   = 'flex';
-
-  let buildingGJ, roadGJ;
-  for (const f of fileList) {
-    setProgress(2, `Reading ${f.name}…`);
-    await tick();
-    const gj = JSON.parse(await f.text());
-    if (!gj.features?.length) continue;
-    const p = gj.features[0].properties;
-    // Detect file type by property sniffing
-    if ('material' in p)         buildingGJ = gj;
-    else if ('segment_id' in p)  roadGJ     = gj;
+async function loadFiles(fileList){
+  document.getElementById('drop-zone').style.display='none';
+  document.getElementById('loading').style.display='flex';
+  const imageFiles=[],geoFiles=[];
+  for(const f of fileList){(isImage(f)?imageFiles:geoFiles).push(f);}
+  let buildingGJ=null,roadGJ=null;
+  for(const f of geoFiles){
+    setProgress(2,`Reading ${f.name}…`);await tick();
+    let gj;
+    try{gj=JSON.parse(await f.text());}catch(e){continue;}
+    if(!gj.features?.length)continue;
+    const p=gj.features[0].properties;
+    if('material'in p)buildingGJ=gj;
+    else if('segment_id'in p)roadGJ=gj;
   }
-
-  let n = 0;
-  if (buildingGJ) n = await buildCity(buildingGJ);
-  if (roadGJ)     await buildRoads(roadGJ);
-
-  totalBuildings += n;
-  if (roadGJ) roadsLoaded = true;
-
-  setProgress(100, 'Done.');
-  await tick();
-
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('hud').style.display     = 'block';
-  document.getElementById('tod-control').style.display = 'flex';
-
-  const todSlider = document.getElementById('tod-slider');
-  todSlider.addEventListener('input', () => setTimeOfDay(parseFloat(todSlider.value)));
-  const sb = document.getElementById('stat-bar');
-  sb.style.display = 'block';
-  sb.textContent =
-    `${totalBuildings.toLocaleString()} buildings` +
-    (roadsLoaded ? ' · road network' : '') +
-    ' · Winnipeg · Goad\'s & McPhillips';
-
-  startLoop();
-  enableLiveDrops();
+  let n=0;
+  if(buildingGJ)n=await buildCity(buildingGJ);
+  if(roadGJ)await buildRoads(roadGJ);
+  totalBuildings+=n;if(roadGJ)roadsLoaded=true;
+  // Apply any facades dropped at initial load
+  for(const f of imageFiles){setProgress(96,`Facade: ${f.name}…`);await loadFacade(f);}
+  setProgress(100,'Done.');await tick();
+  document.getElementById('loading').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('tod-control').style.display='flex';
+  const todSlider=document.getElementById('tod-slider');
+  todSlider.addEventListener('input',()=>setTimeOfDay(parseFloat(todSlider.value)));
+  const sb=document.getElementById('stat-bar');sb.style.display='block';
+  updateStatBar();startLoop();enableLiveDrops();
 }
 
-function setProgress(pct, msg) {
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('loading-label').textContent  = msg;
+function setProgress(pct,msg){
+  document.getElementById('progress-fill').style.width=pct+'%';
+  document.getElementById('loading-label').textContent=msg;
 }
-function tick() { return new Promise(r => setTimeout(r, 0)); }
+function tick(){return new Promise(r=>setTimeout(r,0));}
 
-const dropBox   = document.getElementById('drop-box');
-const fileInput = document.getElementById('file-input');
-dropBox.addEventListener('dragover',  e => { e.preventDefault(); dropBox.classList.add('over'); });
-dropBox.addEventListener('dragleave', () => dropBox.classList.remove('over'));
-dropBox.addEventListener('drop', e => {
-  e.preventDefault(); dropBox.classList.remove('over');
-  loadFiles([...e.dataTransfer.files]);
-});
-fileInput.addEventListener('change', e => loadFiles([...e.target.files]));
-
-window.addEventListener('resize', () => {
-  camera.aspect = innerWidth / innerHeight;
-  camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
-});
-
-renderer.render(scene, camera);
+const dropBox=document.getElementById('drop-box');
+const fileInput=document.getElementById('file-input');
+dropBox.addEventListener('dragover',e=>{e.preventDefault();dropBox.classList.add('over');});
+dropBox.addEventListener('dragleave',()=>dropBox.classList.remove('over'));
+dropBox.addEventListener('drop',e=>{e.preventDefault();dropBox.classList.remove('over');loadFiles([...e.dataTransfer.files]);});
+fileInput.addEventListener('change',e=>loadFiles([...e.target.files]));
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+renderer.render(scene,camera);
 </script>
 </body>
 </html>
