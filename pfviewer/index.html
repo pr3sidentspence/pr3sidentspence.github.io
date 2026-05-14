@@ -488,6 +488,94 @@ function makeTransparentCanvas(imageFile){
   });
 }
 
+// ── Facade auto-placement by name / id in filename ─────────────────
+// Returns the best-matching building entry for a given image filename,
+// or null if nothing matches.
+// Strategy: strip extension, try normalised full stem, then each
+// space/dash/underscore token as a candidate id or name fragment.
+function matchFacadeFilename(filename){
+  const stem=filename.replace(/\.[^.]+$/,'');          // drop extension
+  const norm=normName(stem);
+
+  // 1. Exact normalised-name match
+  if(buildingIndex.has(norm))return buildingIndex.get(norm);
+
+  // 2. Numeric id anywhere in the stem  (e.g. "42", "bldg_42", "42_main")
+  const tokens=stem.split(/[\s_\-]+/);
+  for(const tok of tokens){
+    if(/^\d+$/.test(tok)&&idIndex.has(tok)){
+      const arr=idIndex.get(tok);
+      if(arr.length)return arr[0];
+    }
+  }
+
+  // 3. Partial name: any single token (≥4 chars) that appears inside a normalised name
+  const longTokens=tokens.map(normName).filter(t=>t.length>=4);
+  for(const[key,entry]of buildingIndex){
+    for(const lt of longTokens){
+      if(key.includes(lt))return entry;
+    }
+  }
+
+  return null;
+}
+
+// Auto-place a facade texture on the best-matching face of a building.
+// Picks the longest exterior edge (most prominent facade) when no
+// worldNormal hint is available.
+function autoPlaceFacade(tex, filename, entry){
+  const feat=entry.feat;
+  if(!feat)return false;
+
+  // Reconstruct height the same way placeFacadeOnBuilding does
+  const floors=entry.props.floors??1;
+  const isPlatform=floors<=0.2;
+  const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+
+  const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
+  const outer=polygons[0][0];
+  if(!outer||outer.length<4)return false;
+
+  const verts=outer.slice(0,-1).map(c=>{
+    const[sx,sy]=project(c[0],c[1]);
+    return{x:sx,z:-sy};
+  });
+  const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
+  const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
+
+  // Choose the longest outward-facing edge as the primary facade
+  let bestLen=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
+  for(let i=0;i<verts.length;i++){
+    const a=verts[i],b=verts[(i+1)%verts.length];
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
+    if(len<0.3)continue;
+    let nx=-dz/len,nz=dx/len;
+    const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
+    if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
+    if(len>bestLen){bestLen=len;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
+  }
+  if(!bestA)return false;
+
+  const edgeDx=bestB.x-bestA.x,edgeDz=bestB.z-bestA.z;
+  const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
+  const midX=(bestA.x+bestB.x)/2,midZ=(bestA.z+bestB.z)/2;
+
+  const facadeMat=new THREE.MeshPhongMaterial({
+    map:tex,transparent:true,alphaTest:0.1,
+    side:THREE.FrontSide,shininess:0,
+  });
+  const geo=new THREE.PlaneGeometry(edgeLen,height);
+  const mesh=new THREE.Mesh(geo,facadeMat);
+  mesh.position.set(midX+bestNx*0.15,height/2,midZ+bestNz*0.15);
+  mesh.rotation.y=Math.atan2(bestNx,bestNz);
+  mesh.receiveShadow=true;
+  scene.add(mesh);
+
+  const label=entry.props.name||entry.props.id||'unnamed';
+  console.log(`Auto-facade: "${filename}" → "${label}" | ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m`);
+  return true;
+}
+
 async function loadFacade(imageFile){
   let canvas;
   try{canvas=await makeTransparentCanvas(imageFile);}
@@ -496,7 +584,18 @@ async function loadFacade(imageFile){
   const tex=new THREE.CanvasTexture(canvas);
   tex.colorSpace=THREE.SRGBColorSpace;
 
-  // Show picker — wait for building click
+  // ── Try automatic name/id matching first ───────────────────────────
+  const match=matchFacadeFilename(imageFile.name);
+  if(match){
+    const placed=autoPlaceFacade(tex,imageFile.name,match);
+    if(placed){
+      showToast(`Facade auto-placed: ${imageFile.name}`);
+      setTimeout(()=>showToast(''),2200);
+      return;   // done — no picker needed
+    }
+  }
+
+  // ── Fall back: interactive click-to-place ──────────────────────────
   const preview=document.getElementById('facade-preview');
   preview.src=canvas.toDataURL('image/jpeg',0.6);
   document.getElementById('facade-filename').textContent=imageFile.name;
