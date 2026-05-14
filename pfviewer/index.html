@@ -110,7 +110,7 @@ canvas{display:block;position:fixed;inset:0;}
 
 <div id="facade-picker" style="display:none;position:fixed;top:50%;right:24px;transform:translateY(-50%);background:rgba(9,8,10,0.95);border:1px solid #C8A05A;border-radius:12px;padding:16px;pointer-events:auto;z-index:20;max-width:220px;text-align:center;">
   <img id="facade-preview" style="width:100%;border-radius:6px;margin-bottom:10px;display:block;">
-  <div style="font-size:0.72rem;color:#C8A05A;letter-spacing:0.1em;margin-bottom:6px;">CLICK A BUILDING FACE</div>
+  <div style="font-size:0.72rem;color:#C8A05A;letter-spacing:0.1em;margin-bottom:6px;">CTRL+CLICK A BUILDING FACE</div>
   <div id="facade-filename" style="font-size:0.65rem;color:#4a3820;margin-bottom:10px;word-break:break-all;"></div>
   <button id="facade-cancel" style="background:transparent;border:1px solid #3a2810;border-radius:4px;color:#5a4030;font-size:0.7rem;padding:4px 12px;cursor:pointer;font-family:Georgia,serif;">Esc — Cancel</button>
 </div>
@@ -488,66 +488,53 @@ function makeTransparentCanvas(imageFile){
   });
 }
 
-// ── Facade auto-placement by name / id in filename ─────────────────
-// Returns the best-matching building entry for a given image filename,
-// or null if nothing matches.
-// Strategy: strip extension, try normalised full stem, then each
-// space/dash/underscore token as a candidate id or name fragment.
-function matchFacadeFilename(filename){
-  const stem=filename.replace(/\.[^.]+$/,'');          // drop extension
-  const norm=normName(stem);
+async function loadFacade(imageFile){
+  let canvas;
+  try{canvas=await makeTransparentCanvas(imageFile);}
+  catch(e){console.warn('Image load failed:',e);return;}
+  const tex=new THREE.CanvasTexture(canvas);
+  tex.colorSpace=THREE.SRGBColorSpace;
 
-  // 1. Exact normalised-name match
-  if(buildingIndex.has(norm))return buildingIndex.get(norm);
-
-  // 2. Numeric id anywhere in the stem  (e.g. "42", "bldg_42", "42_main")
-  const tokens=stem.split(/[\s_\-]+/);
-  for(const tok of tokens){
-    if(/^\d+$/.test(tok)&&idIndex.has(tok)){
-      const arr=idIndex.get(tok);
-      if(arr.length)return arr[0];
+  // ── Auto-match by filename ─────────────────────────────────────
+  const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,''));
+  const idSuffixMatch=rawStem.match(/^(.+?)\s+(\d+)$/);
+  const pureNumMatch =rawStem.match(/^(\d+)$/);
+  const nameStem=idSuffixMatch?idSuffixMatch[1]:rawStem;
+  const idStr=pureNumMatch?pureNumMatch[1]:idSuffixMatch?idSuffixMatch[2]:null;
+  let match=null;
+  if(idStr){const hits=idIndex.get(idStr)||[];if(hits.length>=1)match=hits[0];}
+  if(!match&&!pureNumMatch)match=buildingIndex.get(nameStem);
+  if(!match&&!pureNumMatch&&!idStr){
+    for(const[key,val]of buildingIndex){
+      if(nameStem.includes(key)||key.includes(nameStem)){match=val;break;}
     }
   }
 
-  // 3. Partial name: any single token (≥4 chars) that appears inside a normalised name
-  const longTokens=tokens.map(normName).filter(t=>t.length>=4);
-  for(const[key,entry]of buildingIndex){
-    for(const lt of longTokens){
-      if(key.includes(lt))return entry;
-    }
+  if(match){
+    // Auto-place: pick edge whose outward normal is most eastward (street-facing heuristic)
+    autoPlaceFacade(tex,match,imageFile.name);
+    return;
   }
 
-  return null;
+  // ── No match — show picker ─────────────────────────────────────
+  const preview=document.getElementById('facade-preview');
+  preview.src=canvas.toDataURL('image/jpeg',0.6);
+  document.getElementById('facade-filename').textContent=imageFile.name;
+  document.getElementById('facade-picker').style.display='block';
+  document.getElementById('mode-badge').textContent='Place Facade — Ctrl+Click building';
+  facadePending={tex,filename:imageFile.name};
 }
 
-// Auto-place a facade texture on the best-matching face of a building.
-// Picks the longest exterior edge (most prominent facade) when no
-// worldNormal hint is available.
-function autoPlaceFacade(tex, filename, entry){
-  const feat=entry.feat;
-  if(!feat)return false;
-
-  // Reconstruct height the same way placeFacadeOnBuilding does
-  const floors=entry.props.floors??1;
-  const isPlatform=floors<=0.2;
-  const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
-
+function autoPlaceFacade(tex,match,filename){
+  const{feat,props}=match;
+  const floors=props.floors??1;
+  const height=floors<=0.2?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
-  const outer=polygons[0][0];
-  if(!outer||outer.length<4)return false;
-
-  const verts=outer.slice(0,-1).map(c=>{
-    const[sx,sy]=project(c[0],c[1]);
-    return{x:sx,z:-sy};
-  });
+  const outer=polygons[0][0];if(!outer||outer.length<4)return;
+  const verts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return{x:sx,z:-sy};});
   const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
   const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
-
-  // Choose the east-facing face with the most-eastward midpoint.
-  // World X = East, so outward normal nx > 0 means faces east.
-  // Require nx >= 0.5 (within 60 deg of due east); relax if none qualify.
-  // Among qualifying edges pick largest midX, tie-break by edge length.
-  const edges=[];
+  let bestScore=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
     const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
@@ -555,81 +542,35 @@ function autoPlaceFacade(tex, filename, entry){
     let nx=-dz/len,nz=dx/len;
     const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
     if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
-    edges.push({a,b,nx,nz,midX,midZ,len});
+    if(nx>bestScore){bestScore=nx;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
   }
-  let candidates=edges.filter(e=>e.nx>=0.5);
-  if(!candidates.length)candidates=edges.filter(e=>e.nx>0);
-  if(!candidates.length)candidates=edges;
-  candidates.sort((p,q)=>q.midX-p.midX||q.len-p.len);
-  const best=candidates[0];
-  if(!best)return false;
-  let bestA=best.a,bestB=best.b,bestNx=best.nx,bestNz=best.nz;
+  if(!bestA)return;
+  applyFacade(tex,bestA,bestB,bestNx,bestNz,height);
+  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
+}
 
-  const edgeDx=bestB.x-bestA.x,edgeDz=bestB.z-bestA.z;
+function applyFacade(tex,edgeA,edgeB,nx,nz,height){
+  const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
-  const midX=(bestA.x+bestB.x)/2,midZ=(bestA.z+bestB.z)/2;
-
-  const facadeMat=new THREE.MeshPhongMaterial({
-    map:tex,transparent:true,alphaTest:0.1,
-    side:THREE.FrontSide,shininess:0,
-  });
-  const geo=new THREE.PlaneGeometry(edgeLen,height);
-  const mesh=new THREE.Mesh(geo,facadeMat);
-  mesh.position.set(midX+bestNx*0.15,height/2,midZ+bestNz*0.15);
-  mesh.rotation.y=Math.atan2(bestNx,bestNz);
+  const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
+  const facadeMat=new THREE.MeshPhongMaterial({map:tex,transparent:true,alphaTest:0.1,side:THREE.FrontSide,shininess:0});
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(edgeLen,height),facadeMat);
+  mesh.position.set(midX+nx*0.15,height/2,midZ+nz*0.15);
+  mesh.rotation.y=Math.atan2(nx,nz);
   mesh.receiveShadow=true;
   scene.add(mesh);
-
-  const label=entry.props.name||entry.props.id||'unnamed';
-  console.log(`Auto-facade: "${filename}" → "${label}" | ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m`);
-  return true;
 }
 
-async function loadFacade(imageFile){
-  let canvas;
-  try{canvas=await makeTransparentCanvas(imageFile);}
-  catch(e){console.warn('Image load failed:',e);return;}
-
-  const tex=new THREE.CanvasTexture(canvas);
-  tex.colorSpace=THREE.SRGBColorSpace;
-
-  // ── Try automatic name/id matching first ───────────────────────────
-  const match=matchFacadeFilename(imageFile.name);
-  if(match){
-    const placed=autoPlaceFacade(tex,imageFile.name,match);
-    if(placed){
-      showToast(`Facade auto-placed: ${imageFile.name}`);
-      setTimeout(()=>showToast(''),2200);
-      return;   // done — no picker needed
-    }
-  }
-
-  // ── Fall back: interactive click-to-place ──────────────────────────
-  const preview=document.getElementById('facade-preview');
-  preview.src=canvas.toDataURL('image/jpeg',0.6);
-  document.getElementById('facade-filename').textContent=imageFile.name;
-  document.getElementById('facade-picker').style.display='block';
-  document.getElementById('mode-badge').textContent='Place Facade';
-  facadePending={tex,filename:imageFile.name};
-}
-
-function placeFacadeOnBuilding(info, worldNormal){
+function placeFacadeOnBuilding(info,worldNormal){
   if(!facadePending||!info.feat)return;
-
   const feat=info.feat;
-  const height=info.floors!=null?Math.max(info.floors*(info.floors<=0.2?1:FLOOR_H),MIN_H):MIN_H;
+  const floors=info.floors??1;
+  const height=floors<=0.2?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
-  const outer=polygons[0][0];
-  if(!outer||outer.length<4)return;
-
-  const verts=outer.slice(0,-1).map(c=>{
-    const[sx,sy]=project(c[0],c[1]);
-    return{x:sx,z:-sy};   // worldX=shapeX, worldZ=−shapeY  (Up ≠ N)
-  });
+  const outer=polygons[0][0];if(!outer||outer.length<4)return;
+  const verts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return{x:sx,z:-sy};});
   const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
   const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
-
-  // Find polygon edge whose outward normal best matches the clicked face normal (XZ plane)
   let bestDot=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
@@ -642,23 +583,8 @@ function placeFacadeOnBuilding(info, worldNormal){
     if(dot>bestDot){bestDot=dot;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
   }
   if(!bestA)return;
-
-  const edgeDx=bestB.x-bestA.x,edgeDz=bestB.z-bestA.z;
-  const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
-  const midX=(bestA.x+bestB.x)/2,midZ=(bestA.z+bestB.z)/2;
-
-  const facadeMat=new THREE.MeshPhongMaterial({
-    map:facadePending.tex,transparent:true,alphaTest:0.1,
-    side:THREE.FrontSide,shininess:0,
-  });
-  const geo=new THREE.PlaneGeometry(edgeLen,height);
-  const mesh=new THREE.Mesh(geo,facadeMat);
-  mesh.position.set(midX+bestNx*0.15,height/2,midZ+bestNz*0.15);
-  mesh.rotation.y=Math.atan2(bestNx,bestNz);
-  mesh.receiveShadow=true;
-  scene.add(mesh);
-
-  console.log(`Facade placed: "${facadePending.filename}" → "${info.name||info.feat?.properties?.id||'unnamed'}" | ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m`);
+  applyFacade(facadePending.tex,bestA,bestB,bestNx,bestNz,height);
+  console.log(`Facade placed: "${facadePending.filename}" → "${info.name||'unnamed'}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
   exitFacadePlacement();
 }
 
@@ -672,7 +598,7 @@ document.getElementById('facade-cancel').addEventListener('click',exitFacadePlac
 
 // Building click handler for facade placement
 renderer.domElement.addEventListener('click',e=>{
-  if(!facadePending||fpsMode)return;
+  if(!facadePending||fpsMode||!e.ctrlKey)return;
   const r=renderer.domElement.getBoundingClientRect();
   const clickNDC=new THREE.Vector2(
     ((e.clientX-r.left)/r.width)*2-1,
