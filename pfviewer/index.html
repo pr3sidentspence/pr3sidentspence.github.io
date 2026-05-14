@@ -108,6 +108,13 @@ canvas{display:block;position:fixed;inset:0;}
 </div>
 <div id="layer-bar" style="display:none;position:fixed;top:18px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
 
+<div id="facade-picker" style="display:none;position:fixed;top:50%;right:24px;transform:translateY(-50%);background:rgba(9,8,10,0.95);border:1px solid #C8A05A;border-radius:12px;padding:16px;pointer-events:auto;z-index:20;max-width:220px;text-align:center;">
+  <img id="facade-preview" style="width:100%;border-radius:6px;margin-bottom:10px;display:block;">
+  <div style="font-size:0.72rem;color:#C8A05A;letter-spacing:0.1em;margin-bottom:6px;">CLICK A BUILDING FACE</div>
+  <div id="facade-filename" style="font-size:0.65rem;color:#4a3820;margin-bottom:10px;word-break:break-all;"></div>
+  <button id="facade-cancel" style="background:transparent;border:1px solid #3a2810;border-radius:4px;color:#5a4030;font-size:0.7rem;padding:4px 12px;cursor:pointer;font-family:Georgia,serif;">Esc — Cancel</button>
+</div>
+
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
@@ -382,7 +389,7 @@ async function buildCity(geojson){
       if(tris===0){wallGeom.dispose();continue;}
       wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
       wallGeos[mat].push(wallGeom);
-      wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file});
+      wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat});
       matCounts[mat]++;
       const areaOk=props.area_m2==null||props.area_m2>25;
       if(!isPlatform&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
@@ -442,16 +449,13 @@ async function buildRoads(geojson){
   roadMesh.receiveShadow=true;scene.add(roadMesh);
 }
 
-// ── Facade system ──────────────────────────────────────────────────
-// Up ≠ N: the facade plane lives in world XZ.
-//   Width axis  = edge direction (horizontal, in XZ)
-//   Height axis = world Y (up)
-//   Face normal = outward from building (horizontal, in XZ)
-//
-// Front-face detection: edge whose outward normal points most toward +X (east).
-// This is correct for Main St. west-side buildings (fronts face east).
-// Filename → building name matching: normalised lowercase stem.
-// Background removal: samples corner pixels for bg colour, thresholds by RGB distance.
+// ── Facade system — click to assign ───────────────────────────────
+// Up ≠ N: facade plane faces along outward edge normal in world XZ.
+// Width axis = polygon edge direction (horizontal XZ).
+// Height axis = world Y (up — not north).
+// Front face matched by dot product of clicked face normal vs polygon edge normals.
+
+let facadePending = null;  // {tex, filename} when waiting for a building click
 
 function makeTransparentCanvas(imageFile){
   return new Promise((resolve,reject)=>{
@@ -464,7 +468,6 @@ function makeTransparentCanvas(imageFile){
       const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
       const data=ctx.getImageData(0,0,c.width,c.height),d=data.data;
       const W=c.width,H=c.height;
-      // Sample bg from four corners (3×3 average each)
       let bgR=0,bgG=0,bgB=0,n=0;
       for(const[ox,oy]of[[0,0],[W-3,0],[0,H-3],[W-3,H-3]]){
         for(let dy=0;dy<3;dy++)for(let dx=0;dx<3;dx++){
@@ -473,15 +476,11 @@ function makeTransparentCanvas(imageFile){
         }
       }
       bgR/=n;bgG/=n;bgB/=n;
-      // Remove pixels within threshold of background colour
       const thresh=40;
       for(let i=0;i<d.length;i+=4){
         const dr=d[i]-bgR,dg=d[i+1]-bgG,db=d[i+2]-bgB;
         const dist=Math.sqrt(dr*dr+dg*dg+db*db);
-        if(dist<thresh){
-          // Soft edge: linear fade
-          d[i+3]=Math.round(Math.max(0,Math.min(255,(dist/thresh-0.3)*255/0.7)));
-        }
+        if(dist<thresh)d[i+3]=Math.round(Math.max(0,Math.min(255,(dist/thresh-0.3)*255/0.7)));
       }
       ctx.putImageData(data,0,0);resolve(c);
     };
@@ -490,48 +489,27 @@ function makeTransparentCanvas(imageFile){
 }
 
 async function loadFacade(imageFile){
-  const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,''));
+  let canvas;
+  try{canvas=await makeTransparentCanvas(imageFile);}
+  catch(e){console.warn('Image load failed:',e);return;}
 
-  // Trailing number = explicit ID: "tailor_shop_42" → id=42, name="tailor shop"
-  // Pure number "108" → id=108 directly
-  const idSuffixMatch=rawStem.match(/^(.+?)\s+(\d+)$/);
-  const pureNumMatch =rawStem.match(/^(\d+)$/);
-  const nameStem = idSuffixMatch ? idSuffixMatch[1] : rawStem;
-  const idStr    = pureNumMatch  ? pureNumMatch[1]  :
-                   idSuffixMatch ? idSuffixMatch[2]  : null;
+  const tex=new THREE.CanvasTexture(canvas);
+  tex.colorSpace=THREE.SRGBColorSpace;
 
-  let match=null;
+  // Show picker — wait for building click
+  const preview=document.getElementById('facade-preview');
+  preview.src=canvas.toDataURL('image/jpeg',0.6);
+  document.getElementById('facade-filename').textContent=imageFile.name;
+  document.getElementById('facade-picker').style.display='block';
+  document.getElementById('mode-badge').textContent='Place Facade';
+  facadePending={tex,filename:imageFile.name};
+}
 
-  // 1. Explicit ID lookup (array — pick first, warn if ambiguous)
-  if(idStr){
-    const hits=idIndex.get(idStr)||[];
-    if(hits.length===1){ match=hits[0]; }
-    else if(hits.length>1){
-      console.warn(`Facade "${imageFile.name}": id=${idStr} matches ${hits.length} buildings across datasets. Using first. Rename with source prefix to disambiguate.`);
-      hits.forEach((h,i)=>console.log(`  [${i}] source:${h.props.source_file} name:${h.props.name||'(unnamed)'}`));
-      match=hits[0];
-    }
-  }
+function placeFacadeOnBuilding(info, worldNormal){
+  if(!facadePending||!info.feat)return;
 
-  // 2. Exact name lookup (only if not a pure-number stem)
-  if(!match && !pureNumMatch) match=buildingIndex.get(nameStem);
-
-  // 3. Partial name match (only if not a pure-number stem — avoids "108" matching "108 main st")
-  if(!match && !pureNumMatch && !idStr){
-    for(const[key,val]of buildingIndex){
-      if(nameStem.includes(key)||key.includes(nameStem)){match=val;break;}
-    }
-  }
-
-  if(!match){
-    console.warn(`No match for facade "${imageFile.name}" — stem:"${nameStem}" idStr:${idStr}`);
-    console.log('Name index keys (first 20):',[...buildingIndex.keys()].slice(0,20));
-    console.log('ID index keys (first 20):',[...idIndex.keys()].slice(0,20));
-    return;
-  }
-  const{feat,props,height}=match;
-
-  // Get polygon outer ring in world XZ
+  const feat=info.feat;
+  const height=info.floors!=null?Math.max(info.floors*(info.floors<=0.2?1:FLOOR_H),MIN_H):MIN_H;
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
   const outer=polygons[0][0];
   if(!outer||outer.length<4)return;
@@ -540,24 +518,20 @@ async function loadFacade(imageFile){
     const[sx,sy]=project(c[0],c[1]);
     return{x:sx,z:-sy};   // worldX=shapeX, worldZ=−shapeY  (Up ≠ N)
   });
-
-  // Centroid for outward-normal disambiguation
   const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
   const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
 
-  // Find edge whose outward normal points most toward +X (east = street side for Main St. west side)
-  let bestScore=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
+  // Find polygon edge whose outward normal best matches the clicked face normal (XZ plane)
+  let bestDot=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
     const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
     if(len<0.3)continue;
-    // Candidate outward normals (both sides of edge)
     let nx=-dz/len,nz=dx/len;
     const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
-    // Ensure normal points away from centroid
     if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
-    const score=nx;   // most eastward-facing wins
-    if(score>bestScore){bestScore=score;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
+    const dot=nx*worldNormal.x+nz*worldNormal.z;
+    if(dot>bestDot){bestDot=dot;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
   }
   if(!bestA)return;
 
@@ -565,30 +539,47 @@ async function loadFacade(imageFile){
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(bestA.x+bestB.x)/2,midZ=(bestA.z+bestB.z)/2;
 
-  // Background removal and texture
-  let canvas;
-  try{canvas=await makeTransparentCanvas(imageFile);}
-  catch(e){console.warn('Image load failed:',e);return;}
-
-  const tex=new THREE.CanvasTexture(canvas);
-  tex.colorSpace=THREE.SRGBColorSpace;
-
   const facadeMat=new THREE.MeshPhongMaterial({
-    map:tex,transparent:true,alphaTest:0.1,
+    map:facadePending.tex,transparent:true,alphaTest:0.1,
     side:THREE.FrontSide,shininess:0,
   });
-
-  // PlaneGeometry faces local +Z. Rotate around world Y so local +Z points along outward normal.
-  // rotation.y = atan2(nx, nz) maps local +Z → (nx, 0, nz) = normVec. No X/Z components.
-  // Up ≠ N: only rotating around Y keeps the height axis vertical (world up = +Y throughout).
   const geo=new THREE.PlaneGeometry(edgeLen,height);
   const mesh=new THREE.Mesh(geo,facadeMat);
-  mesh.position.set(midX+bestNx*0.15, height/2, midZ+bestNz*0.15);
-  mesh.rotation.y = Math.atan2(bestNx, bestNz);
+  mesh.position.set(midX+bestNx*0.15,height/2,midZ+bestNz*0.15);
+  mesh.rotation.y=Math.atan2(bestNx,bestNz);
   mesh.receiveShadow=true;
   scene.add(mesh);
-  console.log(`Facade: "${imageFile.name}" → "${props.name||props.id}" | frontage ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
+
+  console.log(`Facade placed: "${facadePending.filename}" → "${info.name||info.feat?.properties?.id||'unnamed'}" | ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m`);
+  exitFacadePlacement();
 }
+
+function exitFacadePlacement(){
+  facadePending=null;
+  document.getElementById('facade-picker').style.display='none';
+  document.getElementById('mode-badge').textContent=fpsMode?'Walk Mode':'Overview';
+}
+
+document.getElementById('facade-cancel').addEventListener('click',exitFacadePlacement);
+
+// Building click handler for facade placement
+renderer.domElement.addEventListener('click',e=>{
+  if(!facadePending||fpsMode)return;
+  const r=renderer.domElement.getBoundingClientRect();
+  const clickNDC=new THREE.Vector2(
+    ((e.clientX-r.left)/r.width)*2-1,
+    -((e.clientY-r.top)/r.height)*2+1
+  );
+  raycaster.setFromCamera(clickNDC,camera);
+  const hits=raycaster.intersectObjects(buildingMeshes);
+  if(!hits.length)return;
+  const hit=hits[0];
+  const info=queryBuilding(hit.faceIndex,hit.object);
+  if(!info)return;
+  // World-space face normal — tells us which wall face was clicked
+  const worldNormal=hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+  placeFacadeOnBuilding(info,worldNormal);
+});
 
 // ── Hover ──────────────────────────────────────────────────────────
 function queryBuilding(faceIndex,mesh){
@@ -638,6 +629,7 @@ window.addEventListener('keydown',e=>{
   keys[e.code]=true;sprinting=e.shiftKey;
   if(e.code==='KeyF'&&!fpsMode)enterFPS();
   if(e.code==='Escape'&&fpsMode)exitFPS();
+  if(e.code==='Escape'&&facadePending)exitFacadePlacement();
   if(e.code==='KeyH'&&!fpsMode){camera.position.set(600,450,900);orbit.target.set(0,0,0);orbit.update();}
   initAudio();
 });
