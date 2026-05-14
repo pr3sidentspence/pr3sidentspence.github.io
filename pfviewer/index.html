@@ -106,6 +106,7 @@ canvas{display:block;position:fixed;inset:0;}
   <input type="range" id="tod-slider" min="0" max="1" step="0.002" value="0.42" style="width:180px;accent-color:#C8A05A;cursor:pointer;">
   <span id="tod-label" style="font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;">11:34</span>
 </div>
+<div id="layer-bar" style="display:none;position:fixed;top:18px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -267,7 +268,10 @@ let buildingMeshes=[];
 
 // ── Building index for facade matching ─────────────────────────────
 // Keyed by normalised name and by string id.
+// buildingIndex: keyed by normalised name, and by "source:id" compound key
+// idIndex: keyed by plain String(id) → array of matches (all sources)
 const buildingIndex = new Map();
+const idIndex = new Map();   // id string → [{feat,props,height}, ...]
 
 function normName(s){
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -295,7 +299,7 @@ function buildRoofGeometry(ring,roofBaseY){
   let tMin=Infinity,tMax=-Infinity;
   for(const[x,z]of ring){const t=(x-cx)*ax+(z-cz)*az;tMin=Math.min(tMin,t);tMax=Math.max(tMax,t);}
   const margin=(tMax-tMin)*0.05,rMin=tMin+margin,rMax=tMax-margin;
-  const ridgeH=FLOOR_H*0.96;
+  const ridgeH=FLOOR_H*0.64;
   function ridgePt(x,z){const t=Math.max(rMin,Math.min(rMax,(x-cx)*ax+(z-cz)*az));return{x:cx+ax*t,y:roofBaseY+ridgeH,z:cz+az*t};}
   const pos=[];
   const tri=(a,b,c)=>pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
@@ -316,8 +320,28 @@ function roofColor(hex){
   return(Math.floor(r*0.55+avg*0.12)<<16)|(Math.floor(g*0.55+avg*0.12)<<8)|Math.floor(b*0.55+avg*0.12);
 }
 
+// ── Layer groups (year toggle) ─────────────────────────────────────
+const layerGroups = [];   // [{year, group, label}]
+
+function detectYear(geojson){
+  // Try source_file property of first named feature
+  for(const f of geojson.features){
+    const src=(f.properties.source_file||f.properties.group||'').toLowerCase();
+    if(src.includes('1880'))return'1880';
+    if(src.includes('1906'))return'1906';
+    if(src.includes('1914'))return'1914';
+    if(src.includes('1916'))return'1916';
+  }
+  return `Layer ${layerGroups.length+1}`;
+}
+
 // ── Build city geometry ────────────────────────────────────────────
 async function buildCity(geojson){
+  const year=detectYear(geojson);
+  const group=new THREE.Group();
+  group.name=year;
+  scene.add(group);
+  layerGroups.push({year,group});
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
@@ -329,8 +353,13 @@ async function buildCity(geojson){
     const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
 
     // Index for facade matching — by normalised name and by id
-    if(props.name) buildingIndex.set(normName(props.name),{feat,props,height});
-    if(props.id!=null) buildingIndex.set(String(props.id),{feat,props,height});
+    const entry={feat,props,height};
+    if(props.name) buildingIndex.set(normName(props.name),entry);
+    if(props.id!=null){
+      const idKey=String(props.id);
+      if(!idIndex.has(idKey))idIndex.set(idKey,[]);
+      idIndex.get(idKey).push(entry);
+    }
 
     const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
     for(const rings of polygons){
@@ -373,14 +402,14 @@ async function buildCity(geojson){
     const wMesh=new THREE.Mesh(wMerged,new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a}));
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
-    scene.add(wMesh);buildingMeshes.push(wMesh);
+    group.add(wMesh);buildingMeshes.push(wMesh);
     const lcEl=document.getElementById(`lc-${mat}`);if(lcEl)lcEl.textContent=matCounts[mat].toLocaleString();
     if(roofGeos[mat].length>0){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
       const rMerged=mergeGeometries(roofGeos[mat],false);
       for(const g of roofGeos[mat])g.dispose();
       const rMesh=new THREE.Mesh(rMerged,new THREE.MeshPhongMaterial({color:roofColor(MATS[mat].color),shininess:5,specular:0x080808,side:THREE.DoubleSide}));
-      rMesh.castShadow=true;rMesh.receiveShadow=true;scene.add(rMesh);
+      rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
     }
   }
   return total;
@@ -463,21 +492,41 @@ function makeTransparentCanvas(imageFile){
 async function loadFacade(imageFile){
   const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,''));
 
-  // Optional ID suffix: "tailor_shop_42" → try id="42" first, name="tailor shop"
+  // Trailing number = explicit ID: "tailor_shop_42" → id=42, name="tailor shop"
+  // Pure number "108" → id=108 directly
   const idSuffixMatch=rawStem.match(/^(.+?)\s+(\d+)$/);
+  const pureNumMatch =rawStem.match(/^(\d+)$/);
   const nameStem = idSuffixMatch ? idSuffixMatch[1] : rawStem;
-  const idSuffix  = idSuffixMatch ? idSuffixMatch[2] : null;
+  const idStr    = pureNumMatch  ? pureNumMatch[1]  :
+                   idSuffixMatch ? idSuffixMatch[2]  : null;
 
-  let match = idSuffix ? buildingIndex.get(idSuffix) : null;
-  if(!match) match=buildingIndex.get(nameStem);
-  if(!match){
+  let match=null;
+
+  // 1. Explicit ID lookup (array — pick first, warn if ambiguous)
+  if(idStr){
+    const hits=idIndex.get(idStr)||[];
+    if(hits.length===1){ match=hits[0]; }
+    else if(hits.length>1){
+      console.warn(`Facade "${imageFile.name}": id=${idStr} matches ${hits.length} buildings across datasets. Using first. Rename with source prefix to disambiguate.`);
+      hits.forEach((h,i)=>console.log(`  [${i}] source:${h.props.source_file} name:${h.props.name||'(unnamed)'}`));
+      match=hits[0];
+    }
+  }
+
+  // 2. Exact name lookup (only if not a pure-number stem)
+  if(!match && !pureNumMatch) match=buildingIndex.get(nameStem);
+
+  // 3. Partial name match (only if not a pure-number stem — avoids "108" matching "108 main st")
+  if(!match && !pureNumMatch && !idStr){
     for(const[key,val]of buildingIndex){
       if(nameStem.includes(key)||key.includes(nameStem)){match=val;break;}
     }
   }
+
   if(!match){
-    console.warn(`No match for facade "${imageFile.name}" — stem:"${nameStem}" id:${idSuffix}`);
-    console.log('Index keys (first 20):',[...buildingIndex.keys()].slice(0,20));
+    console.warn(`No match for facade "${imageFile.name}" — stem:"${nameStem}" idStr:${idStr}`);
+    console.log('Name index keys (first 20):',[...buildingIndex.keys()].slice(0,20));
+    console.log('ID index keys (first 20):',[...idIndex.keys()].slice(0,20));
     return;
   }
   const{feat,props,height}=match;
@@ -679,6 +728,51 @@ function updateStatBar(){
   sb.textContent=`${totalBuildings.toLocaleString()} buildings`+(roadsLoaded?' · road network':'')+' · Winnipeg · Goad\'s & McPhillips';
 }
 
+function buildLayerBar(){
+  const bar=document.getElementById('layer-bar');
+  if(!bar||layerGroups.length<2)return;
+  bar.innerHTML='';
+  bar.style.display='flex';
+
+  const btnStyle=`cursor:pointer;border:none;border-radius:5px;padding:5px 14px;font-size:0.72rem;letter-spacing:0.12em;font-family:Georgia,serif;`;
+  const activeStyle=`background:#C8A05A;color:#09080a;`;
+  const inactiveStyle=`background:transparent;color:#5a4830;`;
+
+  // "ALL" button
+  const allBtn=document.createElement('button');
+  allBtn.textContent='ALL';allBtn.dataset.layer='all';
+  allBtn.style.cssText=btnStyle+activeStyle;
+  bar.appendChild(allBtn);
+
+  // One button per layer
+  for(const lg of layerGroups){
+    const btn=document.createElement('button');
+    btn.textContent=lg.year;btn.dataset.layer=lg.year;
+    btn.style.cssText=btnStyle+inactiveStyle;
+    bar.appendChild(btn);
+  }
+
+  let activeLayer='all';
+  bar.addEventListener('click',e=>{
+    const btn=e.target.closest('button');if(!btn)return;
+    activeLayer=btn.dataset.layer;
+    // Update visibility
+    for(const lg of layerGroups){
+      lg.group.visible=(activeLayer==='all'||activeLayer===lg.year);
+    }
+    // Update button styles
+    for(const b of bar.querySelectorAll('button')){
+      b.style.cssText=btnStyle+(b.dataset.layer===activeLayer?activeStyle:inactiveStyle);
+    }
+    // Rebuild raycast list to only visible buildings
+    buildingMeshes.length=0;
+    for(const lg of layerGroups){
+      if(!lg.group.visible)continue;
+      lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
+    }
+  });
+}
+
 function enableLiveDrops(){
   document.body.addEventListener('dragover',e=>{e.preventDefault();showToast('Drop files to add layer…');});
   document.body.addEventListener('dragleave',e=>{if(!e.relatedTarget)showToast('');});
@@ -702,7 +796,7 @@ async function liveLoad(fileList){
     catch(err){showToast(`Parse error: ${f.name}`);await sleep(1800);continue;}
     if(!gj.features?.length)continue;
     const p=gj.features[0].properties;
-    if('material'in p){const n=await buildCity(gj);totalBuildings+=n;}
+    if('material'in p){const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
     else if('segment_id'in p){await buildRoads(gj);roadsLoaded=true;}
     updateStatBar();
   }
@@ -729,6 +823,7 @@ async function loadFiles(fileList){
   if(buildingGJ)n=await buildCity(buildingGJ);
   if(roadGJ)await buildRoads(roadGJ);
   totalBuildings+=n;if(roadGJ)roadsLoaded=true;
+  buildLayerBar();
   // Apply any facades dropped at initial load
   for(const f of imageFiles){setProgress(96,`Facade: ${f.name}…`);await loadFacade(f);}
   setProgress(100,'Done.');await tick();
