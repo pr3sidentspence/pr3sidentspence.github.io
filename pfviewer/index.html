@@ -523,18 +523,13 @@ async function loadFacade(imageFile){
     side:THREE.FrontSide,shininess:0,
   });
 
-  // PlaneGeometry is in local XY facing +Z.
-  // Orient so: local +X → edge direction, local +Y → world up, local +Z → outward normal.
-  // This keeps height axis vertical (Up ≠ N) and face pointing toward the street.
-  const edgeDir=new THREE.Vector3(edgeDx/edgeLen,0,edgeDz/edgeLen);
-  const upVec  =new THREE.Vector3(0,1,0);
-  const normVec=new THREE.Vector3(bestNx,0,bestNz);
-
+  // PlaneGeometry faces local +Z. Rotate around world Y so local +Z points along outward normal.
+  // rotation.y = atan2(nx, nz) maps local +Z → (nx, 0, nz) = normVec. No X/Z components.
+  // Up ≠ N: only rotating around Y keeps the height axis vertical (world up = +Y throughout).
   const geo=new THREE.PlaneGeometry(edgeLen,height);
   const mesh=new THREE.Mesh(geo,facadeMat);
-  // Sit 0.15m outward from wall to avoid z-fighting
   mesh.position.set(midX+bestNx*0.15, height/2, midZ+bestNz*0.15);
-  mesh.setRotationFromMatrix(new THREE.Matrix4().makeBasis(edgeDir,upVec,normVec));
+  mesh.rotation.y = Math.atan2(bestNx, bestNz);
   mesh.receiveShadow=true;
   scene.add(mesh);
   console.log(`Facade: "${imageFile.name}" → "${props.name||props.id}" | frontage ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
