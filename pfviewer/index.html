@@ -556,7 +556,7 @@ async function buildRoads(geojson) {
         if (len < 0.1) continue;
         const px = (-dz / len) * (w * 0.5);
         const pz = ( dx / len) * (w * 0.5);
-        const y = 0.08;
+        const y = 0.18;   // raised; polygon offset handles residual depth fighting
         pos.push(
           x1+px, y, z1+pz,  x2+px, y, z2+pz,  x1-px, y, z1-pz,
           x2+px, y, z2+pz,  x2-px, y, z2-pz,  x1-px, y, z1-pz
@@ -569,7 +569,12 @@ async function buildRoads(geojson) {
   const geom = new THREE.BufferGeometry();
   geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geom.computeVertexNormals();
-  const roadMesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({ color: 0x8B7450 }));
+  const roadMesh = new THREE.Mesh(geom, new THREE.MeshLambertMaterial({
+    color: 0x8B7450,
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits:  -2,
+  }));
   roadMesh.receiveShadow = true;
   scene.add(roadMesh);
 }
