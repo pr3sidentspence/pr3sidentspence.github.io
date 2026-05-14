@@ -430,8 +430,16 @@ async function buildCity(geojson) {
       }
       shape.holes.push(hole);
     }
-
-    const wallGeom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+    
+    let wallGeom;
+    try {
+      wallGeom = new THREE.ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+    } catch (e) {
+      console.warn('earcut failed, id:', props.id, e.message);
+      continue;
+    }
+    // Skip if earcut produced no triangles (degenerate thin polygon)
+    if (!wallGeom.index || wallGeom.index.count === 0) continue;
     wallGeom.rotateX(-Math.PI / 2);
 
     const tris = wallGeom.index
