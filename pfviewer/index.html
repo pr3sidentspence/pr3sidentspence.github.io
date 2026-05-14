@@ -107,6 +107,7 @@ canvas{display:block;position:fixed;inset:0;}
   <span id="tod-label" style="font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;">11:34</span>
 </div>
 <div id="layer-bar" style="display:none;position:fixed;top:18px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
+<button id="winter-btn" onclick="toggleWinter()" style="display:none;position:fixed;top:18px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">❄ Winter</button>
 
 <div id="facade-picker" style="display:none;position:fixed;top:50%;right:24px;transform:translateY(-50%);background:rgba(9,8,10,0.95);border:1px solid #C8A05A;border-radius:12px;padding:16px;pointer-events:auto;z-index:20;max-width:220px;text-align:center;">
   <img id="facade-preview" style="width:100%;border-radius:6px;margin-bottom:10px;display:block;">
@@ -248,10 +249,9 @@ function setTimeOfDay(t){
 setTimeOfDay(0.42);
 
 // ── Ground ─────────────────────────────────────────────────────────
-const ground = new THREE.Mesh(
-  new THREE.PlaneGeometry(12000,12000),
-  new THREE.MeshLambertMaterial({color:0x2D4A1A})
-);
+const groundMat=new THREE.MeshLambertMaterial({color:0x2D4A1A});
+groundMatRef=groundMat;
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000,12000),groundMat);
 ground.rotation.x=-Math.PI/2; ground.position.y=-0.05; ground.receiveShadow=true;
 scene.add(ground);
 const grid=new THREE.GridHelper(12000,1200,0x3A5A22,0x324A1C);
@@ -283,6 +283,13 @@ const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
+// ── Season / winter state ──────────────────────────────────────────
+let winterMode=false;
+const seasonalMats=[];       // {mat3, summerCol, winterCol} — roofs and ground
+let groundMatRef=null;
+let roadMatRef=null;
+let cartTrackMesh=null;
+const SNOW_SKIP=new Set(['blue','iron']); // railways & greenhouses — no accumulation
 
 // ── Building index for facade matching ─────────────────────────────
 // Keyed by normalised name and by string id.
@@ -484,7 +491,10 @@ async function buildCity(geojson){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
       const rMerged=mergeGeometries(roofGeos[mat],false);
       for(const g of roofGeos[mat])g.dispose();
-      const rMesh=new THREE.Mesh(rMerged,new THREE.MeshPhongMaterial({color:roofColor(MATS[mat].color),shininess:5,specular:0x080808,side:THREE.DoubleSide}));
+      const summerCol=roofColor(MATS[mat].color);
+      const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:0x080808,side:THREE.DoubleSide});
+      if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:0xEEEEF8});
+      const rMesh=new THREE.Mesh(rMerged,rMat);
       rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
     }
   }
@@ -504,13 +514,9 @@ async function buildCity(geojson){
     setProgress(74,'Merging roof caps…');await tick();
     const cMerged=mergeGeometries(roofCapGeos,false);
     for(const g of roofCapGeos)g.dispose();
-    const cMesh=new THREE.Mesh(cMerged,new THREE.MeshLambertMaterial({
-      color:0x38342E,
-      side:THREE.FrontSide,
-      polygonOffset:true,
-      polygonOffsetFactor:-2,
-      polygonOffsetUnits:-2,
-    }));
+    const cMat=new THREE.MeshLambertMaterial({color:0x38342E,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+    seasonalMats.push({mat3:cMat,summerCol:0x38342E,winterCol:0xD8D8E4});
+    const cMesh=new THREE.Mesh(cMerged,cMat);
     cMesh.receiveShadow=true;group.add(cMesh);
   }
 
@@ -540,8 +546,46 @@ async function buildRoads(geojson){
   const geom=new THREE.BufferGeometry();
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.computeVertexNormals();
-  const roadMesh=new THREE.Mesh(geom,new THREE.MeshLambertMaterial({color:0x8B7450,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  roadMatRef=new THREE.MeshLambertMaterial({color:0x8B7450,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  const roadMesh=new THREE.Mesh(geom,roadMatRef);
   roadMesh.receiveShadow=true;scene.add(roadMesh);
+
+  // Cart tracks — two narrow ruts per segment, visible in winter only
+  const trackPos=[];
+  const TW=0.18,TG=0.55;   // track width, half-gauge
+  for(const feat of geojson.features){
+    for(const line of feat.geometry.coordinates){
+      for(let i=0;i<line.length-1;i++){
+        const[sx1,sy1]=project(line[i][0],line[i][1]);
+        const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
+        const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+        if(x1*x1+z1*z1>4000*4000&&x2*x2+z2*z2>4000*4000)continue;
+        const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+        if(len<0.1)continue;
+        const px=(-dz/len),pz=(dx/len),y=0.20;
+        // Two ruts (left and right of centre)
+        for(const sign of[-1,1]){
+          const ox=px*sign*TG,oz=pz*sign*TG;
+          const hx=px*(TW/2),hz=pz*(TW/2);
+          trackPos.push(
+            x1+ox+hx,y,z1+oz+hz,  x2+ox+hx,y,z2+oz+hz,  x1+ox-hx,y,z1+oz-hz,
+            x2+ox+hx,y,z2+oz+hz,  x2+ox-hx,y,z2+oz-hz,  x1+ox-hx,y,z1+oz-hz
+          );
+        }
+      }
+    }
+  }
+  if(trackPos.length>0){
+    const tGeom=new THREE.BufferGeometry();
+    tGeom.setAttribute('position',new THREE.Float32BufferAttribute(trackPos,3));
+    tGeom.computeVertexNormals();
+    cartTrackMesh=new THREE.Mesh(tGeom,new THREE.MeshLambertMaterial({
+      color:0x6A5A4A,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3
+    }));
+    cartTrackMesh.visible=false;   // hidden in summer
+    cartTrackMesh.receiveShadow=true;
+    scene.add(cartTrackMesh);
+  }
 }
 
 // ── Facade system — click to assign ───────────────────────────────
@@ -894,6 +938,30 @@ function buildLayerBar(){
   });
 }
 
+function toggleWinter(){
+  winterMode=!winterMode;
+  const btn=document.getElementById('winter-btn');
+  if(btn)btn.textContent=winterMode?'☀ Summer':'❄ Winter';
+
+  // Ground
+  if(groundMatRef) groundMatRef.color.setHex(winterMode?0xEEEEF8:0x2D4A1A);
+
+  // Roads
+  if(roadMatRef) roadMatRef.color.setHex(winterMode?0xE4E4F0:0x8B7450);
+
+  // Cart tracks (only visible in winter)
+  if(cartTrackMesh) cartTrackMesh.visible=winterMode;
+
+  // Roofs and flat caps
+  for(const{mat3,summerCol,winterCol}of seasonalMats){
+    mat3.color.setHex(winterMode?winterCol:summerCol);
+  }
+
+  // Grid lines
+  if(winterMode){ grid.material.color.setHex(0xC8C8D8);grid.material.opacity=0.12; }
+  else           { grid.material.color.setHex(0x3A5A22);grid.material.opacity=0.18; }
+}
+
 function enableLiveDrops(){
   document.body.addEventListener('dragover',e=>{e.preventDefault();showToast('Drop files to add layer…');});
   document.body.addEventListener('dragleave',e=>{if(!e.relatedTarget)showToast('');});
@@ -955,6 +1023,8 @@ async function loadFiles(fileList){
   todSlider.addEventListener('input',()=>setTimeOfDay(parseFloat(todSlider.value)));
   const sb=document.getElementById('stat-bar');sb.style.display='block';
   updateStatBar();startLoop();enableLiveDrops();
+  document.getElementById('winter-btn').style.display='block';
+  window.toggleWinter=toggleWinter;
 
   // ── Start position ────────────────────────────────────────────────
   // Up ≠ N: convert geographic start to world XZ, azimuth to FPS yaw.
