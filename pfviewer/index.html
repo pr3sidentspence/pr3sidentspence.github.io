@@ -427,15 +427,14 @@ async function buildCity(geojson) {
         console.warn('earcut failed — skipping id:', props.id, err.message);
         continue;
       }
-      // Also skip if earcut produced no triangles (silent degenerate case)
-      if (!wallGeom.index || wallGeom.index.count === 0) {
-        wallGeom.dispose();
-        continue;
-      }
 
       wallGeom.rotateX(-Math.PI / 2);
 
-      const tris = wallGeom.index.count / 3;
+      // ExtrudeGeometry may be indexed or non-indexed depending on Three.js version
+      const tris = wallGeom.index
+        ? wallGeom.index.count / 3
+        : wallGeom.attributes.position.count / 3;
+      if (tris === 0) { wallGeom.dispose(); continue; }
       wallCums[mat].push(wallCums[mat][wallCums[mat].length - 1] + tris);
       wallGeos[mat].push(wallGeom);
       wallInfos[mat].push({
