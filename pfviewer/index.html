@@ -477,6 +477,7 @@ for (const rings of polygons) {
         const [sx, sy] = project(outer[j][0], outer[j][1]);
         ring.push([sx, -sy]);  // worldX = sx, worldZ = −shapeY
       }
+    }
       const rg = buildRoofGeometry(ring, height + 0.05);
       if (rg) roofGeos[mat].push(rg);
     }
