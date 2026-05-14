@@ -136,6 +136,16 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
+  <div id="tod-control" style="
+    position:fixed;bottom:60px;left:50%;transform:translateX(-50%);
+    background:rgba(9,8,10,0.82);border:1px solid #2a1e0e;border-radius:10px;
+    padding:10px 20px;display:none;align-items:center;gap:14px;pointer-events:auto;
+  ">
+    <span style="font-size:0.7rem;letter-spacing:0.15em;color:#4a3820;">TIME</span>
+    <input type="range" id="tod-slider" min="0" max="1" step="0.002" value="0.42"
+      style="width:180px;accent-color:#C8A05A;cursor:pointer;">
+    <span id="tod-label" style="font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;">10:00</span>
+  </div>
   <div id="live-toast" style="
     display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
     background:rgba(9,8,10,0.92);border:1px solid #C8A05A;border-radius:10px;
@@ -231,9 +241,7 @@ camera.position.set(600, 450, 900);
 camera.lookAt(0, 0, 0);
 
 // ── Lighting ───────────────────────────────────────────────────────
-scene.add(new THREE.HemisphereLight(0x88C0E8, 0x3A5A20, 0.55)); // sky/grass
 const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
-sun.position.set(-500, 700, 300);   // WSW, ~40° elevation
 sun.castShadow = true;
 sun.shadow.mapSize.width  = 2048;
 sun.shadow.mapSize.height = 2048;
@@ -243,12 +251,82 @@ sun.shadow.camera.left   = -900;
 sun.shadow.camera.right  =  900;
 sun.shadow.camera.top    =  900;
 sun.shadow.camera.bottom = -900;
-sun.shadow.bias          = -0.0003;  // reduce shadow acne on flat roofs
+sun.shadow.bias          = -0.0003;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0xC8D8E8, 0.22);
-fill.position.set(500, 200, -400);  // NE cool fill
-scene.add(fill);
-scene.add(new THREE.AmbientLight(0xffffff, 0.12));
+
+// ── Time of day ────────────────────────────────────────────────────
+// t = 0..1 spans 04:00–22:00. Sun arc in world space:
+//   Up ≠ N — east = +X, south = −Z, up = +Y.
+//   Sunrise: sun in +X, noon: overhead biased toward −Z, sunset: −X.
+const TOD_START_H = 4;
+const TOD_RANGE_H = 18;
+
+const SKY_KEYS = [
+  // [t,  skyHex,   fogHex,   sunHex,   sunInt, ambInt]
+  [0.00, 0x0A0510, 0x0A0510, 0xFF6020, 0.00, 0.04],  // 04:00 pre-dawn
+  [0.10, 0xFF7030, 0xE85010, 0xFF9040, 0.50, 0.08],  // 05:48 sunrise
+  [0.18, 0xF0A060, 0xD08040, 0xFFD080, 1.00, 0.14],  // 07:14 golden hour
+  [0.28, 0x88C0E8, 0x88C0E8, 0xFFF0D0, 1.35, 0.18],  // 09:02 morning
+  [0.42, 0x7AB8E0, 0x7AB8E0, 0xFFF4DC, 1.45, 0.20],  // 11:34 default
+  [0.52, 0x6AAED8, 0x6AAED8, 0xFFFAF0, 1.50, 0.22],  // 13:22 noon
+  [0.70, 0x88B0D8, 0x88B0D8, 0xFFF0C0, 1.30, 0.18],  // 16:36 afternoon
+  [0.82, 0xF08030, 0xD06020, 0xFF8030, 0.90, 0.12],  // 18:46 golden
+  [0.90, 0xC04020, 0x902010, 0xFF5010, 0.40, 0.06],  // 20:12 dusk
+  [1.00, 0x080310, 0x080310, 0xFF3000, 0.00, 0.03],  // 22:00 night
+];
+
+function lerpHex(a, b, t) {
+  const ar=(a>>16)&0xff, ag=(a>>8)&0xff, ab=a&0xff;
+  const br=(b>>16)&0xff, bg=(b>>8)&0xff, bb=b&0xff;
+  return (Math.round(ar+(br-ar)*t)<<16)|(Math.round(ag+(bg-ag)*t)<<8)|Math.round(ab+(bb-ab)*t);
+}
+
+function sampleSky(t) {
+  let lo=SKY_KEYS[0], hi=SKY_KEYS[SKY_KEYS.length-1];
+  for (let i=0; i<SKY_KEYS.length-1; i++) {
+    if (t>=SKY_KEYS[i][0] && t<=SKY_KEYS[i+1][0]) { lo=SKY_KEYS[i]; hi=SKY_KEYS[i+1]; break; }
+  }
+  const f = lo[0]===hi[0] ? 0 : (t-lo[0])/(hi[0]-lo[0]);
+  return {
+    sky:    lerpHex(lo[1],hi[1],f),  fog:    lerpHex(lo[2],hi[2],f),
+    sunCol: lerpHex(lo[3],hi[3],f),  sunInt: lo[4]+(hi[4]-lo[4])*f,
+    ambInt: lo[5]+(hi[5]-lo[5])*f,
+  };
+}
+
+const hemiLight = new THREE.HemisphereLight(0x88C0E8, 0x3A5A20, 0.55);
+scene.add(hemiLight);
+const ambLight  = new THREE.AmbientLight(0xffffff, 0.12);
+scene.add(ambLight);
+
+function setTimeOfDay(t) {
+  // Sun arc: dayFrac 0=sunrise, 1=sunset. Elevation sine-peaks at noon.
+  // Azimuth sweeps +X(east) → −Z(south) → −X(west) — Up ≠ N.
+  const dayFrac = Math.max(0, Math.min(1, (t-0.10)/0.80));
+  const elev    = Math.sin(dayFrac * Math.PI);
+  const azim    = dayFrac * Math.PI;
+  const R = 900;
+  sun.position.set(
+     R * Math.cos(azim),
+     R * Math.max(0.05, elev),
+    -R * Math.sin(azim) * 0.6   // foreshortened south component for Winnipeg lat
+  );
+
+  const s = sampleSky(t);
+  scene.background.setHex(s.sky);
+  scene.fog.color.setHex(s.fog);
+  sun.color.setHex(s.sunCol);
+  sun.intensity  = s.sunInt;
+  ambLight.intensity = s.ambInt;
+  hemiLight.color.setHex(s.sky);
+
+  const hour = TOD_START_H + t * TOD_RANGE_H;
+  const hh=Math.floor(hour), mm=Math.round((hour-hh)*60);
+  const lbl = document.getElementById('tod-label');
+  if (lbl) lbl.textContent = `${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+}
+
+setTimeOfDay(0.42);  // default: ~11:30am
 
 // ── Ground (grass) ─────────────────────────────────────────────────
 const ground = new THREE.Mesh(
@@ -854,6 +932,10 @@ async function loadFiles(fileList) {
 
   document.getElementById('loading').style.display = 'none';
   document.getElementById('hud').style.display     = 'block';
+  document.getElementById('tod-control').style.display = 'flex';
+
+  const todSlider = document.getElementById('tod-slider');
+  todSlider.addEventListener('input', () => setTimeOfDay(parseFloat(todSlider.value)));
   const sb = document.getElementById('stat-bar');
   sb.style.display = 'block';
   sb.textContent =
