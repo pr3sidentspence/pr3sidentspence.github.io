@@ -416,7 +416,7 @@ const polygons = feat.geometry.type === 'MultiPolygon'
 for (const rings of polygons) {
   const outer = rings[0];
   if (!outer || outer.length < 4) continue;
-
+  }
   // ── Wall extrusion ...
   const shape = new THREE.Shape();
   const [sx0, sy0] = project(outer[0][0], outer[0][1]);
