@@ -180,6 +180,12 @@ const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.5, 5000
 camera.position.set(600, 450, 900);
 camera.lookAt(0, 0, 0);
 
+// ── Season state (declared here — used before buildingMeshes block) ─
+let winterMode=false;
+const seasonalMats=[];   // {mat3, summerCol, winterCol}
+let groundMatRef=null, roadMatRef=null, cartTrackMesh=null;
+const SNOW_SKIP=new Set(['blue','iron']); // railways & greenhouses — no snow
+
 // ── Lighting ───────────────────────────────────────────────────────
 const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
 sun.castShadow = true;
@@ -283,13 +289,6 @@ const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
-// ── Season / winter state ──────────────────────────────────────────
-let winterMode=false;
-const seasonalMats=[];       // {mat3, summerCol, winterCol} — roofs and ground
-let groundMatRef=null;
-let roadMatRef=null;
-let cartTrackMesh=null;
-const SNOW_SKIP=new Set(['blue','iron']); // railways & greenhouses — no accumulation
 
 // ── Building index for facade matching ─────────────────────────────
 // Keyed by normalised name and by string id.
@@ -442,10 +441,12 @@ async function buildCity(geojson){
           const[sx,sy]=project(outer[j][0],outer[j][1]);outerPts.push([sx,sy]);
         }
 
-        // Tar paper / gravel roof cap (ShapeGeometry = flat, no extrusion)
+        // Tar paper roof cap — inset by PARAPET_W so edge sits inside the parapet
+        // and is not visible from street level as a dark stripe on the wall face.
+        const capInset=insetRing(outerPts,PARAPET_W-0.04);
         const capShape=new THREE.Shape();
-        capShape.moveTo(outerPts[0][0],outerPts[0][1]);
-        for(let j=1;j<outerPts.length;j++)capShape.lineTo(outerPts[j][0],outerPts[j][1]);
+        capShape.moveTo(capInset[0][0],capInset[0][1]);
+        for(let j=1;j<capInset.length;j++)capShape.lineTo(capInset[j][0],capInset[j][1]);
         const capGeom=new THREE.ShapeGeometry(capShape);
         capGeom.rotateX(-Math.PI/2);
         capGeom.translate(0,height+0.02,0);  // sit just above wall top
