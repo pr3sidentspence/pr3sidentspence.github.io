@@ -651,6 +651,7 @@ async function buildWater(geojson){
       let mnX=Infinity,mxX=-Infinity,mnZ=Infinity,mxZ=-Infinity;
       for(const[x,z]of wpts){mnX=Math.min(mnX,x);mxX=Math.max(mxX,x);mnZ=Math.min(mnZ,z);mxZ=Math.max(mxZ,z);}
       if(mxX-mnX>6000||mxZ-mnZ>6000)continue;  // too large for clean triangulation — ribbons cover it
+      if(pts.length>400)continue;  // too many vertices — earcut degenerates on dense river outlines
 
       // Build shape in shapeXY; mesh rotation.x will NOT be set (new mesh),
       // so we rotateX the geometry ourselves to lie flat in world XZ.
@@ -705,17 +706,31 @@ async function buildWater(geojson){
 
   if(pos.length===0) return;
   const wGeom=new THREE.BufferGeometry();
-  wGeom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  const posArr=new Float32Array(pos);
+  wGeom.setAttribute('position',new THREE.Float32BufferAttribute(posArr,3));
   wGeom.computeVertexNormals();
 
-  waterMatRef=new THREE.MeshPhongMaterial({
-    color:0x2A5F8A, shininess:140, specular:0x88CCEE,
-    transparent:true, opacity:0.84,
-    polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
-  });
-  waterMesh=new THREE.Mesh(wGeom,waterMatRef);
-  waterMesh.position.y=WATER_BASE;
-  scene.add(waterMesh);
+  if(waterMesh){
+    // Accumulate — merge new geometry with existing water mesh
+    const oldPos=waterMesh.geometry.attributes.position.array;
+    const combined=new Float32Array(oldPos.length+posArr.length);
+    combined.set(oldPos);combined.set(posArr,oldPos.length);
+    const newGeom=new THREE.BufferGeometry();
+    newGeom.setAttribute('position',new THREE.Float32BufferAttribute(combined,3));
+    newGeom.computeVertexNormals();
+    waterMesh.geometry.dispose();
+    wGeom.dispose();
+    waterMesh.geometry=newGeom;
+  }else{
+    waterMatRef=new THREE.MeshPhongMaterial({
+      color:0x2A5F8A, shininess:140, specular:0x88CCEE,
+      transparent:true, opacity:0.84,
+      polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
+    });
+    waterMesh=new THREE.Mesh(wGeom,waterMatRef);
+    waterMesh.position.y=WATER_BASE;
+    scene.add(waterMesh);
+  }
 
   // Flood slider
   const fc=document.getElementById('flood-control');
