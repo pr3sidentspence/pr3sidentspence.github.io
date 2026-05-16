@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -69,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; built 2026-05-16</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-16 03:42</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -920,7 +921,7 @@ function applyFacade(tex,edgeA,edgeB,nx,nz,height,stemKey){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
-  const facadeMat=new THREE.MeshPhongMaterial({map:tex,transparent:true,alphaTest:0.1,side:THREE.FrontSide,shininess:0});
+  const facadeMat=new THREE.MeshPhongMaterial({map:tex,transparent:true,alphaTest:0.15,side:THREE.FrontSide,shininess:8,specular:0x222222});
   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(edgeLen,height),facadeMat);
   mesh.position.set(midX+nx*0.15,height/2,midZ+nz*0.15);
   mesh.rotation.y=Math.atan2(nx,nz);
@@ -1313,7 +1314,7 @@ async function applyFacadeBump(imageFile){
     const tex=await loadBumpTexture(imageFile);
     // Facade UVs are 0→1 across width and height — no repeat needed
     entry.mat.bumpMap=tex;
-    entry.mat.bumpScale=0.4;
+    entry.mat.bumpScale=1.2;   // needs to be high — facade is a flat plane, effect is subtle
     entry.mat.needsUpdate=true;
     console.log(`Facade bump applied: "${imageFile.name}" → matched "${stem}"`);
   }catch(e){ console.warn('Facade bump load failed:',e); }
@@ -1435,5 +1436,6 @@ fileInput.addEventListener('change',e=>loadFiles([...e.target.files]));
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 renderer.render(scene,camera);
 </script>
+
 </body>
 </html>
