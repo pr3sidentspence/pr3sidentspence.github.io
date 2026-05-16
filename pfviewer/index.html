@@ -65,7 +65,8 @@ canvas{display:block;position:fixed;inset:0;}
       <rect x="8" y="40" width="36" height="4" rx="2"/>
     </svg>
     <p>Drop <em>GeoJSON</em> files here — or click to browse<br>
-    Also accepts <em>road network</em> GeoJSON and <em>facade images</em> (JPG/PNG)</p>
+    Also accepts <em>road/water GeoJSON</em>, <em>facade images</em>, and <em>bump maps</em><br>
+    <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
   <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; built 2026-05-16</p>
@@ -310,6 +311,8 @@ const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
+const wallMaterials  = {};   // matKey → MeshPhongMaterial — for bump map application
+const facadeMeshes   = new Map();  // normName(stem) → {mesh, mat} — for per-facade bumps
 // Start position in world coords — computed once after project() is available
 const _slon=-97.13825789731372,_slat=49.89558496264514;
 const [_ssx,_ssy]=project(_slon,_slat);
@@ -509,7 +512,9 @@ async function buildCity(geojson){
     if(wallGeos[mat].length===0)continue;
     const wMerged=mergeGeometries(wallGeos[mat],false);
     for(const g of wallGeos[mat])g.dispose();
-    const wMesh=new THREE.Mesh(wMerged,new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a}));
+    const wMat=new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a});
+    wallMaterials[mat]=wMat;
+    const wMesh=new THREE.Mesh(wMerged,wMat);
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
     group.add(wMesh);buildingMeshes.push(wMesh);
@@ -623,7 +628,7 @@ async function buildRoads(geojson){
 // Flood slider raises waterMesh.position.y from 0 toward street/above-street level.
 // (Proper channel depression requires terrain relief — flat scene uses colour only.)
 
-const WATER_BASE = 0.10;   // metres above ground in normal conditions
+const WATER_BASE = 1.5;   // well above ground — 0.15m was lost to z-buffer imprecision at aerial height
 const RIVER_W    = 120;    // LineString river ribbon half-width (m) — Red River
 const CREEK_W    = 8;
 let waterMesh    = null;
@@ -756,7 +761,8 @@ async function buildWater(geojson){
       color:0x7A5230,
       shininess:18, specular:0x3A2810,
       transparent:true, opacity:0.90,
-      side:THREE.DoubleSide,   // normals may face down after rotateX — DoubleSide ensures visibility
+      depthWrite:false,            // prevents z-fighting with ground at any camera height
+      side:THREE.DoubleSide,
       polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
     });
     waterMesh=new THREE.Mesh(wGeom,waterMatRef);
@@ -906,11 +912,11 @@ function autoPlaceFacade(tex,match,filename){
   if(!bestA)return;
   const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
   const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  applyFacade(tex,bestA,bestB,bestNx,bestNz,height);
+  applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(filename.replace(/\.[^.]+$/,'')));
   console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
 }
 
-function applyFacade(tex,edgeA,edgeB,nx,nz,height){
+function applyFacade(tex,edgeA,edgeB,nx,nz,height,stemKey){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
@@ -920,6 +926,7 @@ function applyFacade(tex,edgeA,edgeB,nx,nz,height){
   mesh.rotation.y=Math.atan2(nx,nz);
   mesh.receiveShadow=true;
   scene.add(mesh);
+  if(stemKey) facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
 }
 
 function placeFacadeOnBuilding(info,worldNormal){
@@ -949,7 +956,7 @@ function placeFacadeOnBuilding(info,worldNormal){
   if(!bestA)return;
   const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
   const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  applyFacade(facadePending.tex,bestA,bestB,bestNx,bestNz,height);
+  applyFacade(facadePending.tex,bestA,bestB,bestNx,bestNz,height,normName(facadePending.filename.replace(/\.[^.]+$/,'')));
   console.log(`Facade placed: "${facadePending.filename}" h:${height.toFixed(1)}m`);
   exitFacadePlacement();
 
@@ -1255,11 +1262,84 @@ function sniffGeoJSON(gj){
   return null;
 }
 
+// ── Bump map loading ──────────────────────────────────────────────
+// Wall material bump maps: file named e.g. bump_brick.png or brick_bump.png
+//   Applied as tiling bump to all buildings of that material.
+//   UVs from ExtrudeGeometry are in world-space metres, so repeat is per-metre.
+const BUMP_REPEAT = {
+  brick:    [4,    13   ],   // ~0.25m wide × 0.075m tall bricks
+  stone:    [1.5,  1.5  ],   // ~0.65m blocks
+  wood:     [1,    5    ],   // ~1m wide boards, 0.2m tall
+  log:      [0.8,  3    ],
+  iron:     [2,    2    ],
+  concrete: [1,    1    ],
+  unknown:  [2,    2    ],
+};
+
+async function loadBumpTexture(imageFile){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(imageFile);
+    const tex=new THREE.TextureLoader().load(url,
+      ()=>{ URL.revokeObjectURL(url); resolve(tex); },
+      undefined,
+      e=>{ URL.revokeObjectURL(url); reject(e); }
+    );
+  });
+}
+
+async function applyWallBump(imageFile, matKey){
+  try{
+    const tex=await loadBumpTexture(imageFile);
+    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
+    const[ru,rv]=BUMP_REPEAT[matKey]??[2,2];
+    tex.repeat.set(ru,rv);
+    const mat=wallMaterials[matKey];
+    if(mat){ mat.bumpMap=tex; mat.bumpScale=0.5; mat.needsUpdate=true; }
+    console.log(`Wall bump applied: ${imageFile.name} → ${matKey} (repeat ${ru}×${rv}/m)`);
+  }catch(e){ console.warn('Wall bump load failed:',e); }
+}
+
+async function applyFacadeBump(imageFile){
+  // Match by stem without the _bump suffix
+  const rawStem=imageFile.name.replace(/\.[^.]+$/,'').replace(/_?bump$/i,'').replace(/^bump_?/i,'');
+  const stem=normName(rawStem);
+  const entry=facadeMeshes.get(stem);
+  if(!entry){
+    console.warn(`No facade found for bump "${imageFile.name}" (stem: "${stem}")`);
+    console.log('Known facade stems:',[...facadeMeshes.keys()]);
+    return;
+  }
+  try{
+    const tex=await loadBumpTexture(imageFile);
+    // Facade UVs are 0→1 across width and height — no repeat needed
+    entry.mat.bumpMap=tex;
+    entry.mat.bumpScale=0.4;
+    entry.mat.needsUpdate=true;
+    console.log(`Facade bump applied: "${imageFile.name}" → matched "${stem}"`);
+  }catch(e){ console.warn('Facade bump load failed:',e); }
+}
+
+function isBumpFile(f){
+  const s=normName(f.name.replace(/\.[^.]+$/,''));
+  return s.startsWith('bump ')||s.endsWith(' bump');
+}
+
+function bumpMatKey(f){
+  const s=normName(f.name.replace(/\.[^.]+$/,''));
+  return Object.keys(MATS).find(k=>s.includes(k))||null;
+}
+
 async function liveLoad(fileList){
   for(const f of fileList){
     if(isImage(f)){
-      showToast(`Applying facade: ${f.name}…`);
-      await loadFacade(f);
+      if(isBumpFile(f)){
+        const mk=bumpMatKey(f);
+        if(mk){ showToast(`Applying wall bump: ${f.name}…`); await applyWallBump(f,mk); }
+        else  { showToast(`Applying facade bump: ${f.name}…`); await applyFacadeBump(f); }
+      }else{
+        showToast(`Applying facade: ${f.name}…`);
+        await loadFacade(f);
+      }
       continue;
     }
     if(!isGeoJSON(f))continue;
@@ -1303,7 +1383,15 @@ async function loadFiles(fileList){
   totalBuildings+=n;if(roadGJ)roadsLoaded=true;
   buildLayerBar();
   // Apply any facades dropped at initial load
-  for(const f of imageFiles){setProgress(96,`Facade: ${f.name}…`);await loadFacade(f);}
+  for(const f of imageFiles){
+    setProgress(96,`Image: ${f.name}…`);
+    if(isBumpFile(f)){
+      const mk=bumpMatKey(f);
+      if(mk) await applyWallBump(f,mk); else await applyFacadeBump(f);
+    }else{
+      await loadFacade(f);
+    }
+  }
   setProgress(100,'Done.');await tick();
   document.getElementById('loading').style.display='none';
   document.getElementById('hud').style.display='block';
