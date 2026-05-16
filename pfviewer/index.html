@@ -697,9 +697,10 @@ async function buildWater(geojson){
         const pa=sg.attributes.position.array;
         for(let i=0;i<pa.length;i++) pos.push(pa[i]);
         sg.dispose();
-      }catch(e){console.warn('Water polygon triangulation failed, skipping:',e.message);}
+      }catch(e){console.warn('Water polygon triangulation failed:',e.message);}
     }
   }
+  console.log(`buildWater: ${pos.length/3} verts from polygons before ribbons`);
 
   // ── LineString rivers/creeks → ribbons ───────────────────────────
   for(const feat of geojson.features){
@@ -752,9 +753,10 @@ async function buildWater(geojson){
     waterMesh.geometry=newGeom;
   }else{
     waterMatRef=new THREE.MeshPhongMaterial({
-      color:0x7A5230,   // Red River turbid brown — silt-heavy, characteristic of the valley
+      color:0x7A5230,
       shininess:18, specular:0x3A2810,
       transparent:true, opacity:0.90,
+      side:THREE.DoubleSide,   // normals may face down after rotateX — DoubleSide ensures visibility
       polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
     });
     waterMesh=new THREE.Mesh(wGeom,waterMatRef);
@@ -861,9 +863,10 @@ const FACADE_RIDGE_H = FLOOR_H * 0.64;
 function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, frontNz){
   if(hasPara) return wallH + PARAPET_H;
   if(!hasPeak) return wallH;
-  // Find longest edge perpendicular to the front face normal (= the depth direction)
-  // Perpendicular direction: rotate normal 90° → (−frontNz, frontNx) in XZ
-  const depNx=-frontNz, depNz=frontNx;
+  // Depth edges run PARALLEL to the front normal (they go away from the street).
+  // Do NOT rotate 90° — that would find edges along the front face instead.
+  // Up ≠ N: depth direction in world XZ = (frontNx, frontNz).
+  const depNx=frontNx, depNz=frontNz;
   let maxDepth=0;
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
