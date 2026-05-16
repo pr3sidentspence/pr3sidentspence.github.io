@@ -312,8 +312,7 @@ const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
 const wallMaterials  = {};   // matKey → MeshPhongMaterial — for bump map application
-const facadeMeshes = new Map();
-window.facadeMeshes = facadeMeshes;
+const facadeMeshes   = new Map();  // normName(stem) → {mesh, mat} — for per-facade bumps
 // Start position in world coords — computed once after project() is available
 const _slon=-97.13825789731372,_slat=49.89558496264514;
 const [_ssx,_ssy]=project(_slon,_slat);
@@ -795,7 +794,8 @@ async function buildWater(geojson){
 
 let facadePending = null;  // {tex, filename} when waiting for a building click
 
-function makeTransparentCanvas(imageFile){
+// Load image file to a raw canvas (no pixel processing).
+function loadImageToCanvas(imageFile){
   return new Promise((resolve,reject)=>{
     const url=URL.createObjectURL(imageFile);
     const img=new Image();
@@ -803,34 +803,53 @@ function makeTransparentCanvas(imageFile){
       URL.revokeObjectURL(url);
       const c=document.createElement('canvas');
       c.width=img.naturalWidth;c.height=img.naturalHeight;
-      const ctx=c.getContext('2d');ctx.drawImage(img,0,0);
-      const data=ctx.getImageData(0,0,c.width,c.height),d=data.data;
-      // Luminance threshold — no corner sampling (breaks on tight crops with ink at corners).
-      // Pen/ink drawings: light pixels = paper (transparent), dark pixels = ink (opaque).
-      // Luminance 0..255: above PAPER_LUM → paper, below INK_LUM → ink, blend between.
-      const PAPER_LUM=210, INK_LUM=140;
-      for(let i=0;i<d.length;i+=4){
-        const lum=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
-        if(lum>=PAPER_LUM){
-          d[i+3]=0;   // fully transparent (paper)
-        }else if(lum>INK_LUM){
-          // soft blend zone
-          d[i+3]=Math.round(255*(1-(lum-INK_LUM)/(PAPER_LUM-INK_LUM)));
-        }
-        // below INK_LUM: fully opaque (ink) — alpha unchanged (stays 255)
-      }
-      ctx.putImageData(data,0,0);resolve(c);
+      c.getContext('2d').drawImage(img,0,0);
+      resolve(c);
     };
     img.onerror=reject;img.src=url;
   });
 }
 
-async function loadFacade(imageFile){
-  let canvas;
-  try{canvas=await makeTransparentCanvas(imageFile);}
-  catch(e){console.warn('Image load failed:',e);return;}
+// Replace paper-background pixels with the building's wall colour.
+// Pre-transparent pixels (gable voids cut in Photoshop) are left alone.
+// Ink pixels stay dark. No more see-through paper, no more inverted lighting.
+// wallColorHex: 0xRRGGBB from MATS[mat].color
+function processCanvasForFacade(canvas, wallColorHex){
+  const wr=(wallColorHex>>16)&0xff, wg=(wallColorHex>>8)&0xff, wb=wallColorHex&0xff;
+  const ctx=canvas.getContext('2d');
+  const data=ctx.getImageData(0,0,canvas.width,canvas.height), d=data.data;
+  const PAPER_LUM=210, INK_LUM=140;
+  for(let i=0;i<d.length;i+=4){
+    if(d[i+3]<128) continue;   // pre-transparent (gable void etc.) — leave alone
+    const lum=0.299*d[i]+0.587*d[i+1]+0.114*d[i+2];
+    if(lum>=PAPER_LUM){
+      // Paper pixel → wall colour, fully opaque
+      d[i]=wr; d[i+1]=wg; d[i+2]=wb; d[i+3]=255;
+    }else if(lum>INK_LUM){
+      // Blend zone → lerp toward wall colour
+      const t=(lum-INK_LUM)/(PAPER_LUM-INK_LUM);
+      d[i]  =Math.round(d[i]  +(wr-d[i]  )*t);
+      d[i+1]=Math.round(d[i+1]+(wg-d[i+1])*t);
+      d[i+2]=Math.round(d[i+2]+(wb-d[i+2])*t);
+      d[i+3]=255;
+    }
+    // Below INK_LUM: ink pixel, keep colour, ensure opaque
+    else{ d[i+3]=255; }
+  }
+  ctx.putImageData(data,0,0);
+  return canvas;
+}
+
+function canvasToTex(canvas){
   const tex=new THREE.CanvasTexture(canvas);
   tex.colorSpace=THREE.SRGBColorSpace;
+  return tex;
+}
+
+async function loadFacade(imageFile){
+  let rawCanvas;
+  try{rawCanvas=await loadImageToCanvas(imageFile);}
+  catch(e){console.warn('Image load failed:',e);return;}
 
   // ── Auto-match by filename ─────────────────────────────────────
   const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,''));
@@ -848,18 +867,18 @@ async function loadFacade(imageFile){
   }
 
   if(match){
-    // Auto-place: pick edge whose outward normal is most eastward (street-facing heuristic)
-    autoPlaceFacade(tex,match,imageFile.name);
+    const wallCol=MATS[match.props.material??'unknown']?.color??0x808078;
+    autoPlaceFacade(canvasToTex(processCanvasForFacade(rawCanvas,wallCol)),match,imageFile.name);
     return;
   }
 
-  // ── No match — show picker ─────────────────────────────────────
-  const preview=document.getElementById('facade-preview');
-  preview.src=canvas.toDataURL('image/jpeg',0.6);
+  // ── No match — picker ──────────────────────────────────────────
+  // Store raw canvas; wall colour applied when building is selected.
+  document.getElementById('facade-preview').src=rawCanvas.toDataURL('image/jpeg',0.6);
   document.getElementById('facade-filename').textContent=imageFile.name;
   document.getElementById('facade-picker').style.display='block';
   document.getElementById('mode-badge').textContent='Place Facade — Ctrl+Click building';
-  facadePending={tex,filename:imageFile.name};
+  facadePending={canvas:rawCanvas, filename:imageFile.name};
 }
 
 // Returns wallH + ridgeH if the building is deeper than wide (gable faces the street),
@@ -921,7 +940,10 @@ function applyFacade(tex,edgeA,edgeB,nx,nz,height,stemKey){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
-  const facadeMat=new THREE.MeshPhongMaterial({map:tex,transparent:true,alphaTest:0.15,side:THREE.FrontSide,shininess:8,specular:0x222222});
+  const facadeMat=new THREE.MeshPhongMaterial({
+    map:tex, transparent:true, alphaTest:0.1,  // alphaTest only fires on pre-cut transparent areas (gable PNGs)
+    side:THREE.FrontSide, shininess:8, specular:0x222222,
+  });
   const mesh=new THREE.Mesh(new THREE.PlaneGeometry(edgeLen,height),facadeMat);
   mesh.position.set(midX+nx*0.15,height/2,midZ+nz*0.15);
   mesh.rotation.y=Math.atan2(nx,nz);
@@ -957,7 +979,10 @@ function placeFacadeOnBuilding(info,worldNormal){
   if(!bestA)return;
   const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
   const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  applyFacade(facadePending.tex,bestA,bestB,bestNx,bestNz,height,normName(facadePending.filename.replace(/\.[^.]+$/,'')));
+  // Process raw canvas with this building's wall colour now that we know it
+  const wallCol=MATS[info.material??'unknown']?.color??0x808078;
+  const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
+  applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(facadePending.filename.replace(/\.[^.]+$/,'')));
   console.log(`Facade placed: "${facadePending.filename}" h:${height.toFixed(1)}m`);
   exitFacadePlacement();
 
