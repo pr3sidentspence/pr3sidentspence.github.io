@@ -638,11 +638,19 @@ async function buildWater(geojson){
       if(!outer||outer.length<4) continue;
       const pts=outer.slice(0,-1);
 
-      // Clip to scene radius
+      // Project to world XZ first so we can check real-world extents.
+      // Two guards needed:
+      //   1. Centroid distance — rejects OSM relation members with centroids hundreds of km out
+      //   2. Polygon extent   — rejects river polygons spanning >6km (earcut degenerates on these)
+      const wpts=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];});
       let cx=0,cz=0;
-      for(const[lon,lat]of pts){const[sx,sy]=project(lon,lat);cx+=sx;cz+=(-sy);}
-      cx/=pts.length;cz/=pts.length;
-      if(cx*cx+cz*cz>MAX_R2) continue;
+      for(const[x,z]of wpts){cx+=x;cz+=z;}
+      cx/=wpts.length;cz/=wpts.length;
+      if(cx*cx+cz*cz>8000*8000)continue;  // centroid > 8km from scene centre
+
+      let mnX=Infinity,mxX=-Infinity,mnZ=Infinity,mxZ=-Infinity;
+      for(const[x,z]of wpts){mnX=Math.min(mnX,x);mxX=Math.max(mxX,x);mnZ=Math.min(mnZ,z);mxZ=Math.max(mxZ,z);}
+      if(mxX-mnX>6000||mxZ-mnZ>6000)continue;  // too large for clean triangulation — ribbons cover it
 
       // Build shape in shapeXY; mesh rotation.x will NOT be set (new mesh),
       // so we rotateX the geometry ourselves to lie flat in world XZ.
