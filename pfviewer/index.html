@@ -658,13 +658,29 @@ async function buildWater(geojson){
       if(mxX-mnX>25000||mxZ-mnZ>25000)continue;  // reject truly global polygons only
       if(pts.length>1200)continue;  // earcut limit — above this triangulation degenerates
 
-      // Build shape in shapeXY; mesh rotation.x will NOT be set (new mesh),
-      // so we rotateX the geometry ourselves to lie flat in world XZ.
+      // GeoJSON spec says CCW for outer rings, but OSM data often violates this.
+      // THREE.Shape requires CCW — compute signed area and reverse if CW.
+      // Signed area: positive = CCW in shapeXY (which is what we want).
+      let signedArea=0;
+      for(let i=0;i<wpts.length;i++){
+        const[x1,z1]=wpts[i],[x2,z2]=wpts[(i+1)%wpts.length];
+        signedArea+=x1*z1-x2*z1; // use shapeXY not worldXZ for this check
+      }
+      // Recompute properly in shapeXY
+      const shapeXY=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,sy];});
+      let sa2=0;
+      for(let i=0;i<shapeXY.length;i++){
+        const[x1,y1]=shapeXY[i],[x2,y2]=shapeXY[(i+1)%shapeXY.length];
+        sa2+=x1*y2-x2*y1;
+      }
+      const orderedPts = sa2 < 0 ? pts.slice().reverse() : pts;
+
+      // Build THREE.Shape in shapeXY (CCW guaranteed)
       const shape=new THREE.Shape();
-      const[ox,oy]=project(pts[0][0],pts[0][1]);
+      const[ox,oy]=project(orderedPts[0][0],orderedPts[0][1]);
       shape.moveTo(ox,oy);
-      for(let i=1;i<pts.length;i++){
-        const[sx,sy]=project(pts[i][0],pts[i][1]);shape.lineTo(sx,sy);
+      for(let i=1;i<orderedPts.length;i++){
+        const[sx,sy]=project(orderedPts[i][0],orderedPts[i][1]);shape.lineTo(sx,sy);
       }
       for(let h=1;h<rings.length;h++){
         const hp=rings[h].slice(0,-1);
