@@ -235,19 +235,30 @@ scene.add(hemiLight);
 const ambLight = new THREE.AmbientLight(0xffffff,0.12);
 scene.add(ambLight);
 function setTimeOfDay(t){
-  // Exact equinox solar arc for Winnipeg 49.895°N — Up ≠ N (X=east, Y=up, Z=south)
-  // Hour angle h: −π/2 at sunrise (t=0.10), 0 at solar noon (t=0.50), +π/2 at sunset (t=0.90)
-  // From standard formulae with declination δ=0 (equinox):
-  //   east  = −sin(h)              [+1 at dawn, 0 at noon, −1 at dusk]
-  //   up    = cos(lat)·cos(h)      peaks at cos(49.9°)=0.643 → 40.1° max elevation
-  //   south = sin(lat)·cos(h)      sun always in southern sky (lat>0)
-  const LAT=49.895396*Math.PI/180;
-  const dayFrac=Math.max(0,Math.min(1,(t-0.10)/0.80));
-  const h=(dayFrac-0.5)*Math.PI,R=900;
+  // Physically correct solar position for Winnipeg 49.895°N — Up ≠ N (X=east,Y=up,Z=south)
+  // Declination: equinox=0, summer solstice=+23.45°, winter solstice=−23.45°
+  // Tied to winterMode so sun arc narrows and flattens in winter automatically.
+  const LAT  = 49.895396 * Math.PI / 180;
+  const decl = (winterMode ? -23.45 : 0) * Math.PI / 180;  // 0=equinox, swap to ±23.45 with season selector later
+
+  // Sunrise/sunset hour angle: cos(h0) = −tan(lat)·tan(decl)
+  const h0cos = -Math.tan(LAT) * Math.tan(decl);
+  const h0    = Math.acos(Math.max(-1, Math.min(1, h0cos)));  // radians from noon
+
+  // TOD slider 0→1 maps to hour angle −h0 → +h0 (sunrise → sunset)
+  const dayFrac = Math.max(0, Math.min(1, (t - 0.10) / 0.80));
+  const h       = (dayFrac - 0.5) * 2 * h0;   // hour angle: 0 at noon
+
+  // ENU → world XZ (standard spherical astronomy, verified against equinox case)
+  // East  = −cos(decl)·sin(h)
+  // North = sin(decl)·cos(lat) − cos(decl)·cos(h)·sin(lat)
+  // Up    = sin(decl)·sin(lat) + cos(decl)·cos(h)·cos(lat)
+  const R = 900;
+  const sUp = Math.sin(decl)*Math.sin(LAT) + Math.cos(decl)*Math.cos(h)*Math.cos(LAT);
   sun.position.set(
-    R*-Math.sin(h),
-    R*Math.max(0.05,Math.cos(LAT)*Math.cos(h)),
-    R*Math.sin(LAT)*Math.cos(h)
+     R * -Math.cos(decl) * Math.sin(h),          // worldX = east
+     R * Math.max(0.05, sUp),                     // worldY = up
+     R * (Math.cos(decl)*Math.cos(h)*Math.sin(LAT) - Math.sin(decl)*Math.cos(LAT)) // worldZ = south
   );
   const s=sampleSky(t);
   scene.background.setHex(s.sky);scene.fog.color.setHex(s.fog);
@@ -290,6 +301,10 @@ renderer.domElement.addEventListener('wheel',e=>{
 
 // ── FPS ────────────────────────────────────────────────────────────
 let fpsMode=false,yaw=Math.PI,pitch=0,sprinting=false;
+// Fall-to-ground state (F key — gravity drop instead of teleport)
+let falling=false,fallVelocity=0;
+let fallStartX=0,fallStartY=0,fallStartZ=0;
+let fallTargetX=0,fallTargetZ=0;
 const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
@@ -595,72 +610,62 @@ async function buildRoads(geojson){
 }
 
 // ── Water (rivers, creeks) ─────────────────────────────────────────
-// Up ≠ N: polygons projected to world XZ, water sits below ground plane.
-// Polygons → hole in ground + flat water mesh at WATER_Y.
-// LineStrings → ribbon mesh at WATER_Y (centreline-mapped creeks/rivers).
-// Flood slider raises waterMesh.position.y toward 0 (street level).
+// Up ≠ N: polygons/ribbons projected to world XZ.
+// Water sits at WATER_BASE (just above ground) distinguished by colour + specularity.
+// polygonOffset ensures it always wins depth test against ground plane.
+// Flood slider raises waterMesh.position.y from 0 toward street/above-street level.
+// (Proper channel depression requires terrain relief — flat scene uses colour only.)
 
-const WATER_Y   = -3.5;   // base water surface elevation relative to street
-const RIVER_W   = 120;    // default LineString river ribbon half-width (m) — Red River
-const CREEK_W   = 8;      // narrow waterway ribbons
-let waterMesh   = null;
-let waterMatRef = null;
+const WATER_BASE = 0.10;   // metres above ground in normal conditions
+const RIVER_W    = 120;    // LineString river ribbon half-width (m) — Red River
+const CREEK_W    = 8;
+let waterMesh    = null;
+let waterMatRef  = null;
 
 async function buildWater(geojson){
   setProgress(90,'Building water…');await tick();
-  const MAX_R2 = 5500*5500;   // slightly wider than road clip
-  const polyPos=[], ribbonPos=[];
+  const MAX_R2 = 5500*5500;
+  const pos = [];
 
   // ── Polygon water bodies ─────────────────────────────────────────
-  // These become the primary water surface and cut holes in the ground.
-  const holeShapes=[];   // THREE.Shape holes for ground plane
-
   for(const feat of geojson.features){
-    if(feat.geometry.type!=='Polygon'&&feat.geometry.type!=='MultiPolygon') continue;
-    const polys = feat.geometry.type==='MultiPolygon'
-      ? feat.geometry.coordinates : [feat.geometry.coordinates];
+    const gt=feat.geometry.type;
+    if(gt!=='Polygon'&&gt!=='MultiPolygon') continue;
+    const polys=gt==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
 
     for(const rings of polys){
       const outer=rings[0];
       if(!outer||outer.length<4) continue;
-
-      // Clip check — use centroid
-      let cx=0,cz=0;
       const pts=outer.slice(0,-1);
-      for(const[lon,lat]of pts){
-        const[sx,sy]=project(lon,lat);cx+=sx;cz+=(-sy);
-      }
+
+      // Clip to scene radius
+      let cx=0,cz=0;
+      for(const[lon,lat]of pts){const[sx,sy]=project(lon,lat);cx+=sx;cz+=(-sy);}
       cx/=pts.length;cz/=pts.length;
       if(cx*cx+cz*cz>MAX_R2) continue;
 
-      // Flat water surface triangulation via ShapeGeometry
-      // Shape is in shapeXY; after rotateX(-π/2): shapeX→worldX, shapeY→-worldZ  (Up ≠ N)
+      // Build shape in shapeXY; mesh rotation.x will NOT be set (new mesh),
+      // so we rotateX the geometry ourselves to lie flat in world XZ.
       const shape=new THREE.Shape();
       const[ox,oy]=project(pts[0][0],pts[0][1]);
       shape.moveTo(ox,oy);
       for(let i=1;i<pts.length;i++){
         const[sx,sy]=project(pts[i][0],pts[i][1]);shape.lineTo(sx,sy);
       }
-      // Inner rings as holes
       for(let h=1;h<rings.length;h++){
-        const hole=new THREE.Path();
         const hp=rings[h].slice(0,-1);
+        const hole=new THREE.Path();
         const[hx0,hy0]=project(hp[0][0],hp[0][1]);hole.moveTo(hx0,hy0);
-        for(let i=1;i<hp.length;i++){
-          const[hx,hy]=project(hp[i][0],hp[i][1]);hole.lineTo(hx,hy);
-        }
+        for(let i=1;i<hp.length;i++){const[hx,hy]=project(hp[i][0],hp[i][1]);hole.lineTo(hx,hy);}
         shape.holes.push(hole);
       }
-
-      const sg=new THREE.ShapeGeometry(shape);
-      sg.rotateX(-Math.PI/2);
-      // Positions are now in world XZ at y=0; we'll lift to WATER_Y via mesh.position
-      const pa=sg.attributes.position.array;
-      for(let i=0;i<pa.length;i+=3) polyPos.push(pa[0+i],pa[1+i],pa[2+i]);
-      sg.dispose();
-
-      // Matching hole shape for ground plane
-      holeShapes.push({shape});
+      try{
+        const sg=new THREE.ShapeGeometry(shape);
+        sg.rotateX(-Math.PI/2);   // shapeXY → world XZ, y=0
+        const pa=sg.attributes.position.array;
+        for(let i=0;i<pa.length;i++) pos.push(pa[i]);
+        sg.dispose();
+      }catch(e){console.warn('Water polygon triangulation failed, skipping:',e.message);}
     }
   }
 
@@ -669,10 +674,9 @@ async function buildWater(geojson){
     const gt=feat.geometry.type;
     if(gt!=='LineString'&&gt!=='MultiLineString') continue;
     const lines=gt==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
-    // Guess width from name / waterway tag
     const name=(feat.properties.name||'').toLowerCase();
     const wway=feat.properties.waterway||'';
-    const w = wway==='stream'||name.includes('creek')||name.includes('drain') ? CREEK_W : RIVER_W;
+    const w=wway==='stream'||name.includes('creek')||name.includes('drain')?CREEK_W:RIVER_W;
 
     for(const line of lines){
       for(let i=0;i<line.length-1;i++){
@@ -683,7 +687,7 @@ async function buildWater(geojson){
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.5) continue;
         const px=(-dz/len)*(w*0.5),pz=(dx/len)*(w*0.5);
-        ribbonPos.push(
+        pos.push(
           x1+px,0,z1+pz, x2+px,0,z2+pz, x1-px,0,z1-pz,
           x2+px,0,z2+pz, x2-px,0,z2-pz, x1-px,0,z1-pz
         );
@@ -691,69 +695,35 @@ async function buildWater(geojson){
     }
   }
 
-  // ── Build water mesh ─────────────────────────────────────────────
-  const allPos=[...polyPos,...ribbonPos];
-  if(allPos.length===0) return;
-
+  if(pos.length===0) return;
   const wGeom=new THREE.BufferGeometry();
-  wGeom.setAttribute('position',new THREE.Float32BufferAttribute(allPos,3));
+  wGeom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   wGeom.computeVertexNormals();
 
   waterMatRef=new THREE.MeshPhongMaterial({
-    color:0x2A5F8A,
-    shininess:120,
-    specular:0x88BBDD,
-    transparent:true,
-    opacity:0.82,
-    side:THREE.FrontSide,
+    color:0x2A5F8A, shininess:140, specular:0x88CCEE,
+    transparent:true, opacity:0.84,
+    polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
   });
-
   waterMesh=new THREE.Mesh(wGeom,waterMatRef);
-  waterMesh.position.y=WATER_Y;
-  waterMesh.receiveShadow=true;
+  waterMesh.position.y=WATER_BASE;
   scene.add(waterMesh);
 
-  // ── Cut holes in ground plane ────────────────────────────────────
-  // Rebuild ground as ShapeGeometry with river polygons as holes.
-  if(holeShapes.length>0){
-    const groundShape=new THREE.Shape();
-    const S=6000;
-    groundShape.moveTo(-S,-S);groundShape.lineTo(S,-S);
-    groundShape.lineTo(S,S);groundShape.lineTo(-S,S);groundShape.lineTo(-S,-S);
-    for(const{shape}of holeShapes) groundShape.holes.push(
-      // Convert Shape exterior into a Path for the hole
-      (()=>{
-        const path=new THREE.Path();
-        const pts2=shape.getPoints(32);
-        path.moveTo(pts2[0].x,pts2[0].y);
-        for(let i=1;i<pts2.length;i++) path.lineTo(pts2[i].x,pts2[i].y);
-        return path;
-      })()
-    );
-    const newGroundGeom=new THREE.ShapeGeometry(groundShape,24);
-    newGroundGeom.rotateX(-Math.PI/2);
-    ground.geometry.dispose();
-    ground.geometry=newGroundGeom;
-  }
-
-  // ── Flood control ────────────────────────────────────────────────
-  // Show flood slider after water loads
+  // Flood slider
   const fc=document.getElementById('flood-control');
   if(fc) fc.style.display='flex';
   const fs=document.getElementById('flood-slider');
   if(fs) fs.addEventListener('input',()=>{
-    const t=parseFloat(fs.value);   // 0=normal, 1=1826 flood peak
-    // At t=1, water rises ~9m (historic 1826 peak above low water)
-    waterMesh.position.y=WATER_Y + t*12.5;
+    const t=parseFloat(fs.value);
+    waterMesh.position.y=WATER_BASE + t*12.5;   // 12.5m = approx 1826 peak above low water
     const lbl=document.getElementById('flood-label');
-    if(lbl){
-      const m=(waterMesh.position.y).toFixed(1);
-      lbl.textContent=t<0.01?'Normal':t>0.95?'1826 Peak':`+${(waterMesh.position.y-WATER_Y).toFixed(1)}m`;
-    }
-    // Tint water darker / more turbulent-looking at flood stage
-    const r=Math.round(0x2A+t*0x18),g=Math.round(0x5F-t*0x28),b=Math.round(0x8A-t*0x20);
-    waterMatRef.color.setRGB(r/255,g/255,b/255);
-    waterMatRef.opacity=0.82+t*0.12;
+    if(lbl) lbl.textContent=t<0.01?'Normal':t>0.95?'1826 Peak':`+${(t*12.5).toFixed(1)}m`;
+    waterMatRef.color.setRGB(
+      (0x2A+t*0x18)/255,
+      (0x5F-t*0x28)/255,
+      (0x8A-t*0x20)/255
+    );
+    waterMatRef.opacity=0.84+t*0.10;
   });
 }
 // Up ≠ N: facade plane faces along outward edge normal in world XZ.
@@ -949,9 +919,23 @@ function updateHover(){
 // ── FPS ────────────────────────────────────────────────────────────
 function enterFPS(){
   fpsMode=true;orbit.enabled=false;
-  camera.position.y=camera.position.y>80?EYE_H:Math.max(camera.position.y,EYE_H);
-  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-  yaw=Math.atan2(-fwd.x,-fwd.z);pitch=Math.asin(Math.max(-1,Math.min(1,fwd.y)));
+
+  if(camera.position.y > EYE_H + 0.5){
+    // Start physics fall — swoop toward orbit target XZ while dropping
+    falling=true;fallVelocity=0;
+    fallStartX=camera.position.x;fallStartY=camera.position.y;fallStartZ=camera.position.z;
+    fallTargetX=orbit.target.x;fallTargetZ=orbit.target.z;
+    // Face landing target, slight downward pitch
+    const dx=fallTargetX-camera.position.x,dz=fallTargetZ-camera.position.z;
+    if(Math.sqrt(dx*dx+dz*dz)>1){yaw=Math.atan2(-dx,-dz);}
+    else{const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);yaw=Math.atan2(-fwd.x,-fwd.z);}
+    pitch=0.15;  // look slightly down toward landing zone
+  }else{
+    camera.position.y=Math.max(camera.position.y,EYE_H);
+    const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+    yaw=Math.atan2(-fwd.x,-fwd.z);pitch=Math.asin(Math.max(-1,Math.min(1,fwd.y)));
+  }
+
   renderer.domElement.requestPointerLock();
   document.getElementById('crosshair').style.display='flex';
   document.getElementById('mode-badge').textContent='Walk Mode';
@@ -959,7 +943,8 @@ function enterFPS(){
   document.getElementById('info-panel').style.display='none';
 }
 function exitFPS(){
-  fpsMode=false;document.exitPointerLock();orbit.enabled=true;
+  fpsMode=false;falling=false;fallVelocity=0;
+  document.exitPointerLock();orbit.enabled=true;
   document.getElementById('crosshair').style.display='none';
   document.getElementById('mode-badge').textContent='Overview';
   document.getElementById('fps-hint').style.display='none';
@@ -1034,16 +1019,34 @@ function startLoop(){
       const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
       const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pitch);
       camera.quaternion.copy(qYaw).multiply(qPitch);
-      const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
-      const right=new THREE.Vector3(1,0,0).applyQuaternion(qYaw);
-      const spd=(sprinting?38:9)*dt;
-      if(keys['KeyW']||keys['ArrowUp'])camera.position.addScaledVector(fwd,spd);
-      if(keys['KeyS']||keys['ArrowDown'])camera.position.addScaledVector(fwd,-spd);
-      if(keys['KeyA']||keys['ArrowLeft'])camera.position.addScaledVector(right,-spd);
-      if(keys['KeyD']||keys['ArrowRight'])camera.position.addScaledVector(right,spd);
-      if(keys['KeyQ'])camera.position.y-=spd;
-      if(keys['KeyE'])camera.position.y+=spd;
-      camera.position.y=Math.max(EYE_H,camera.position.y);
+
+      if(falling){
+        // 9.8 m/s² gravity, terminal velocity 55 m/s — Up ≠ N: Y is always vertical
+        fallVelocity=Math.max(fallVelocity-9.8*dt,-55);
+        camera.position.y+=fallVelocity*dt;
+        // Swoop XZ: interpolate from start to target proportional to fall progress
+        const progress=1-Math.max(0,(camera.position.y-EYE_H)/(fallStartY-EYE_H));
+        camera.position.x=fallStartX+(fallTargetX-fallStartX)*progress;
+        camera.position.z=fallStartZ+(fallTargetZ-fallStartZ)*progress;
+        // Level out pitch as we approach ground
+        pitch=0.15*(1-progress);
+        if(camera.position.y<=EYE_H){
+          camera.position.y=EYE_H;
+          camera.position.x=fallTargetX;camera.position.z=fallTargetZ;
+          pitch=0;falling=false;
+        }
+      }else{
+        const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
+        const right=new THREE.Vector3(1,0,0).applyQuaternion(qYaw);
+        const spd=(sprinting?38:9)*dt;
+        if(keys['KeyW']||keys['ArrowUp'])camera.position.addScaledVector(fwd,spd);
+        if(keys['KeyS']||keys['ArrowDown'])camera.position.addScaledVector(fwd,-spd);
+        if(keys['KeyA']||keys['ArrowLeft'])camera.position.addScaledVector(right,-spd);
+        if(keys['KeyD']||keys['ArrowRight'])camera.position.addScaledVector(right,spd);
+        if(keys['KeyQ'])camera.position.y-=spd;
+        if(keys['KeyE'])camera.position.y+=spd;
+        camera.position.y=Math.max(EYE_H,camera.position.y);
+      }
     }else{orbit.update();updateHover();}
     renderer.render(scene,camera);
   }
@@ -1112,6 +1115,9 @@ function toggleWinter(){
 
   // Ground
   if(groundMatRef) groundMatRef.color.setHex(winterMode?0xEEEEF8:0x2D4A1A);
+  // Recompute sun arc for new season declination
+  const slider=document.getElementById('tod-slider');
+  if(slider) setTimeOfDay(parseFloat(slider.value));
 
   // Roads
   if(roadMatRef) roadMatRef.color.setHex(winterMode?0xE4E4F0:0x8B7450);
