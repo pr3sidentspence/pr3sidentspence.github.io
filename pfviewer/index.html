@@ -68,6 +68,7 @@ canvas{display:block;position:fixed;inset:0;}
     Also accepts <em>road network</em> GeoJSON and <em>facade images</em> (JPG/PNG)</p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; built 2026-05-16</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -466,9 +467,9 @@ async function buildCity(geojson){
           const[sx,sy]=project(outer[j][0],outer[j][1]);outerPts.push([sx,sy]);
         }
 
-        // Tar paper roof cap — inset by PARAPET_W so edge sits inside the parapet
-        // and is not visible from street level as a dark stripe on the wall face.
-        const capInset=insetRing(outerPts,PARAPET_W-0.04);
+        // Tar paper roof cap — inset well inside parapet so edge never shows from outside.
+        // Centroid-based inset is non-uniform on non-square polygons, so use generous margin.
+        const capInset=insetRing(outerPts,PARAPET_W+0.25);
         const capShape=new THREE.Shape();
         capShape.moveTo(capInset[0][0],capInset[0][1]);
         for(let j=1;j<capInset.length;j++)capShape.lineTo(capInset[j][0],capInset[j][1]);
@@ -530,7 +531,8 @@ async function buildCity(geojson){
     const pMerged=mergeGeometries(parapetGeos,false);
     for(const g of parapetGeos)g.dispose();
     const pMesh=new THREE.Mesh(pMerged,new THREE.MeshPhongMaterial({
-      color:MATS.brick.color,shininess:MATS.brick.shininess,specular:0x1a1a1a
+      color:MATS.brick.color,shininess:MATS.brick.shininess,specular:0x1a1a1a,
+      side:THREE.DoubleSide,
     }));
     pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
   }
@@ -851,10 +853,38 @@ async function loadFacade(imageFile){
   facadePending={tex,filename:imageFile.name};
 }
 
+// Returns wallH + ridgeH if the building is deeper than wide (gable faces the street),
+// otherwise returns wallH. Uses the front edge and polygon verts already computed.
+// Up ≠ N: all measurements in world XZ — no screen-up assumption.
+const FACADE_RIDGE_H = FLOOR_H * 0.64;
+
+function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, frontNz){
+  if(hasPara) return wallH + PARAPET_H;
+  if(!hasPeak) return wallH;
+  // Find longest edge perpendicular to the front face normal (= the depth direction)
+  // Perpendicular direction: rotate normal 90° → (−frontNz, frontNx) in XZ
+  const depNx=-frontNz, depNz=frontNx;
+  let maxDepth=0;
+  for(let i=0;i<verts.length;i++){
+    const a=verts[i],b=verts[(i+1)%verts.length];
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
+    // Score by alignment with depth direction
+    const align=Math.abs((dx/len)*depNx+(dz/len)*depNz);
+    if(align>0.7) maxDepth=Math.max(maxDepth,len);  // >45° aligned = depth edge
+  }
+  // Gable faces street only when lot is meaningfully deeper than wide (10% margin)
+  const gableFront = maxDepth > frontEdgeLen * 1.1;
+  return gableFront ? wallH + FACADE_RIDGE_H : wallH;
+}
+
 function autoPlaceFacade(tex,match,filename){
   const{feat,props}=match;
   const floors=props.floors??1;
-  const height=floors<=0.2?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+  const isPlatform=floors<=0.2;
+  const wallH=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+  // Facade spans ground → parapet top on brick buildings, ground → wall top otherwise
+  const hasPara=props.material==='brick'&&!isPlatform&&wallH>MIN_H+0.5;
+  const hasPeak=PEAKED_MATS.has(props.material??'unknown')&&!isPlatform&&floors>0.2&&floors<=2.5;
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
   const outer=polygons[0][0];if(!outer||outer.length<4)return;
   const verts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return{x:sx,z:-sy};});
@@ -871,6 +901,8 @@ function autoPlaceFacade(tex,match,filename){
     if(nx>bestScore){bestScore=nx;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
   }
   if(!bestA)return;
+  const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
+  const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
   applyFacade(tex,bestA,bestB,bestNx,bestNz,height);
   console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
 }
@@ -891,7 +923,10 @@ function placeFacadeOnBuilding(info,worldNormal){
   if(!facadePending||!info.feat)return;
   const feat=info.feat;
   const floors=info.floors??1;
-  const height=floors<=0.2?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+  const isPlatform=floors<=0.2;
+  const wallH=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+  const hasPara=info.material==='brick'&&!isPlatform&&wallH>MIN_H+0.5;
+  const hasPeak=PEAKED_MATS.has(info.material??'unknown')&&!isPlatform&&floors>0.2&&floors<=2.5;
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
   const outer=polygons[0][0];if(!outer||outer.length<4)return;
   const verts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return{x:sx,z:-sy};});
@@ -909,9 +944,12 @@ function placeFacadeOnBuilding(info,worldNormal){
     if(dot>bestDot){bestDot=dot;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
   }
   if(!bestA)return;
+  const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
+  const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
   applyFacade(facadePending.tex,bestA,bestB,bestNx,bestNz,height);
-  console.log(`Facade placed: "${facadePending.filename}" → "${info.name||'unnamed'}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
+  console.log(`Facade placed: "${facadePending.filename}" h:${height.toFixed(1)}m`);
   exitFacadePlacement();
+
 }
 
 function exitFacadePlacement(){
