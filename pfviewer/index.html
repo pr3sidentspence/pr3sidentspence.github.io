@@ -312,7 +312,8 @@ const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
 const wallMaterials  = {};   // matKey → MeshPhongMaterial — for bump map application
-const facadeMeshes   = new Map();  // normName(stem) → {mesh, mat} — for per-facade bumps
+const facadeMeshes = new Map();
+window.facadeMeshes = facadeMeshes;
 // Start position in world coords — computed once after project() is available
 const _slon=-97.13825789731372,_slat=49.89558496264514;
 const [_ssx,_ssy]=project(_slon,_slat);
