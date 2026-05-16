@@ -309,6 +309,10 @@ const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
+// Start position in world coords — computed once after project() is available
+const _slon=-97.13825789731372,_slat=49.89558496264514;
+const [_ssx,_ssy]=project(_slon,_slat);
+const startX=_ssx, startZ=-_ssy;
 
 // ── Building index for facade matching ─────────────────────────────
 // Keyed by normalised name and by string id.
@@ -685,7 +689,13 @@ async function buildWater(geojson){
     const lines=gt==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
     const name=(feat.properties.name||'').toLowerCase();
     const wway=feat.properties.waterway||'';
-    const w=wway==='stream'||name.includes('creek')||name.includes('drain')?CREEK_W:RIVER_W;
+    // Width based on named river — Up ≠ N has no bearing here, widths are geographic
+    let w;
+    if(name.includes('red'))              w=220;   // Red River ~200-250m near Winnipeg
+    else if(name.includes('assiniboine')) w=85;    // Assiniboine ~80-100m
+    else if(name.includes('seine'))       w=22;    // Seine ~15-30m
+    else if(wway==='stream'||name.includes('creek')||name.includes('drain')) w=CREEK_W;
+    else w=RIVER_W;
 
     for(const line of lines){
       for(let i=0;i<line.length-1;i++){
@@ -978,7 +988,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyF'&&!fpsMode)enterFPS();
   if(e.code==='Escape'&&fpsMode)exitFPS();
   if(e.code==='Escape'&&facadePending)exitFacadePlacement();
-  if(e.code==='KeyH'&&!fpsMode){camera.position.set(600,450,900);orbit.target.set(0,0,0);orbit.update();}
+  if(e.code==='KeyH'&&!fpsMode){camera.position.set(startX+700,380,startZ);orbit.target.set(startX,0,startZ);orbit.update();}
   initAudio();
 });
 window.addEventListener('keyup',e=>{keys[e.code]=false;sprinting=e.shiftKey;});
@@ -1232,16 +1242,15 @@ async function loadFiles(fileList){
   //   must equal geographic direction (sin az, 0, −cos az) → yaw = −az)
   const START_LON = -97.13825789731372, START_LAT = 49.89558496264514;
   const START_AZ  = 255 * Math.PI / 180;
-  const [ssx, ssy] = project(START_LON, START_LAT);
-  const startX = ssx, startZ = -ssy;
-  camera.position.set(startX, EYE_H, startZ);
-  yaw   = -START_AZ;
-  pitch = 0;
-  // Pre-orient camera so orbit view also faces correctly, and F-key FPS inherits it
-  const fwdX = Math.sin(START_AZ), fwdZ = -Math.cos(START_AZ);
-  camera.lookAt(startX + fwdX * 200, EYE_H, startZ + fwdZ * 200);
+  // startX, startZ already in module scope
+  // Orbit overview: elevated position due east of start point, looking west (+X → −X)
+  // Up ≠ N: east = +X, so camera east of target looks west along −X axis
+  camera.position.set(startX + 700, 380, startZ);
   orbit.target.set(startX, 0, startZ);
   orbit.update();
+  // Store FPS yaw/pitch for when F is pressed — faces azimuth 255° (WSW)
+  yaw   = -START_AZ;
+  pitch = 0;
 }
 
 function setProgress(pct,msg){
