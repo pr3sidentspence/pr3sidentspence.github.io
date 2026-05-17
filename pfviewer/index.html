@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 02:28 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 06:13 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -162,7 +162,7 @@ const MATS = {
   unknown:  { color: 0x808078, label: 'Unknown',        shininess: 5  },
   log:      { color: 0x807040, label: 'Log',            shininess: 4  },
 };
-const PEAKED_MATS = new Set(['wood','log','concrete','unknown']);
+const PEAKED_MATS = new Set(['wood','log','concrete','unknown','iron']);  // iron = grey-painted wood utility buildings
 const FLOOR_H    = 3.5;
 const PLATFORM_H = 0.6;
 const MIN_H      = 2.0;
@@ -191,7 +191,7 @@ camera.lookAt(0, 0, 0);
 let winterMode=false;
 const seasonalMats=[];   // {mat3, summerCol, winterCol}
 let groundMatRef=null, roadMatRef=null, cartTrackMesh=null;
-const SNOW_SKIP=new Set(['blue','iron']); // railways & greenhouses — no snow
+const SNOW_SKIP=new Set(['blue']); // railways/sidings only — no snow accumulation
 
 // ── Lighting ───────────────────────────────────────────────────────
 const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
@@ -377,6 +377,10 @@ function roofColor(hex){
 
 // ── Layer groups (year toggle) ─────────────────────────────────────
 const layerGroups = [];   // [{year, group, label}]
+// Road draw radius — updated when building layers load.
+// 1880 layers: sparse settlement, 1km radius.
+// 1906 layers: dense city, 3km radius. Both: use largest.
+let roadDrawRadius = 3000;   // default until building layers set it
 
 function detectYear(geojson){
   // Try source_file property of first named feature
@@ -413,6 +417,17 @@ async function buildCity(geojson){
   group.name=year;
   scene.add(group);
   layerGroups.push({year,group});
+  const yearRadius = year==='1880' ? 1000 : 3000;
+  roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
+
+  // Extract creek/fence features before building loop
+  const creekFeatures=geojson.features.filter(f=>{
+    const n=(f.properties.name||'').toLowerCase();
+    return n.includes("brown's creek")||n.includes("browns creek");
+  });
+  if(creekFeatures.length>0){
+    await buildWater({type:'FeatureCollection',features:creekFeatures});
+  }
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
@@ -458,7 +473,8 @@ async function buildCity(geojson){
       matCounts[mat]++;
       const areaOk=props.area_m2==null||props.area_m2>25;
       const isBridge=props.type==='bridge';
-      if(!isPlatform&&!isBridge&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
+      const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
+      if(!isPlatform&&!isBridge&&!isUpperFort&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const rg=buildRoofGeometry(ring,height+0.05);if(rg)roofGeos[mat].push(rg);
@@ -466,7 +482,7 @@ async function buildCity(geojson){
 
       // ── Brick flat-roof details ──────────────────────────────────
       // Only for brick, non-platform, tall enough to matter
-      if(mat==='brick'&&!isPlatform&&!isBridge&&height>MIN_H+0.5){
+      if(mat==='brick'&&!isPlatform&&!isBridge&&!isUpperFort&&height>MIN_H+0.5){
         // Collect outer ring in shapeXY
         const outerPts=[];
         for(let j=0;j<outer.length-1;j++){
@@ -562,7 +578,7 @@ async function buildCity(geojson){
 // ── Road surface ───────────────────────────────────────────────────
 async function buildRoads(geojson){
   setProgress(88,'Building road network…');await tick();
-  const MAX_R2=4000*4000,pos=[];
+  const R2=roadDrawRadius*roadDrawRadius, pos=[];
   for(const feat of geojson.features){
     const w=ROAD_W[feat.properties.st_type]??9;
     for(const line of feat.geometry.coordinates){
@@ -570,7 +586,7 @@ async function buildRoads(geojson){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
-        if(x1*x1+z1*z1>MAX_R2&&x2*x2+z2*z2>MAX_R2)continue;
+        if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
         const px=(-dz/len)*(w*0.5),pz=(dx/len)*(w*0.5),y=0.18;
@@ -595,7 +611,7 @@ async function buildRoads(geojson){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
-        if(x1*x1+z1*z1>4000*4000&&x2*x2+z2*z2>4000*4000)continue;
+        if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
         const px=(-dz/len),pz=(dx/len),y=0.20;
@@ -697,13 +713,15 @@ async function buildWater(geojson){
     const lines=gt==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
     const name=(feat.properties.name||'').toLowerCase();
     const wway=feat.properties.waterway||'';
-    // Width based on named river — Up ≠ N has no bearing here, widths are geographic
-    let w;
-    if(name.includes('red'))              w=220;   // Red River ~200-250m near Winnipeg
-    else if(name.includes('assiniboine')) w=85;    // Assiniboine ~80-100m
-    else if(name.includes('seine'))       w=22;    // Seine ~15-30m
-    else if(wway==='stream'||name.includes('creek')||name.includes('drain')) w=CREEK_W;
-    else w=RIVER_W;
+    const ftype=(feat.properties.type||feat.properties['@type']||'').toLowerCase();
+    // Brown's Creek is tagged as fence in McPhillips but is a real creek
+    const isBrownCreek=name.includes("brown's creek")||name.includes("browns creek");
+    const w = isBrownCreek ? 2.5
+            : name.includes('red')              ? 220
+            : name.includes('assiniboine')      ? 85
+            : name.includes('seine')            ? 22
+            : wway==='stream'||name.includes('creek')||name.includes('drain') ? CREEK_W
+            : RIVER_W;
 
     for(const line of lines){
       for(let i=0;i<line.length-1;i++){
@@ -1231,6 +1249,22 @@ function toggleWinter(){
 
   // Ground
   if(groundMatRef) groundMatRef.color.setHex(winterMode?0xEEEEF8:0x2D4A1A);
+
+  // River: frozen ice — bluer than snow, glossy like ice
+  if(waterMatRef){
+    if(winterMode){
+      waterMatRef.color.setHex(0xBBCCE8);      // blue-white ice, cooler than ground snow
+      waterMatRef.shininess=120;               // glossy
+      waterMatRef.specular.setHex(0x8899CC);   // blue-tinted specular highlight
+      waterMatRef.opacity=0.95;
+    }else{
+      waterMatRef.color.setHex(0x7A5230);      // restore turbid brown
+      waterMatRef.shininess=18;
+      waterMatRef.specular.setHex(0x3A2810);
+      waterMatRef.opacity=0.90;
+    }
+    waterMatRef.needsUpdate=true;
+  }
   // Recompute sun arc for new season declination
   const slider=document.getElementById('tod-slider');
   if(slider) setTimeOfDay(parseFloat(slider.value));
