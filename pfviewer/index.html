@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 01:33 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 01:39 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -671,11 +671,11 @@ async function buildWater(geojson){
       // Triangulate directly in world XZ using THREE.ShapeUtils (earcut wrapper).
       // Up ≠ N: worldX=shapeX, worldZ=−shapeY. Vertices placed straight into world XZ,
       // bypassing ShapeGeometry+rotateX which introduced winding ambiguity.
-      const wxVerts=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx,y:-sy};});
+      const wxVerts=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return new THREE.Vector2(sx,-sy);});
       const wxHoles=[];
       for(let h=1;h<rings.length;h++){
         const hp=rings[h].slice(0,-1);
-        wxHoles.push(hp.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx,y:-sy};}));
+        wxHoles.push(hp.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return new THREE.Vector2(sx,-sy);}));
       }
       try{
         const faces=THREE.ShapeUtils.triangulateShape(wxVerts,wxHoles);
