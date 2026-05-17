@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 01:39 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 02:28 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -1286,6 +1286,53 @@ const BUMP_REPEAT = {
   unknown:  [2,    2    ],
 };
 
+// Convert greyscale heightmap → normal map via Sobel filter.
+// Returns THREE.CanvasTexture with RGB normals (blue-dominant).
+// strength: Z-scale of height differences → perceived relief depth.
+async function heightmapToNormalMap(imageFile, strength=4.0){
+  return new Promise((resolve,reject)=>{
+    const url=URL.createObjectURL(imageFile);
+    const img=new Image();
+    img.onload=()=>{
+      URL.revokeObjectURL(url);
+      const W=img.naturalWidth,H=img.naturalHeight;
+      const src=document.createElement('canvas');
+      src.width=W;src.height=H;
+      src.getContext('2d').drawImage(img,0,0);
+      const sd=src.getContext('2d').getImageData(0,0,W,H).data;
+      const lum=(x,y)=>{
+        x=Math.max(0,Math.min(W-1,x));y=Math.max(0,Math.min(H-1,y));
+        const i=(y*W+x)*4;
+        return(0.299*sd[i]+0.587*sd[i+1]+0.114*sd[i+2])/255;
+      };
+      const dst=document.createElement('canvas');
+      dst.width=W;dst.height=H;
+      const ctx=dst.getContext('2d');
+      const od=ctx.createImageData(W,H),d=od.data;
+      for(let y=0;y<H;y++){
+        for(let x=0;x<W;x++){
+          const dX=(lum(x+1,y-1)+2*lum(x+1,y)+lum(x+1,y+1))
+                  -(lum(x-1,y-1)+2*lum(x-1,y)+lum(x-1,y+1));
+          const dY=(lum(x-1,y+1)+2*lum(x,y+1)+lum(x+1,y+1))
+                  -(lum(x-1,y-1)+2*lum(x,y-1)+lum(x+1,y-1));
+          const nx=-dX*strength,ny=-dY*strength,nz=1.0;
+          const len=Math.sqrt(nx*nx+ny*ny+nz*nz);
+          const i=(y*W+x)*4;
+          d[i  ]=Math.round((nx/len*0.5+0.5)*255);
+          d[i+1]=Math.round((ny/len*0.5+0.5)*255);
+          d[i+2]=Math.round((nz/len*0.5+0.5)*255);
+          d[i+3]=255;
+        }
+      }
+      ctx.putImageData(od,0,0);
+      const tex=new THREE.CanvasTexture(dst);
+      tex.colorSpace=THREE.NoColorSpace;
+      resolve(tex);
+    };
+    img.onerror=reject;img.src=url;
+  });
+}
+
 async function loadBumpTexture(imageFile){
   return new Promise((resolve,reject)=>{
     const url=URL.createObjectURL(imageFile);
@@ -1305,12 +1352,11 @@ async function applyWallBump(imageFile, matKey){
     tex.repeat.set(ru,rv);
     const mat=wallMaterials[matKey];
     if(mat){ mat.bumpMap=tex; mat.bumpScale=0.5; mat.needsUpdate=true; }
-    console.log(`Wall bump applied: ${imageFile.name} → ${matKey} (repeat ${ru}×${rv}/m)`);
+    console.log(`Wall bump applied: ${imageFile.name} → ${matKey} (repeat ${ru}x${rv}/m)`);
   }catch(e){ console.warn('Wall bump load failed:',e); }
 }
 
 async function applyFacadeBump(imageFile){
-  // Match by stem without the _bump suffix
   const rawStem=imageFile.name.replace(/\.[^.]+$/,'').replace(/_?bump$/i,'').replace(/^bump_?/i,'');
   const stem=normName(rawStem);
   const entry=facadeMeshes.get(stem);
@@ -1320,16 +1366,17 @@ async function applyFacadeBump(imageFile){
     return;
   }
   try{
-    const tex=await loadBumpTexture(imageFile);
-    // Facade UVs are 0→1 across width and height — no repeat needed
-    entry.mat.bumpMap=tex;
-    entry.mat.bumpScale=8.0;
+    const tex=await heightmapToNormalMap(imageFile, 4.0);
+    entry.mat.normalMap=tex;
+    entry.mat.normalScale=new THREE.Vector2(1.5,1.5);
     entry.mat.specular=new THREE.Color(0x444444);
     entry.mat.shininess=40;
+    entry.mat.bumpMap=null;
     entry.mat.needsUpdate=true;
-    console.log(`Facade bump applied: "${imageFile.name}" → matched "${stem}"`);
-  }catch(e){ console.warn('Facade bump load failed:',e); }
+    console.log(`Facade normal map applied: "${imageFile.name}" → matched "${stem}"`);
+  }catch(e){ console.warn('Facade normal map failed:',e); }
 }
+
 
 function isBumpFile(f){
   const s=normName(f.name.replace(/\.[^.]+$/,''));
