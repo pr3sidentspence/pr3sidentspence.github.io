@@ -683,7 +683,12 @@ async function buildWater(geojson){
         const[x1,y1]=shapeXY[i],[x2,y2]=shapeXY[(i+1)%shapeXY.length];
         sa2+=x1*y2-x2*y1;
       }
-      const orderedPts = sa2 < 0 ? pts.slice().reverse() : pts;
+      // THREE.ShapeGeometry internally reverses CW → CCW before earcut.
+      // So we must NOT pre-reverse CW polygons — Three.js handles them correctly.
+      // CCW polygons (sa2 > 0) need reversing so Three.js sees them as CW and
+      // re-reverses to CCW, giving a consistent fill direction.
+      // Net result: all polygons arrive at earcut as CCW = interior filled = water body shown.
+      const orderedPts = sa2 > 0 ? pts.slice().reverse() : pts;
 
       // Build THREE.Shape in shapeXY (CCW guaranteed)
       const shape=new THREE.Shape();
@@ -1343,7 +1348,9 @@ async function applyFacadeBump(imageFile){
     const tex=await loadBumpTexture(imageFile);
     // Facade UVs are 0→1 across width and height — no repeat needed
     entry.mat.bumpMap=tex;
-    entry.mat.bumpScale=1.2;   // needs to be high — facade is a flat plane, effect is subtle
+    entry.mat.bumpScale=3.0;
+    entry.mat.specular=new THREE.Color(0x444444);
+    entry.mat.shininess=40;
     entry.mat.needsUpdate=true;
     console.log(`Facade bump applied: "${imageFile.name}" → matched "${stem}"`);
   }catch(e){ console.warn('Facade bump load failed:',e); }
