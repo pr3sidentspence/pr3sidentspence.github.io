@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 01:27 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-17 01:33 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -668,49 +668,24 @@ async function buildWater(geojson){
       if(mxX-mnX>25000||mxZ-mnZ>25000)continue;  // reject truly global polygons only
       if(pts.length>1200)continue;  // earcut limit — above this triangulation degenerates
 
-      // GeoJSON spec says CCW for outer rings, but OSM data often violates this.
-      // THREE.Shape requires CCW — compute signed area and reverse if CW.
-      // Signed area: positive = CCW in shapeXY (which is what we want).
-      let signedArea=0;
-      for(let i=0;i<wpts.length;i++){
-        const[x1,z1]=wpts[i],[x2,z2]=wpts[(i+1)%wpts.length];
-        signedArea+=x1*z1-x2*z1; // use shapeXY not worldXZ for this check
-      }
-      // Recompute properly in shapeXY
-      const shapeXY=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,sy];});
-      let sa2=0;
-      for(let i=0;i<shapeXY.length;i++){
-        const[x1,y1]=shapeXY[i],[x2,y2]=shapeXY[(i+1)%shapeXY.length];
-        sa2+=x1*y2-x2*y1;
-      }
-      // THREE.ShapeGeometry internally reverses CW → CCW before earcut.
-      // So we must NOT pre-reverse CW polygons — Three.js handles them correctly.
-      // CCW polygons (sa2 > 0) need reversing so Three.js sees them as CW and
-      // re-reverses to CCW, giving a consistent fill direction.
-      // Net result: all polygons arrive at earcut as CCW = interior filled = water body shown.
-      const orderedPts = sa2 > 0 ? pts.slice().reverse() : pts;
-
-      // Build THREE.Shape in shapeXY (CCW guaranteed)
-      const shape=new THREE.Shape();
-      const[ox,oy]=project(orderedPts[0][0],orderedPts[0][1]);
-      shape.moveTo(ox,oy);
-      for(let i=1;i<orderedPts.length;i++){
-        const[sx,sy]=project(orderedPts[i][0],orderedPts[i][1]);shape.lineTo(sx,sy);
-      }
+      // Triangulate directly in world XZ using THREE.ShapeUtils (earcut wrapper).
+      // Up ≠ N: worldX=shapeX, worldZ=−shapeY. Vertices placed straight into world XZ,
+      // bypassing ShapeGeometry+rotateX which introduced winding ambiguity.
+      const wxVerts=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx,y:-sy};});
+      const wxHoles=[];
       for(let h=1;h<rings.length;h++){
         const hp=rings[h].slice(0,-1);
-        const hole=new THREE.Path();
-        const[hx0,hy0]=project(hp[0][0],hp[0][1]);hole.moveTo(hx0,hy0);
-        for(let i=1;i<hp.length;i++){const[hx,hy]=project(hp[i][0],hp[i][1]);hole.lineTo(hx,hy);}
-        shape.holes.push(hole);
+        wxHoles.push(hp.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx,y:-sy};}));
       }
       try{
-        const sg=new THREE.ShapeGeometry(shape);
-        sg.rotateX(-Math.PI/2);   // shapeXY → world XZ, y=0
-        const pa=sg.attributes.position.array;
-        for(let i=0;i<pa.length;i++) pos.push(pa[i]);
-        sg.dispose();
-      }catch(e){console.warn('Water polygon triangulation failed:',e.message);}
+        const faces=THREE.ShapeUtils.triangulateShape(wxVerts,wxHoles);
+        for(const[a,b,c]of faces){
+          pos.push(wxVerts[a].x,0,wxVerts[a].y);
+          pos.push(wxVerts[b].x,0,wxVerts[b].y);
+          pos.push(wxVerts[c].x,0,wxVerts[c].y);
+        }
+        console.log(`Water poly: ${faces.length} tris, ${pts.length} verts`);
+      }catch(e){console.warn('Water triangulation failed:',e.message);}
     }
   }
   console.log(`buildWater: ${pos.length/3} verts from polygons before ribbons`);
@@ -1348,7 +1323,7 @@ async function applyFacadeBump(imageFile){
     const tex=await loadBumpTexture(imageFile);
     // Facade UVs are 0→1 across width and height — no repeat needed
     entry.mat.bumpMap=tex;
-    entry.mat.bumpScale=3.0;
+    entry.mat.bumpScale=8.0;
     entry.mat.specular=new THREE.Color(0x444444);
     entry.mat.shininess=40;
     entry.mat.needsUpdate=true;
