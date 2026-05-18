@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 17:36 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 17:55 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-18 17:36 UTC</div>
+  <div id="build-ts">v4 · 2026-05-18 17:55 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -925,7 +925,6 @@ async function autoPlaceFacade(tex,match,filename){
   const floors=props.floors??1;
   const isPlatform=floors<=0.2;
   const wallH=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
-  // Facade spans ground → parapet top on brick buildings, ground → wall top otherwise
   const hasPara=props.material==='brick'&&!isPlatform&&wallH>MIN_H+0.5;
   const hasPeak=PEAKED_MATS.has(props.material??'unknown')&&!isPlatform&&floors>0.2&&floors<=2.5;
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
@@ -933,84 +932,83 @@ async function autoPlaceFacade(tex,match,filename){
   const verts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return{x:sx,z:-sy};});
   const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
   const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
-  let bestScore=-Infinity,bestA=null,bestB=null,bestNx=1,bestNz=0;
+
+  // Find primary front normal (most outward-eastward edge)
+  let bestScore=-Infinity,bestNx=1,bestNz=0;
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
-    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);
-    if(len<0.3)continue;
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);if(len<0.3)continue;
     let nx=-dz/len,nz=dx/len;
     const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
     if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
-    if(nx>bestScore){bestScore=nx;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
+    if(nx>bestScore){bestScore=nx;bestNx=nx;bestNz=nz;}
   }
-  if(!bestA)return;
-  const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
-  const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  await applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(filename.replace(/\.[^.]+$/,'')),props.material);
-  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
+
+  // Collect ALL edges within 60° of primary normal (dot > 0.5)
+  const frontEdges=[];
+  for(let i=0;i<verts.length;i++){
+    const a=verts[i],b=verts[(i+1)%verts.length];
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);if(len<0.3)continue;
+    let nx=-dz/len,nz=dx/len;
+    const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
+    if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
+    if(nx*bestNx+nz*bestNz>0.5) frontEdges.push({a,b,nx,nz,len,midX,midZ});
+  }
+
+  // Street axis: perpendicular to primary normal (left-to-right along frontage)
+  // Up ≠ N: street axis in world XZ = (−bestNz, bestNx)
+  const sax=-bestNz,saz=bestNx;
+
+  // Sort edges left-to-right along street axis, project midpoints
+  frontEdges.forEach(e=>{ e.streetPos=(e.midX*sax+e.midZ*saz); });
+  frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
+
+  // Calculate UV slices: each edge gets image slice proportional to its length
+  const totalWidth=frontEdges.reduce((s,e)=>s+e.len,0);
+  const longestEdge=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
+  const height=facadeHeight(wallH,hasPara,hasPeak,longestEdge.len,verts,bestNx,bestNz);
+  const stemKey=normName(filename.replace(/\.[^.]+$/,''));
+
+  let uCursor=0;
+  for(const e of frontEdges){
+    const uMin=uCursor/totalWidth, uMax=(uCursor+e.len)/totalWidth;
+    await applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,stemKey,props.material);
+    uCursor+=e.len;
+  }
+  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | ${frontEdges.length} panels, ${totalWidth.toFixed(1)}m total`);
 }
 
-async function applyFacade(tex,edgeA,edgeB,nx,nz,height,stemKey,mat){
-  // Import DecalGeometry on first use
-  if(!window._DecalGeometry){
-    const mod=await import('three/addons/geometries/DecalGeometry.js');
-    window._DecalGeometry=mod.DecalGeometry;
-  }
-  const DecalGeometry=window._DecalGeometry;
-
+// Apply one panel of a facade image to a single building edge.
+// uMin/uMax define the horizontal UV slice of the texture for this panel.
+// Up ≠ N: rotation around world Y only — height axis stays vertical throughout.
+function applyFacadePanel(tex,edgeA,edgeB,nx,nz,height,uMin,uMax,stemKey,mat){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
 
-  // Projection depth — enough to penetrate all front-facing faces of complex footprints
-  const depth=Math.max(edgeLen*0.5, 20);
-
-  // Decal position: midpoint of front edge, slightly in front of the wall
-  // Orientation: the decal projects INWARD (along −normal into the wall)
-  // Up ≠ N: position in world XZ, Y=height/2
-  const pos=new THREE.Vector3(midX+nx*0.1, height/2, midZ+nz*0.1);
-
-  // Euler: rotate so decal projector faces along the inward normal (−nx, 0, −nz)
-  // rotation.y = atan2(−nx, −nz) points the projector into the wall
-  const euler=new THREE.Euler(0, Math.atan2(-nx,-nz), 0);
-
-  // Size: (width=edgeLen, height, depth of projection)
-  const size=new THREE.Vector3(edgeLen, height, depth);
-
-  // Target: the wall mesh for this building's material
-  const targetMesh=wallMeshes[mat??'brick']||wallMeshes['brick']||buildingMeshes[0];
-  if(!targetMesh){ console.warn('No wall mesh for decal projection'); return; }
-
-  let decalGeom;
-  try{
-    decalGeom=new DecalGeometry(targetMesh,pos,euler,size);
-  }catch(e){
-    console.warn('DecalGeometry failed, falling back to plane:',e.message);
-    // Fallback: flat plane
-    const fallbackMat=new THREE.MeshPhongMaterial({
-      map:tex,transparent:true,alphaTest:0.1,side:THREE.FrontSide,shininess:8,specular:0x222222
-    });
-    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(edgeLen,height),fallbackMat);
-    mesh.position.set(midX+nx*0.15,height/2,midZ+nz*0.15);
-    mesh.rotation.y=Math.atan2(nx,nz);
-    mesh.receiveShadow=true;
-    scene.add(mesh);
-    if(stemKey)facadeMeshes.set(stemKey,{mesh,mat:fallbackMat});
-    return;
-  }
+  const geo=new THREE.PlaneGeometry(edgeLen,height);
+  // Remap UVs to show only [uMin,uMax] slice of the image horizontally.
+  // PlaneGeometry UV order: [0]=(0,1) [1]=(1,1) [2]=(0,0) [3]=(1,0)
+  const uv=geo.attributes.uv;
+  uv.setXY(0, uMin, 1);  // top-left
+  uv.setXY(1, uMax, 1);  // top-right
+  uv.setXY(2, uMin, 0);  // bottom-left
+  uv.setXY(3, uMax, 0);  // bottom-right
+  uv.needsUpdate=true;
 
   const facadeMat=new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
-    depthBias:1, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:0x222222,
   });
-  const mesh=new THREE.Mesh(decalGeom,facadeMat);
+  const mesh=new THREE.Mesh(geo,facadeMat);
+  mesh.position.set(midX+nx*0.15, height/2, midZ+nz*0.15);
+  mesh.rotation.y=Math.atan2(nx,nz);
   mesh.receiveShadow=true;
   scene.add(mesh);
-  if(stemKey)facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
-  console.log(`Decal facade: ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m × ${depth.toFixed(1)}m deep`);
+  // Store first panel's mesh for bump map targeting
+  if(stemKey&&!facadeMeshes.has(stemKey)) facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
 }
-
 async function placeFacadeOnBuilding(info,worldNormal){
   if(!facadePending||!info.feat)return;
   const feat=info.feat;
@@ -1036,13 +1034,34 @@ async function placeFacadeOnBuilding(info,worldNormal){
     if(dot>bestDot){bestDot=dot;bestA=a;bestB=b;bestNx=nx;bestNz=nz;}
   }
   if(!bestA)return;
-  const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
+
+  // Collect all front-facing edges within 60° of primary normal
+  const frontEdges=[];
+  for(let i=0;i<verts.length;i++){
+    const a=verts[i],b=verts[(i+1)%verts.length];
+    const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);if(len<0.3)continue;
+    let nx=-dz/len,nz=dx/len;
+    const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
+    if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
+    if(nx*bestNx+nz*bestNz>0.5) frontEdges.push({a,b,nx,nz,len,midX,midZ});
+  }
+  const sax=-bestNz,saz=bestNx;
+  frontEdges.forEach(e=>{e.streetPos=e.midX*sax+e.midZ*saz;});
+  frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
+  const totalWidth=frontEdges.reduce((s,e)=>s+e.len,0);
+  const longestEdge=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
+  const frontLen=longestEdge.len;
   const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  // Process raw canvas with this building's wall colour now that we know it
   const wallCol=MATS[info.material??'unknown']?.color??0x808078;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
-  await applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(facadePending.filename.replace(/\.[^.]+$/,'')),info.material);
-  console.log(`Facade placed: "${facadePending.filename}" h:${height.toFixed(1)}m`);
+  const stemKey=normName(facadePending.filename.replace(/\.[^.]+$/,''));
+  let uCursor=0;
+  for(const e of frontEdges){
+    const uMin=uCursor/totalWidth, uMax=(uCursor+e.len)/totalWidth;
+    applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,stemKey,info.material);
+    uCursor+=e.len;
+  }
+  console.log(`Facade placed: "${facadePending.filename}" | ${frontEdges.length} panels, ${totalWidth.toFixed(1)}m`);
   exitFacadePlacement();
 
 }
