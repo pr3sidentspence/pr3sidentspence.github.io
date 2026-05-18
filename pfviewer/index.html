@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 03:31 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 03:54 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -375,7 +375,15 @@ function roofColor(hex){
   return(Math.floor(r*0.55+avg*0.12)<<16)|(Math.floor(g*0.55+avg*0.12)<<8)|Math.floor(b*0.55+avg*0.12);
 }
 
-// ── Layer groups (year toggle) ─────────────────────────────────────
+// ── Auto-load config ───────────────────────────────────────────────
+// Place these files in ./data/ alongside the HTML on any web server.
+// Files that 404 are silently skipped — drop zone remains available.
+const AUTOLOAD = [
+  './data/mcphillips_1880.geojson',
+  './data/goad_1906.geojson',
+  './data/wpg_rivers.geojson',
+  './data/wpg_roads.geojson',
+];
 const layerGroups = [];   // [{year, group, label}]
 // Road draw radius — updated when building layers load.
 // 1880 layers: sparse settlement, 1km radius.
@@ -1495,6 +1503,26 @@ async function loadFiles(fileList){
   updateStatBar();startLoop();enableLiveDrops();
   document.getElementById('winter-btn').style.display='block';
   window.toggleWinter=toggleWinter;
+
+  // ── Auto-load from ./data/ if running on a web server ─────────────
+  // Silently skips any file that 404s — drop zone stays available for manual loading.
+  (async()=>{
+    for(const url of AUTOLOAD){
+      try{
+        const res=await fetch(url);
+        if(!res.ok) continue;
+        const gj=await res.json();
+        if(!gj.features?.length) continue;
+        const kind=sniffGeoJSON(gj);
+        showToast(`Loading ${url.split('/').pop()}…`);
+        if(kind==='water')   { await buildWater(gj); }
+        else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n;buildLayerBar(); }
+        else if(kind==='road')   { await buildRoads(gj);roadsLoaded=true; }
+        updateStatBar();
+        showToast('');
+      }catch(e){ /* network error or parse failure — skip */ }
+    }
+  })();
 
   // ── Start position ────────────────────────────────────────────────
   // Up ≠ N: convert geographic start to world XZ, azimuth to FPS yaw.
