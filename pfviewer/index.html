@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 03:54 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 04:02 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -1504,26 +1504,6 @@ async function loadFiles(fileList){
   document.getElementById('winter-btn').style.display='block';
   window.toggleWinter=toggleWinter;
 
-  // ── Auto-load from ./data/ if running on a web server ─────────────
-  // Silently skips any file that 404s — drop zone stays available for manual loading.
-  (async()=>{
-    for(const url of AUTOLOAD){
-      try{
-        const res=await fetch(url);
-        if(!res.ok) continue;
-        const gj=await res.json();
-        if(!gj.features?.length) continue;
-        const kind=sniffGeoJSON(gj);
-        showToast(`Loading ${url.split('/').pop()}…`);
-        if(kind==='water')   { await buildWater(gj); }
-        else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n;buildLayerBar(); }
-        else if(kind==='road')   { await buildRoads(gj);roadsLoaded=true; }
-        updateStatBar();
-        showToast('');
-      }catch(e){ /* network error or parse failure — skip */ }
-    }
-  })();
-
   // ── Start position ────────────────────────────────────────────────
   // Up ≠ N: convert geographic start to world XZ, azimuth to FPS yaw.
   // yaw = −azimuth_rad (derived: fwd = Ry(yaw)·(0,0,−1) = (−sin y, 0, −cos y)
@@ -1555,6 +1535,45 @@ dropBox.addEventListener('drop',e=>{e.preventDefault();dropBox.classList.remove(
 fileInput.addEventListener('change',e=>loadFiles([...e.target.files]));
 window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
 renderer.render(scene,camera);
+
+// ── Auto-load from ./data/ on startup ─────────────────────────────
+// Runs immediately. Silently skips 404s (file:// or missing files).
+// If any files found: hides drop zone, loads, starts scene.
+// If nothing found: drop zone stays for manual loading.
+(async()=>{
+  const found=[];
+  for(const url of AUTOLOAD){
+    try{
+      const res=await fetch(url);
+      if(!res.ok) continue;
+      const gj=await res.json();
+      if(gj.features?.length) found.push({url,gj});
+    }catch(e){}
+  }
+  if(found.length===0) return;
+
+  document.getElementById('drop-zone').style.display='none';
+  document.getElementById('loading').style.display='flex';
+
+  for(const{url,gj}of found){
+    setProgress(10,`Loading ${url.split('/').pop()}…`);await tick();
+    const kind=sniffGeoJSON(gj);
+    if(kind==='water')        await buildWater(gj);
+    else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n; }
+    else if(kind==='road')   { await buildRoads(gj);roadsLoaded=true; }
+  }
+
+  setProgress(100,'Done.');await tick();
+  document.getElementById('loading').style.display='none';
+  document.getElementById('hud').style.display='block';
+  document.getElementById('tod-control').style.display='flex';
+  document.getElementById('winter-btn').style.display='block';
+  document.getElementById('stat-bar').style.display='block';
+  document.getElementById('tod-slider')
+    .addEventListener('input',e=>setTimeOfDay(parseFloat(e.target.value)));
+  window.toggleWinter=toggleWinter;
+  buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
+})();
 </script>
 </body>
 </html>
