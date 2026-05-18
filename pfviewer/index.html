@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 17:55 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 19:26 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-18 17:55 UTC</div>
+  <div id="build-ts">v4 · 2026-05-18 19:26 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -158,7 +158,7 @@ const MATS = {
   brick:    { color: 0xC0604A, label: 'Brick',          shininess: 20 },
   wood:     { color: 0xCFA840, label: 'Wood / Frame',   shininess: 6  },
   iron:     { color: 0x687888, label: 'Iron / Metal',   shininess: 45 },
-  stone:    { color: 0x6888A8, label: 'Stone',          shininess: 28 },
+  stone:    { color: 0xE8DFC8, label: 'Stone',          shininess: 55 },
   blue:     { color: 0x3A6898, label: 'Railway Siding', shininess: 35 },
   concrete: { color: 0x989890, label: 'Concrete',       shininess: 18 },
   unknown:  { color: 0x808078, label: 'Unknown',        shininess: 5  },
@@ -442,7 +442,7 @@ async function buildCity(geojson){
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
-  const parapetGeos=[],roofCapGeos=[];
+  const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[];
 
   for(let i=0;i<total;i++){
     const feat=features[i],props=feat.properties;
@@ -493,29 +493,33 @@ async function buildCity(geojson){
 
       // ── Brick flat-roof details ──────────────────────────────────
       // Only for brick, non-platform, tall enough to matter
-      if(mat==='brick'&&!isPlatform&&!isBridge&&!isUpperFort&&height>MIN_H+0.5){
+      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&height>MIN_H+0.5;
+      if(hasParapet){
+        // Stone parapets are more substantial than brick
+        const pW = mat==='stone' ? 0.55 : PARAPET_W;   // thickness
+        const pH = mat==='stone' ? 0.80 : PARAPET_H;   // height above roof
+        const capCol = mat==='stone' ? 0x505050 : 0x38342E;  // stone gets dark grey gravel cap
+
         // Collect outer ring in shapeXY
         const outerPts=[];
         for(let j=0;j<outer.length-1;j++){
           const[sx,sy]=project(outer[j][0],outer[j][1]);outerPts.push([sx,sy]);
         }
 
-        // Tar paper roof cap — inset well inside parapet so edge never shows from outside.
-        // Centroid-based inset is non-uniform on non-square polygons, so use generous margin.
-        const capInset=insetRing(outerPts,PARAPET_W+0.25);
+        // Tar/gravel roof cap — inset inside parapet
+        const capInset=insetRing(outerPts,pW+0.25);
         const capShape=new THREE.Shape();
         capShape.moveTo(capInset[0][0],capInset[0][1]);
         for(let j=1;j<capInset.length;j++)capShape.lineTo(capInset[j][0],capInset[j][1]);
         const capGeom=new THREE.ShapeGeometry(capShape);
         capGeom.rotateX(-Math.PI/2);
-        capGeom.translate(0,height+0.02,0);  // sit just above wall top
+        capGeom.translate(0,height+0.02,0);
+        capGeom.userData={capCol};   // store colour for merge-time material selection
         roofCapGeos.push(capGeom);
 
-        // Parapet: outer ring extruded, inset ring as hole, then rotated and lifted
-        const inset=insetRing(outerPts,PARAPET_W);
-        // Only build parapet if inset didn't collapse (building wide enough)
+        // Parapet ring
+        const inset=insetRing(outerPts,pW);
         const insetCx=inset.reduce((s,p)=>s+p[0],0)/inset.length;
-        const outerCx=outerPts.reduce((s,p)=>s+p[0],0)/outerPts.length;
         const stillValid=inset.some(([x,y])=>Math.abs(x-insetCx)>0.05||Math.abs(y-insetCx)>0.05);
         if(stillValid){
           const pShape=new THREE.Shape();
@@ -526,10 +530,10 @@ async function buildCity(geojson){
           for(let j=1;j<inset.length;j++)pHole.lineTo(inset[j][0],inset[j][1]);
           pShape.holes.push(pHole);
           try{
-            const pGeom=new THREE.ExtrudeGeometry(pShape,{depth:PARAPET_H,bevelEnabled:false});
+            const pGeom=new THREE.ExtrudeGeometry(pShape,{depth:pH,bevelEnabled:false});
             pGeom.rotateX(-Math.PI/2);
             pGeom.translate(0,height,0);
-            parapetGeos.push(pGeom);
+            (mat==='stone'?stoneParapetGeos:parapetGeos).push(pGeom);
           }catch(e){/* skip degenerate */}
         }
       }
@@ -569,8 +573,16 @@ async function buildCity(geojson){
     const pMesh=new THREE.Mesh(pMerged,new THREE.MeshPhongMaterial({
       color:MATS.brick.color,shininess:MATS.brick.shininess,specular:0x1a1a1a,
       side:THREE.DoubleSide,
-    }));
-    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
+    }));    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
+  }
+  if(stoneParapetGeos.length>0){
+    setProgress(74,'Merging stone parapets…');await tick();
+    const spMerged=mergeGeometries(stoneParapetGeos,false);
+    for(const g of stoneParapetGeos)g.dispose();
+    const spMesh=new THREE.Mesh(spMerged,new THREE.MeshPhongMaterial({
+      color:MATS.stone.color,shininess:MATS.stone.shininess,specular:0xC8B890,
+      side:THREE.DoubleSide,
+    }));    spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
   }
 
   // ── Tar paper / gravel flat roof cap ──────────────────────────────
@@ -901,7 +913,7 @@ async function loadFacade(imageFile){
 const FACADE_RIDGE_H = FLOOR_H * 0.64;
 
 function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, frontNz){
-  if(hasPara) return wallH + PARAPET_H;
+  if(hasPara) return wallH + (hasPara==='stone' ? 0.80 : PARAPET_H);
   if(!hasPeak) return wallH;
   // Depth edges run PARALLEL to the front normal (they go away from the street).
   // Do NOT rotate 90° — that would find edges along the front face instead.
@@ -925,7 +937,7 @@ async function autoPlaceFacade(tex,match,filename){
   const floors=props.floors??1;
   const isPlatform=floors<=0.2;
   const wallH=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
-  const hasPara=props.material==='brick'&&!isPlatform&&wallH>MIN_H+0.5;
+  const hasPara=(props.material==='brick'||props.material==='stone')&&!isPlatform&&wallH>MIN_H+0.5?props.material:false;
   const hasPeak=PEAKED_MATS.has(props.material??'unknown')&&!isPlatform&&floors>0.2&&floors<=2.5;
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
   const outer=polygons[0][0];if(!outer||outer.length<4)return;
@@ -969,34 +981,41 @@ async function autoPlaceFacade(tex,match,filename){
   const height=facadeHeight(wallH,hasPara,hasPeak,longestEdge.len,verts,bestNx,bestNz);
   const stemKey=normName(filename.replace(/\.[^.]+$/,''));
 
+  // Shared material across all panels — bump/normal maps applied later affect all panels
+  const sharedMat=new THREE.MeshPhongMaterial({
+    map:tex, transparent:true, alphaTest:0.1,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+    side:THREE.FrontSide, shininess:8, specular:0x222222,
+  });
   let uCursor=0;
+  let firstMesh=null;
   for(const e of frontEdges){
     const uMin=uCursor/totalWidth, uMax=(uCursor+e.len)/totalWidth;
-    await applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,stemKey,props.material);
+    const m=applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,null,props.material,sharedMat);
+    if(!firstMesh)firstMesh=m;
     uCursor+=e.len;
   }
+  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
   console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | ${frontEdges.length} panels, ${totalWidth.toFixed(1)}m total`);
 }
 
 // Apply one panel of a facade image to a single building edge.
 // uMin/uMax define the horizontal UV slice of the texture for this panel.
 // Up ≠ N: rotation around world Y only — height axis stays vertical throughout.
-function applyFacadePanel(tex,edgeA,edgeB,nx,nz,height,uMin,uMax,stemKey,mat){
+function applyFacadePanel(tex,edgeA,edgeB,nx,nz,height,uMin,uMax,stemKey,mat,sharedMat){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
 
   const geo=new THREE.PlaneGeometry(edgeLen,height);
-  // Remap UVs to show only [uMin,uMax] slice of the image horizontally.
-  // PlaneGeometry UV order: [0]=(0,1) [1]=(1,1) [2]=(0,0) [3]=(1,0)
   const uv=geo.attributes.uv;
-  uv.setXY(0, uMin, 1);  // top-left
-  uv.setXY(1, uMax, 1);  // top-right
-  uv.setXY(2, uMin, 0);  // bottom-left
-  uv.setXY(3, uMax, 0);  // bottom-right
+  uv.setXY(0, uMin, 1);
+  uv.setXY(1, uMax, 1);
+  uv.setXY(2, uMin, 0);
+  uv.setXY(3, uMax, 0);
   uv.needsUpdate=true;
 
-  const facadeMat=new THREE.MeshPhongMaterial({
+  const facadeMat=sharedMat||new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:0x222222,
@@ -1006,8 +1025,8 @@ function applyFacadePanel(tex,edgeA,edgeB,nx,nz,height,uMin,uMax,stemKey,mat){
   mesh.rotation.y=Math.atan2(nx,nz);
   mesh.receiveShadow=true;
   scene.add(mesh);
-  // Store first panel's mesh for bump map targeting
   if(stemKey&&!facadeMeshes.has(stemKey)) facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
+  return mesh;
 }
 async function placeFacadeOnBuilding(info,worldNormal){
   if(!facadePending||!info.feat)return;
@@ -1015,7 +1034,7 @@ async function placeFacadeOnBuilding(info,worldNormal){
   const floors=info.floors??1;
   const isPlatform=floors<=0.2;
   const wallH=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
-  const hasPara=info.material==='brick'&&!isPlatform&&wallH>MIN_H+0.5;
+  const hasPara=(info.material==='brick'||info.material==='stone')&&!isPlatform&&wallH>MIN_H+0.5?info.material:false;
   const hasPeak=PEAKED_MATS.has(info.material??'unknown')&&!isPlatform&&floors>0.2&&floors<=2.5;
   const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
   const outer=polygons[0][0];if(!outer||outer.length<4)return;
@@ -1055,12 +1074,20 @@ async function placeFacadeOnBuilding(info,worldNormal){
   const wallCol=MATS[info.material??'unknown']?.color??0x808078;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
   const stemKey=normName(facadePending.filename.replace(/\.[^.]+$/,''));
+  const sharedMat=new THREE.MeshPhongMaterial({
+    map:tex, transparent:true, alphaTest:0.1,
+    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
+    side:THREE.FrontSide, shininess:8, specular:0x222222,
+  });
   let uCursor=0;
+  let firstMesh=null;
   for(const e of frontEdges){
     const uMin=uCursor/totalWidth, uMax=(uCursor+e.len)/totalWidth;
-    applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,stemKey,info.material);
+    const m=applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,null,info.material,sharedMat);
+    if(!firstMesh)firstMesh=m;
     uCursor+=e.len;
   }
+  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
   console.log(`Facade placed: "${facadePending.filename}" | ${frontEdges.length} panels, ${totalWidth.toFixed(1)}m`);
   exitFacadePlacement();
 
