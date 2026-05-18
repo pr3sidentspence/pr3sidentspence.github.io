@@ -69,7 +69,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 04:02 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 05:07 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -313,7 +313,8 @@ const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
-const wallMaterials  = {};   // matKey → MeshPhongMaterial — for bump map application
+const wallMaterials  = {};   // matKey → MeshPhongMaterial
+const wallMeshes     = {};   // matKey → THREE.Mesh (for DecalGeometry projection)
 const facadeMeshes = new Map();
 window.facadeMeshes = facadeMeshes;
 // Start position in world coords — computed once after project() is available
@@ -541,6 +542,7 @@ async function buildCity(geojson){
     for(const g of wallGeos[mat])g.dispose();
     const wMat=new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a});
     wallMaterials[mat]=wMat;
+    wallMeshes[mat]=wMesh;
     const wMesh=new THREE.Mesh(wMerged,wMat);
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
@@ -916,7 +918,7 @@ function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, fro
   return gableFront ? wallH + FACADE_RIDGE_H : wallH;
 }
 
-function autoPlaceFacade(tex,match,filename){
+async function autoPlaceFacade(tex,match,filename){
   const{feat,props}=match;
   const floors=props.floors??1;
   const isPlatform=floors<=0.2;
@@ -942,27 +944,72 @@ function autoPlaceFacade(tex,match,filename){
   if(!bestA)return;
   const frontLen=Math.sqrt((bestB.x-bestA.x)**2+(bestB.z-bestA.z)**2);
   const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(filename.replace(/\.[^.]+$/,'')));
+  await applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(filename.replace(/\.[^.]+$/,'')),props.material);
   console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | normal (${bestNx.toFixed(2)},${bestNz.toFixed(2)})`);
 }
 
-function applyFacade(tex,edgeA,edgeB,nx,nz,height,stemKey){
+async function applyFacade(tex,edgeA,edgeB,nx,nz,height,stemKey,mat){
+  // Import DecalGeometry on first use
+  if(!window._DecalGeometry){
+    const mod=await import('three/addons/geometries/DecalGeometry.js');
+    window._DecalGeometry=mod.DecalGeometry;
+  }
+  const DecalGeometry=window._DecalGeometry;
+
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
+
+  // Projection depth — enough to penetrate all front-facing faces of complex footprints
+  const depth=Math.max(edgeLen*0.5, 20);
+
+  // Decal position: midpoint of front edge, slightly in front of the wall
+  // Orientation: the decal projects INWARD (along −normal into the wall)
+  // Up ≠ N: position in world XZ, Y=height/2
+  const pos=new THREE.Vector3(midX+nx*0.1, height/2, midZ+nz*0.1);
+
+  // Euler: rotate so decal projector faces along the inward normal (−nx, 0, −nz)
+  // rotation.y = atan2(−nx, −nz) points the projector into the wall
+  const euler=new THREE.Euler(0, Math.atan2(-nx,-nz), 0);
+
+  // Size: (width=edgeLen, height, depth of projection)
+  const size=new THREE.Vector3(edgeLen, height, depth);
+
+  // Target: the wall mesh for this building's material
+  const targetMesh=wallMeshes[mat??'brick']||wallMeshes['brick']||buildingMeshes[0];
+  if(!targetMesh){ console.warn('No wall mesh for decal projection'); return; }
+
+  let decalGeom;
+  try{
+    decalGeom=new DecalGeometry(targetMesh,pos,euler,size);
+  }catch(e){
+    console.warn('DecalGeometry failed, falling back to plane:',e.message);
+    // Fallback: flat plane
+    const fallbackMat=new THREE.MeshPhongMaterial({
+      map:tex,transparent:true,alphaTest:0.1,side:THREE.FrontSide,shininess:8,specular:0x222222
+    });
+    const mesh=new THREE.Mesh(new THREE.PlaneGeometry(edgeLen,height),fallbackMat);
+    mesh.position.set(midX+nx*0.15,height/2,midZ+nz*0.15);
+    mesh.rotation.y=Math.atan2(nx,nz);
+    mesh.receiveShadow=true;
+    scene.add(mesh);
+    if(stemKey)facadeMeshes.set(stemKey,{mesh,mat:fallbackMat});
+    return;
+  }
+
   const facadeMat=new THREE.MeshPhongMaterial({
-    map:tex, transparent:true, alphaTest:0.1,  // alphaTest only fires on pre-cut transparent areas (gable PNGs)
+    map:tex, transparent:true, alphaTest:0.1,
+    depthBias:1, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:0x222222,
   });
-  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(edgeLen,height),facadeMat);
-  mesh.position.set(midX+nx*0.15,height/2,midZ+nz*0.15);
-  mesh.rotation.y=Math.atan2(nx,nz);
+  const mesh=new THREE.Mesh(decalGeom,facadeMat);
   mesh.receiveShadow=true;
   scene.add(mesh);
-  if(stemKey) facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
+  if(stemKey)facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
+  console.log(`Decal facade: ${edgeLen.toFixed(1)}m × ${height.toFixed(1)}m × ${depth.toFixed(1)}m deep`);
 }
 
-function placeFacadeOnBuilding(info,worldNormal){
+async function placeFacadeOnBuilding(info,worldNormal){
   if(!facadePending||!info.feat)return;
   const feat=info.feat;
   const floors=info.floors??1;
@@ -992,7 +1039,7 @@ function placeFacadeOnBuilding(info,worldNormal){
   // Process raw canvas with this building's wall colour now that we know it
   const wallCol=MATS[info.material??'unknown']?.color??0x808078;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
-  applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(facadePending.filename.replace(/\.[^.]+$/,'')));
+  await applyFacade(tex,bestA,bestB,bestNx,bestNz,height,normName(facadePending.filename.replace(/\.[^.]+$/,'')),info.material);
   console.log(`Facade placed: "${facadePending.filename}" h:${height.toFixed(1)}m`);
   exitFacadePlacement();
 
