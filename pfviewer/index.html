@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 17:31 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 17:36 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-18 17:31 UTC</div>
+  <div id="build-ts">v4 · 2026-05-18 17:36 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -544,8 +544,8 @@ async function buildCity(geojson){
     for(const g of wallGeos[mat])g.dispose();
     const wMat=new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a});
     wallMaterials[mat]=wMat;
-    wallMeshes[mat]=wMesh;
     const wMesh=new THREE.Mesh(wMerged,wMat);
+    wallMeshes[mat]=wMesh;
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
     group.add(wMesh);buildingMeshes.push(wMesh);
