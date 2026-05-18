@@ -38,6 +38,7 @@ canvas{display:block;position:fixed;inset:0;}
 #controls-hint b{color:#7a6040;}
 #fps-hint{display:none;color:#5a4030;}
 #stat-bar{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;}
+#build-ts{position:fixed;bottom:12px;right:14px;font-size:0.6rem;color:#2a1e0e;letter-spacing:0.08em;opacity:0.5;pointer-events:none;z-index:5;}
 #info-panel{position:fixed;bottom:60px;right:18px;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;display:none;}
 .info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
 .info-row{font-size:0.78rem;color:#5a4830;line-height:1.9;}
@@ -69,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 05:07 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 17:31 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -95,6 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
+  <div id="build-ts">v4 · 2026-05-18 17:31 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
