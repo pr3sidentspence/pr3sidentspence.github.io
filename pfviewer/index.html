@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 01:02 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 01:40 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-19 01:02 UTC</div>
+  <div id="build-ts">v4 · 2026-05-19 01:40 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -972,9 +972,11 @@ async function autoPlaceFacade(tex,match,filename){
 
   // Street axis: perpendicular to primary normal (left-to-right along frontage)
   // Up ≠ N: street axis in world XZ = (−bestNz, bestNx)
-  const sax=-bestNz,saz=bestNx;
-
-  // Sort edges left-to-right along street axis, project midpoints
+  // Sort by signed angle of edge normal from primary normal — correct for curved buildings.
+  // bestNx*e.nz - bestNz*e.nx gives the signed cross-product (positive = viewer's right).
+  // This is stable for turrets/cylinders where midpoint-position sort fails.
+  frontEdges.forEach(e=>{ e.streetPos = bestNx*e.nz - bestNz*e.nx; });
+  frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
   frontEdges.forEach(e=>{ e.streetPos=(e.midX*sax+e.midZ*saz); });
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
 
@@ -1069,8 +1071,10 @@ async function placeFacadeOnBuilding(info,worldNormal){
     if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
     if(nx*bestNx+nz*bestNz>0.65) frontEdges.push({a,b,nx,nz,len,midX,midZ});
   }
-  const sax=-bestNz,saz=bestNx;
-  frontEdges.forEach(e=>{e.streetPos=e.midX*sax+e.midZ*saz;});
+  // Sort by signed angle of edge normal from primary normal — correct for curved buildings.
+  // bestNx*e.nz - bestNz*e.nx gives the signed cross-product (positive = viewer's right).
+  // This is stable for turrets/cylinders where midpoint-position sort fails.
+  frontEdges.forEach(e=>{ e.streetPos = bestNx*e.nz - bestNz*e.nx; });
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
   const totalWidth=frontEdges.reduce((s,e)=>s+e.len,0);
   const longestEdge=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
