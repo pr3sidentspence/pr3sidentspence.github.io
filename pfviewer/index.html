@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 02:17 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 03:39 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-19 02:17 UTC</div>
+  <div id="build-ts">v4 · 2026-05-19 03:39 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -989,59 +989,57 @@ async function autoPlaceFacade(tex,match,filename){
   frontEdges.forEach(e=>{ e.streetPos = bestNx*e.nz - bestNz*e.nx; });
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
 
-  // Calculate UV slices: each edge gets image slice proportional to its length
-  const totalWidth=frontEdges.reduce((s,e)=>s+e.len,0);
   const longestEdge=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
   const height=facadeHeight(wallH,hasPara,hasPeak,longestEdge.len,verts,bestNx,bestNz);
   const stemKey=normName(filename.replace(/\.[^.]+$/,''));
 
-  // Shared material across all panels — bump/normal maps applied later affect all panels
+  // Orthographic projection UVs — project each vertex onto the frontal plane.
+  // Frontage axis = perpendicular to primary normal in world XZ (Up ≠ N).
+  // U = (vertex projected onto frontage axis − leftmost) / total span.
+  // This gives distortion-free mapping for curves, steps, and cylinders.
+  const fax=-bestNz, faz=bestNx;  // frontage axis (left→right along street)
+  const allProj=frontEdges.flatMap(e=>[e.a.x*fax+e.a.z*faz, e.b.x*fax+e.b.z*faz]);
+  const projMin=Math.min(...allProj), projMax=Math.max(...allProj);
+  const projSpan=projMax-projMin;
+
   const sharedMat=new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:0x222222,
   });
-  let uCursor=0;
   let firstMesh=null;
   for(const e of frontEdges){
-    const uMin=uCursor/totalWidth, uMax=(uCursor+e.len)/totalWidth;
-    const m=applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,null,props.material,sharedMat);
+    const uA=(e.a.x*fax+e.a.z*faz-projMin)/projSpan;
+    const uB=(e.b.x*fax+e.b.z*faz-projMin)/projSpan;
+    const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat);
     if(!firstMesh)firstMesh=m;
-    uCursor+=e.len;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
-  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | ${frontEdges.length} panels, ${totalWidth.toFixed(1)}m total`);
+  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | ${frontEdges.length} panels, ${projSpan.toFixed(1)}m projected`);
 }
 
-// Apply one panel of a facade image to a single building edge.
-// uMin/uMax define the horizontal UV slice of the texture for this panel.
-// Up ≠ N: rotation around world Y only — height axis stays vertical throughout.
-function applyFacadePanel(tex,edgeA,edgeB,nx,nz,height,uMin,uMax,stemKey,mat,sharedMat){
+// Apply one panel with orthographically projected UV coordinates.
+// uA/uB: pre-computed projected U values for left and right vertices.
+// Up ≠ N: rotation around world Y only — height axis stays vertical.
+function applyFacadePanel(edgeA,edgeB,nx,nz,height,uA,uB,sharedMat){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
 
-  // No width expansion — overlapping panels at different angles cause z-fight artifacts on curves.
-  // Instead push panels only 3cm out so gap between angled panels is nearly invisible.
   const geo=new THREE.PlaneGeometry(edgeLen,height);
   const uv=geo.attributes.uv;
-  uv.setXY(0, uMin, 1);
-  uv.setXY(1, uMax, 1);
-  uv.setXY(2, uMin, 0);
-  uv.setXY(3, uMax, 0);
+  // PlaneGeometry UV order: [0]=top-left [1]=top-right [2]=bottom-left [3]=bottom-right
+  uv.setXY(0, uA, 1);
+  uv.setXY(1, uB, 1);
+  uv.setXY(2, uA, 0);
+  uv.setXY(3, uB, 0);
   uv.needsUpdate=true;
 
-  const facadeMat=sharedMat||new THREE.MeshPhongMaterial({
-    map:tex, transparent:true, alphaTest:0.1,
-    polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
-    side:THREE.FrontSide, shininess:8, specular:0x222222,
-  });
-  const mesh=new THREE.Mesh(geo,facadeMat);
+  const mesh=new THREE.Mesh(geo,sharedMat);
   mesh.position.set(midX+nx*0.03, height/2, midZ+nz*0.03);
   mesh.rotation.y=Math.atan2(nx,nz);
   mesh.receiveShadow=true;
   scene.add(mesh);
-  if(stemKey&&!facadeMeshes.has(stemKey)) facadeMeshes.set(stemKey,{mesh,mat:facadeMat});
   return mesh;
 }
 async function placeFacadeOnBuilding(info,worldNormal){
@@ -1085,28 +1083,29 @@ async function placeFacadeOnBuilding(info,worldNormal){
   // This is stable for turrets/cylinders where midpoint-position sort fails.
   frontEdges.forEach(e=>{ e.streetPos = bestNx*e.nz - bestNz*e.nx; });
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
-  const totalWidth=frontEdges.reduce((s,e)=>s+e.len,0);
-  const longestEdge=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
-  const frontLen=longestEdge.len;
+  const longestEdge2=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
+  const frontLen=longestEdge2.len;
   const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
   const wallCol=MATS[info.material??'unknown']?.color??0x808078;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
   const stemKey=normName(facadePending.filename.replace(/\.[^.]+$/,''));
+  const fax2=-bestNz, faz2=bestNx;
+  const allProj2=frontEdges.flatMap(e=>[e.a.x*fax2+e.a.z*faz2, e.b.x*fax2+e.b.z*faz2]);
+  const projMin2=Math.min(...allProj2), projSpan2=Math.max(...allProj2)-projMin2;
   const sharedMat=new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:0x222222,
   });
-  let uCursor=0;
   let firstMesh=null;
   for(const e of frontEdges){
-    const uMin=uCursor/totalWidth, uMax=(uCursor+e.len)/totalWidth;
-    const m=applyFacadePanel(tex,e.a,e.b,e.nx,e.nz,height,uMin,uMax,null,info.material,sharedMat);
+    const uA=(e.a.x*fax2+e.a.z*faz2-projMin2)/projSpan2;
+    const uB=(e.b.x*fax2+e.b.z*faz2-projMin2)/projSpan2;
+    const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat);
     if(!firstMesh)firstMesh=m;
-    uCursor+=e.len;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
-  console.log(`Facade placed: "${facadePending.filename}" | ${frontEdges.length} panels, ${totalWidth.toFixed(1)}m`);
+  console.log(`Facade placed: "${facadePending.filename}" | ${frontEdges.length} panels, ${projSpan2.toFixed(1)}m projected`);
   exitFacadePlacement();
 
 }
