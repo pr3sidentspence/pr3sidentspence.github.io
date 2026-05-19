@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-18 19:26 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 00:51 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-18 19:26 UTC</div>
+  <div id="build-ts">v4 · 2026-05-19 00:51 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -1007,7 +1007,9 @@ function applyFacadePanel(tex,edgeA,edgeB,nx,nz,height,uMin,uMax,stemKey,mat,sha
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
 
-  const geo=new THREE.PlaneGeometry(edgeLen,height);
+  // Expand geometry slightly beyond UV edges to hide seams on curved/stepped buildings
+  const OVERLAP=0.06;
+  const geo=new THREE.PlaneGeometry(edgeLen+OVERLAP*2,height);
   const uv=geo.attributes.uv;
   uv.setXY(0, uMin, 1);
   uv.setXY(1, uMax, 1);
@@ -1149,20 +1151,19 @@ function updateHover(){
 function enterFPS(){
   fpsMode=true;orbit.enabled=false;
 
+  // Always read yaw/pitch from current camera — never change heading on F
+  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  yaw=Math.atan2(-fwd.x,-fwd.z);
+  pitch=0;   // level out — don't tilt down
+
   if(camera.position.y > EYE_H + 0.5){
-    // Start physics fall — swoop toward orbit target XZ while dropping
+    // Fall straight down — no XZ swoop, no heading change
     falling=true;fallVelocity=0;
     fallStartX=camera.position.x;fallStartY=camera.position.y;fallStartZ=camera.position.z;
-    fallTargetX=orbit.target.x;fallTargetZ=orbit.target.z;
-    // Face landing target, slight downward pitch
-    const dx=fallTargetX-camera.position.x,dz=fallTargetZ-camera.position.z;
-    if(Math.sqrt(dx*dx+dz*dz)>1){yaw=Math.atan2(-dx,-dz);}
-    else{const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);yaw=Math.atan2(-fwd.x,-fwd.z);}
-    pitch=0.15;  // look slightly down toward landing zone
+    // Target directly below
+    fallTargetX=camera.position.x;fallTargetZ=camera.position.z;
   }else{
     camera.position.y=Math.max(camera.position.y,EYE_H);
-    const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-    yaw=Math.atan2(-fwd.x,-fwd.z);pitch=Math.asin(Math.max(-1,Math.min(1,fwd.y)));
   }
 
   renderer.domElement.requestPointerLock();
@@ -1258,19 +1259,13 @@ function startLoop(){
       camera.quaternion.copy(qYaw).multiply(qPitch);
 
       if(falling){
-        // 9.8 m/s² gravity, terminal velocity 55 m/s — Up ≠ N: Y is always vertical
-        fallVelocity=Math.max(fallVelocity-9.8*dt,-55);
+        // 4× gravity, straight down — no XZ drift, no heading change
+        fallVelocity=Math.max(fallVelocity-39.2*dt,-120);
         camera.position.y+=fallVelocity*dt;
-        // Swoop XZ: interpolate from start to target proportional to fall progress
-        const progress=1-Math.max(0,(camera.position.y-EYE_H)/(fallStartY-EYE_H));
-        camera.position.x=fallStartX+(fallTargetX-fallStartX)*progress;
-        camera.position.z=fallStartZ+(fallTargetZ-fallStartZ)*progress;
-        // Level out pitch as we approach ground
-        pitch=0.15*(1-progress);
+        // No XZ interpolation — fall straight down from orbit camera position
         if(camera.position.y<=EYE_H){
           camera.position.y=EYE_H;
-          camera.position.x=fallTargetX;camera.position.z=fallTargetZ;
-          pitch=0;falling=false;
+          falling=false;
         }
       }else{
         const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
