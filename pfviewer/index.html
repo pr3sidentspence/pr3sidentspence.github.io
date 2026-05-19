@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 01:40 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 02:04 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-19 01:40 UTC</div>
+  <div id="build-ts">v4 · 2026-05-19 02:04 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -521,9 +521,20 @@ async function buildCity(geojson){
         const inset=insetRing(outerPts,pW);
         const insetCx=inset.reduce((s,p)=>s+p[0],0)/inset.length;
         const insetCz=inset.reduce((s,p)=>s+p[1],0)/inset.length;
-        // Reject if inset collapsed (all points near centroid) OR if polygon is too thin for a parapet
         const maxSpread=Math.max(...inset.map(([x,y])=>Math.sqrt((x-insetCx)**2+(y-insetCz)**2)));
-        const stillValid=maxSpread>0.3;
+        // Also check inset winding hasn't inverted (self-intersection = fins)
+        let insetArea=0;
+        for(let pi=0;pi<inset.length;pi++){
+          const[ax,ay]=inset[pi],[bx,by]=inset[(pi+1)%inset.length];
+          insetArea+=ax*by-bx*ay;
+        }
+        let outerArea=0;
+        for(let pi=0;pi<outerPts.length;pi++){
+          const[ax,ay]=outerPts[pi],[bx,by]=outerPts[(pi+1)%outerPts.length];
+          outerArea+=ax*by-bx*ay;
+        }
+        // Valid only if spread is large enough AND inset winding matches outer (same sign)
+        const stillValid=maxSpread>pW*1.5&&Math.sign(insetArea)===Math.sign(outerArea)&&Math.abs(insetArea)>0.5;
         if(stillValid){
           const pShape=new THREE.Shape();
           pShape.moveTo(outerPts[0][0],outerPts[0][1]);
@@ -976,8 +987,6 @@ async function autoPlaceFacade(tex,match,filename){
   // bestNx*e.nz - bestNz*e.nx gives the signed cross-product (positive = viewer's right).
   // This is stable for turrets/cylinders where midpoint-position sort fails.
   frontEdges.forEach(e=>{ e.streetPos = bestNx*e.nz - bestNz*e.nx; });
-  frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
-  frontEdges.forEach(e=>{ e.streetPos=(e.midX*sax+e.midZ*saz); });
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
 
   // Calculate UV slices: each edge gets image slice proportional to its length
