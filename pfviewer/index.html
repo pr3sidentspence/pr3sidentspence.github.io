@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 20:14 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 22:13 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-19 20:14 UTC</div>
+  <div id="build-ts">v4 · 2026-05-19 22:13 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -908,7 +908,8 @@ async function loadFacade(imageFile){
 
   if(match){
     const wallCol=MATS[match.props.material??'unknown']?.color??0x808078;
-    autoPlaceFacade(canvasToTex(processCanvasForFacade(rawCanvas,wallCol)),match,imageFile.name);
+    const imgAspect=rawCanvas.height/rawCanvas.width;  // height/width ratio of image
+    autoPlaceFacade(canvasToTex(processCanvasForFacade(rawCanvas,wallCol)),match,imageFile.name,imgAspect);
     return;
   }
 
@@ -918,7 +919,7 @@ async function loadFacade(imageFile){
   document.getElementById('facade-filename').textContent=imageFile.name;
   document.getElementById('facade-picker').style.display='block';
   document.getElementById('mode-badge').textContent='Place Facade — Ctrl+Click building';
-  facadePending={canvas:rawCanvas, filename:imageFile.name};
+  facadePending={canvas:rawCanvas, filename:imageFile.name, imgAspect:rawCanvas.height/rawCanvas.width};
 }
 
 // Returns wallH + ridgeH if the building is deeper than wide (gable faces the street),
@@ -946,7 +947,7 @@ function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, fro
   return gableFront ? wallH + FACADE_RIDGE_H : wallH;
 }
 
-async function autoPlaceFacade(tex,match,filename){
+async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   const{feat,props}=match;
   const floors=props.floors??1;
   const isPlatform=floors<=0.2;
@@ -990,7 +991,12 @@ async function autoPlaceFacade(tex,match,filename){
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
 
   const longestEdge=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
-  const height=facadeHeight(wallH,hasPara,hasPeak,longestEdge.len,verts,bestNx,bestNz);
+  // Height: if image aspect ratio known, derive from projected frontage width.
+  // This lets the image set its own vertical scale — no stretching, no clipping.
+  // Fallback to GeoJSON-computed height if no aspect ratio available.
+  const projectedHeight = imgAspect ? projSpan * imgAspect : null;
+  const geoHeight = facadeHeight(wallH,hasPara,hasPeak,longestEdge.len,verts,bestNx,bestNz);
+  const height = projectedHeight ?? geoHeight;
   const stemKey=normName(filename.replace(/\.[^.]+$/,''));
 
   // Orthographic projection UVs — project each vertex onto the frontal plane.
@@ -1090,7 +1096,9 @@ async function placeFacadeOnBuilding(info,worldNormal){
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
   const longestEdge2=frontEdges.reduce((best,e)=>e.len>best.len?e:best,frontEdges[0]);
   const frontLen=longestEdge2.len;
-  const height=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
+  const imgAspect2=facadePending.imgAspect||null;
+  const projectedHeight2=imgAspect2?projSpan2*imgAspect2:null;
+  const height=projectedHeight2??facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
   const wallCol=MATS[info.material??'unknown']?.color??0x808078;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
   const stemKey=normName(facadePending.filename.replace(/\.[^.]+$/,''));
