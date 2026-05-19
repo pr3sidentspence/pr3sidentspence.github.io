@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 06:07 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-05-19 20:14 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-05-19 06:07 UTC</div>
+  <div id="build-ts">v4 · 2026-05-19 20:14 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -1029,10 +1029,15 @@ function applyFacadePanel(edgeA,edgeB,nx,nz,height,uA,uB,sharedMat){
   const geo=new THREE.PlaneGeometry(edgeLen,height);
   const uv=geo.attributes.uv;
   // PlaneGeometry UV order: [0]=top-left [1]=top-right [2]=bottom-left [3]=bottom-right
-  uv.setXY(0, 1-uA, 1);
-  uv.setXY(1, 1-uB, 1);
-  uv.setXY(2, 1-uA, 0);
-  uv.setXY(3, 1-uB, 0);
+  // UV[0] is always at the large-projection end of the plane (= viewer's left).
+  // Use 1-max/min so assignment is independent of edgeA/edgeB order,
+  // ensuring continuity at shared vertices between adjacent panels.
+  const uLeft = 1-Math.max(uA,uB);   // large-proj end → left of image
+  const uRight= 1-Math.min(uA,uB);   // small-proj end → right of image
+  uv.setXY(0, uLeft,  1);
+  uv.setXY(1, uRight, 1);
+  uv.setXY(2, uLeft,  0);
+  uv.setXY(3, uRight, 0);
   uv.needsUpdate=true;
 
   const mesh=new THREE.Mesh(geo,sharedMat);
@@ -1320,33 +1325,43 @@ function buildLayerBar(){
   const activeStyle=`background:#C8A05A;color:#09080a;`;
   const inactiveStyle=`background:transparent;color:#5a4830;`;
 
-  // "ALL" button
+  // Default to 1880 if present, otherwise 'all'
+  const has1880=layerGroups.some(lg=>lg.year==='1880');
+  let activeLayer=has1880?'1880':'all';
+
+  // Apply initial visibility
+  for(const lg of layerGroups){
+    lg.group.visible=(activeLayer==='all'||activeLayer===lg.year);
+  }
+  buildingMeshes.length=0;
+  for(const lg of layerGroups){
+    if(!lg.group.visible)continue;
+    lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
+  }
+
+  // 'ALL' button
   const allBtn=document.createElement('button');
   allBtn.textContent='ALL';allBtn.dataset.layer='all';
-  allBtn.style.cssText=btnStyle+activeStyle;
+  allBtn.style.cssText=btnStyle+(activeLayer==='all'?activeStyle:inactiveStyle);
   bar.appendChild(allBtn);
 
   // One button per layer
   for(const lg of layerGroups){
     const btn=document.createElement('button');
     btn.textContent=lg.year;btn.dataset.layer=lg.year;
-    btn.style.cssText=btnStyle+inactiveStyle;
+    btn.style.cssText=btnStyle+(activeLayer===lg.year?activeStyle:inactiveStyle);
     bar.appendChild(btn);
   }
 
-  let activeLayer='all';
   bar.addEventListener('click',e=>{
     const btn=e.target.closest('button');if(!btn)return;
     activeLayer=btn.dataset.layer;
-    // Update visibility
     for(const lg of layerGroups){
       lg.group.visible=(activeLayer==='all'||activeLayer===lg.year);
     }
-    // Update button styles
     for(const b of bar.querySelectorAll('button')){
       b.style.cssText=btnStyle+(b.dataset.layer===activeLayer?activeStyle:inactiveStyle);
     }
-    // Rebuild raycast list to only visible buildings
     buildingMeshes.length=0;
     for(const lg of layerGroups){
       if(!lg.group.visible)continue;
