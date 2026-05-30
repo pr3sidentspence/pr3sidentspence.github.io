@@ -84,6 +84,14 @@ canvas{display:block;position:fixed;inset:0;}
   -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;
   pointer-events:auto;text-transform:uppercase;}
 #sprint-btn.active{background:rgba(200,160,90,0.25);border-color:#C8A05A;color:#C8A05A;}
+
+#orbit-zoom{position:fixed;bottom:32px;right:18px;display:none;
+  flex-direction:column;gap:10px;pointer-events:auto;z-index:30;}
+.zoom-btn{width:52px;height:52px;border-radius:10px;background:rgba(9,8,10,0.65);
+  border:1.5px solid #3a2810;color:#7a6040;font-size:1.6rem;font-weight:300;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;}
+.zoom-btn:active{background:rgba(200,160,90,0.2);border-color:#C8A05A;}
 </style>
 </head>
 <body>
@@ -1274,6 +1282,7 @@ function setKnobPos(dx,dy){
 function showTouchControls(){
   walkBtn.classList.add('active');
   touchOverlay.style.display='block';
+  document.getElementById('orbit-zoom').style.display='none';
 }
 function hideTouchControls(){
   walkBtn.classList.remove('active');
@@ -1281,10 +1290,12 @@ function hideTouchControls(){
   joyVec.x=0;joyVec.y=0;
   joyTouchId=null;lookTouchId=null;
   setKnobPos(0,0);
+  document.getElementById('orbit-zoom').style.display='flex';
 }
 
 if(isMobile){
   walkBtn.style.display='flex';
+  document.getElementById('orbit-zoom').style.display='flex';
   walkBtn.addEventListener('touchend',e=>{
     e.preventDefault();
     if(!fpsMode)enterFPS();else exitFPS();
@@ -1341,6 +1352,24 @@ function holdBtn(el,setter){
 }
 holdBtn(btnUp,v=>{udUp=v;});
 holdBtn(btnDn,v=>{udDown=v;});
+
+// Orbit zoom buttons — hold to continuously dolly
+const DOLLY_IN=0.94,DOLLY_OUT=1/0.94;
+let zoomInterval=null;
+function startZoom(fn){
+  fn();
+  zoomInterval=setInterval(fn,60);
+}
+function stopZoom(){clearInterval(zoomInterval);zoomInterval=null;}
+function orbitDolly(scale){orbit.dollyIn(scale);orbit.update();}
+document.getElementById('btn-zoom-in').addEventListener('touchstart',e=>{
+  e.preventDefault();startZoom(()=>orbitDolly(DOLLY_IN));},{passive:false});
+document.getElementById('btn-zoom-out').addEventListener('touchstart',e=>{
+  e.preventDefault();startZoom(()=>orbitDolly(DOLLY_OUT));},{passive:false});
+['touchend','touchcancel'].forEach(ev=>{
+  document.getElementById('btn-zoom-in').addEventListener(ev,stopZoom);
+  document.getElementById('btn-zoom-out').addEventListener(ev,stopZoom);
+});
 
 sprintBtn.addEventListener('touchstart',e=>{
   e.preventDefault();
@@ -1849,5 +1878,6 @@ renderer.render(scene,camera);
   <div id="sprint-btn">Sprint</div>
 </div>
 
+<div id="orbit-zoom"><div class="zoom-btn" id="btn-zoom-in">+</div><div class="zoom-btn" id="btn-zoom-out">−</div></div>
 </body>
 </html>
