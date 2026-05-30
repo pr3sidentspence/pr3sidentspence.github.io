@@ -54,6 +54,44 @@ canvas{display:block;position:fixed;inset:0;}
 #tod-slider{width:180px;accent-color:#C8A05A;cursor:pointer;}
 #tod-label{font-size:0.75rem;color:#C8A05A;min-width:42px;text-align:right;}
 #live-toast{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:rgba(9,8,10,0.92);border:1px solid #C8A05A;border-radius:10px;padding:18px 32px;font-size:0.85rem;color:#C8A05A;letter-spacing:0.1em;pointer-events:none;z-index:50;text-align:center;}
+
+/* ── Mobile touch controls ── */
+#walk-btn{display:none;position:fixed;bottom:170px;right:18px;z-index:30;
+  width:64px;height:64px;border-radius:50%;background:rgba(200,160,90,0.15);
+  border:1.5px solid #C8A05A;color:#C8A05A;font-size:1.4rem;
+  align-items:center;justify-content:center;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:none;pointer-events:auto;
+  user-select:none;}
+#walk-btn.active{background:rgba(200,160,90,0.3);}
+#touch-overlay{display:none;position:fixed;inset:0;z-index:20;touch-action:none;}
+#joy-pad{position:fixed;bottom:32px;left:32px;width:100px;height:100px;
+  border-radius:50%;background:rgba(9,8,10,0.55);border:1.5px solid #3a2810;
+  pointer-events:none;}
+#joy-knob{position:absolute;top:50%;left:50%;width:36px;height:36px;
+  border-radius:50%;background:rgba(200,160,90,0.55);border:1.5px solid #C8A05A;
+  transform:translate(-50%,-50%);transition:transform 0.05s;}
+#ud-btns{position:fixed;bottom:32px;right:18px;display:flex;flex-direction:column;
+  gap:10px;pointer-events:auto;}
+.ud-btn{width:52px;height:52px;border-radius:10px;background:rgba(9,8,10,0.65);
+  border:1.5px solid #3a2810;color:#7a6040;font-size:1.3rem;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;}
+.ud-btn:active{background:rgba(200,160,90,0.2);border-color:#C8A05A;}
+#sprint-btn{position:fixed;bottom:150px;left:32px;width:52px;height:52px;
+  border-radius:10px;background:rgba(9,8,10,0.65);border:1.5px solid #3a2810;
+  color:#7a6040;font-size:0.65rem;letter-spacing:0.08em;text-align:center;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;
+  pointer-events:auto;text-transform:uppercase;}
+#sprint-btn.active{background:rgba(200,160,90,0.25);border-color:#C8A05A;color:#C8A05A;}
+
+#orbit-zoom{position:fixed;bottom:32px;right:18px;display:none;
+  flex-direction:column;gap:10px;pointer-events:auto;z-index:30;}
+.zoom-btn{width:52px;height:52px;border-radius:10px;background:rgba(9,8,10,0.65);
+  border:1.5px solid #3a2810;color:#7a6040;font-size:1.6rem;font-weight:300;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;}
+.zoom-btn:active{background:rgba(200,160,90,0.2);border-color:#C8A05A;}
 </style>
 </head>
 <body>
@@ -126,6 +164,8 @@ canvas{display:block;position:fixed;inset:0;}
 </div>
 
 <script type="module">
+const isMobile=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -1197,15 +1237,17 @@ function enterFPS(){
     camera.position.y=Math.max(camera.position.y,EYE_H);
   }
 
-  renderer.domElement.requestPointerLock();
-  document.getElementById('crosshair').style.display='flex';
+  if(!isMobile){renderer.domElement.requestPointerLock();}
+  else{showTouchControls();}
+  document.getElementById('crosshair').style.display=isMobile?'none':'flex';
   document.getElementById('mode-badge').textContent='Walk Mode';
   document.getElementById('fps-hint').style.display='block';
   document.getElementById('info-panel').style.display='none';
 }
 function exitFPS(){
   fpsMode=false;falling=false;fallVelocity=0;
-  document.exitPointerLock();
+  if(!isMobile){document.exitPointerLock();}
+  else{hideTouchControls();}
   // Set orbit target 30m ahead of camera at ground level — prevents snap to old target
   const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
   fwd.y=0;if(fwd.lengthSq()<0.001)fwd.set(0,0,-1);else fwd.normalize();
@@ -1217,7 +1259,124 @@ function exitFPS(){
   document.getElementById('mode-badge').textContent='Overview';
   document.getElementById('fps-hint').style.display='none';
 }
-document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&fpsMode)exitFPS();});
+if(!isMobile)document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&fpsMode)exitFPS();});
+
+// ── Mobile touch controls (runtime) ─────────────────────────────────────────
+const joyVec={x:0,y:0};
+let udUp=false,udDown=false;
+let joyTouchId=null,lookTouchId=null;
+let joyOriX=0,joyOriY=0,lookLastX=0,lookLastY=0;
+const JOY_R=40;
+
+const walkBtn=document.getElementById('walk-btn');
+const touchOverlay=document.getElementById('touch-overlay');
+const joyKnob=document.getElementById('joy-knob');
+const joyPad=document.getElementById('joy-pad');
+const btnUp=document.getElementById('btn-up');
+const btnDn=document.getElementById('btn-dn');
+const sprintBtn=document.getElementById('sprint-btn');
+
+function setKnobPos(dx,dy){
+  joyKnob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
+}
+function showTouchControls(){
+  walkBtn.classList.add('active');
+  touchOverlay.style.display='block';
+  document.getElementById('orbit-zoom').style.display='none';
+}
+function hideTouchControls(){
+  walkBtn.classList.remove('active');
+  touchOverlay.style.display='none';
+  joyVec.x=0;joyVec.y=0;
+  joyTouchId=null;lookTouchId=null;
+  setKnobPos(0,0);
+  document.getElementById('orbit-zoom').style.display='flex';
+}
+
+if(isMobile){
+  walkBtn.style.display='flex';
+  document.getElementById('orbit-zoom').style.display='flex';
+  walkBtn.addEventListener('touchend',e=>{
+    e.preventDefault();
+    if(!fpsMode)enterFPS();else exitFPS();
+  },{passive:false});
+}
+
+touchOverlay.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    const r=joyPad.getBoundingClientRect();
+    const inJoy=t.clientX>=r.left-20&&t.clientX<=r.right+20&&
+                t.clientY>=r.top-20&&t.clientY<=r.bottom+20;
+    if(inJoy&&joyTouchId===null){
+      joyTouchId=t.identifier;joyOriX=t.clientX;joyOriY=t.clientY;
+    }else if(!inJoy&&lookTouchId===null){
+      lookTouchId=t.identifier;lookLastX=t.clientX;lookLastY=t.clientY;
+    }
+  }
+},{passive:false});
+
+touchOverlay.addEventListener('touchmove',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier===joyTouchId){
+      const dx=t.clientX-joyOriX,dy=t.clientY-joyOriY;
+      const len=Math.sqrt(dx*dx+dy*dy);
+      const c=Math.min(len,JOY_R),nx=len>1?dx/len:0,ny=len>1?dy/len:0;
+      joyVec.x=nx*(c/JOY_R);joyVec.y=-ny*(c/JOY_R);
+      setKnobPos(nx*c,ny*c);
+    }else if(t.identifier===lookTouchId){
+      yaw-=(t.clientX-lookLastX)*0.004;
+      pitch-=(t.clientY-lookLastY)*0.004;
+      pitch=Math.max(-1.48,Math.min(1.48,pitch));
+      lookLastX=t.clientX;lookLastY=t.clientY;
+    }
+  }
+},{passive:false});
+
+touchOverlay.addEventListener('touchend',e=>{
+  e.preventDefault();
+  for(const t of e.changedTouches){
+    if(t.identifier===joyTouchId){joyTouchId=null;joyVec.x=0;joyVec.y=0;setKnobPos(0,0);}
+    else if(t.identifier===lookTouchId){lookTouchId=null;}
+  }
+},{passive:false});
+touchOverlay.addEventListener('touchcancel',()=>{
+  joyTouchId=null;lookTouchId=null;joyVec.x=0;joyVec.y=0;setKnobPos(0,0);
+});
+
+function holdBtn(el,setter){
+  el.addEventListener('touchstart',e=>{e.preventDefault();setter(true);},{passive:false});
+  el.addEventListener('touchend',e=>{e.preventDefault();setter(false);},{passive:false});
+  el.addEventListener('touchcancel',()=>setter(false));
+}
+holdBtn(btnUp,v=>{udUp=v;});
+holdBtn(btnDn,v=>{udDown=v;});
+
+// Orbit zoom buttons — hold to continuously dolly
+const DOLLY_IN=0.94,DOLLY_OUT=1/0.94;
+let zoomInterval=null;
+function startZoom(fn){
+  fn();
+  zoomInterval=setInterval(fn,60);
+}
+function stopZoom(){clearInterval(zoomInterval);zoomInterval=null;}
+function orbitDolly(scale){orbit.dollyIn(scale);orbit.update();}
+document.getElementById('btn-zoom-in').addEventListener('touchstart',e=>{
+  e.preventDefault();startZoom(()=>orbitDolly(DOLLY_IN));},{passive:false});
+document.getElementById('btn-zoom-out').addEventListener('touchstart',e=>{
+  e.preventDefault();startZoom(()=>orbitDolly(DOLLY_OUT));},{passive:false});
+['touchend','touchcancel'].forEach(ev=>{
+  document.getElementById('btn-zoom-in').addEventListener(ev,stopZoom);
+  document.getElementById('btn-zoom-out').addEventListener(ev,stopZoom);
+});
+
+sprintBtn.addEventListener('touchstart',e=>{
+  e.preventDefault();
+  sprinting=!sprinting;
+  sprintBtn.classList.toggle('active',sprinting);
+},{passive:false});
+
 window.addEventListener('keydown',e=>{
   keys[e.code]=true;sprinting=e.shiftKey;
   if(e.code==='KeyF'&&!fpsMode)enterFPS();
@@ -1302,12 +1461,13 @@ function startLoop(){
         const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
         const right=new THREE.Vector3(1,0,0).applyQuaternion(qYaw);
         const spd=(sprinting?38:9)*dt;
-        if(keys['KeyW']||keys['ArrowUp'])camera.position.addScaledVector(fwd,spd);
-        if(keys['KeyS']||keys['ArrowDown'])camera.position.addScaledVector(fwd,-spd);
-        if(keys['KeyA']||keys['ArrowLeft'])camera.position.addScaledVector(right,-spd);
-        if(keys['KeyD']||keys['ArrowRight'])camera.position.addScaledVector(right,spd);
-        if(keys['KeyQ'])camera.position.y-=spd;
-        if(keys['KeyE'])camera.position.y+=spd;
+        const jFwd=joyVec.y,jRight=joyVec.x;
+        if(keys['KeyW']||keys['ArrowUp']||jFwd>0.15)camera.position.addScaledVector(fwd,spd*(keys['KeyW']||keys['ArrowUp']?1:jFwd));
+        if(keys['KeyS']||keys['ArrowDown']||jFwd<-0.15)camera.position.addScaledVector(fwd,spd*(keys['KeyS']||keys['ArrowDown']?-1:jFwd));
+        if(keys['KeyA']||keys['ArrowLeft']||jRight<-0.15)camera.position.addScaledVector(right,spd*(keys['KeyA']||keys['ArrowLeft']?-1:jRight));
+        if(keys['KeyD']||keys['ArrowRight']||jRight>0.15)camera.position.addScaledVector(right,spd*(keys['KeyD']||keys['ArrowRight']?1:jRight));
+        if(keys['KeyQ']||udDown)camera.position.y-=spd;
+        if(keys['KeyE']||udUp)camera.position.y+=spd;
         camera.position.y=Math.max(EYE_H,camera.position.y);
       }
     }else{orbit.update();updateHover();}
@@ -1706,5 +1866,18 @@ renderer.render(scene,camera);
   buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
 })();
 </script>
+
+<!-- Mobile touch controls -->
+<button id="walk-btn" title="Walk mode (F)">🚶</button>
+<div id="touch-overlay">
+  <div id="joy-pad"><div id="joy-knob"></div></div>
+  <div id="ud-btns">
+    <div class="ud-btn" id="btn-up">▲</div>
+    <div class="ud-btn" id="btn-dn">▼</div>
+  </div>
+  <div id="sprint-btn">Sprint</div>
+</div>
+
+<div id="orbit-zoom"><div class="zoom-btn" id="btn-zoom-in">+</div><div class="zoom-btn" id="btn-zoom-out">−</div></div>
 </body>
 </html>
