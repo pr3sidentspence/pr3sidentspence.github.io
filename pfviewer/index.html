@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-03 21:19 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-03 23:08 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-06-03 21:19 UTC</div>
+  <div id="build-ts">v4 · 2026-06-03 23:08 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -963,6 +963,16 @@ function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, fro
   return gableFront ? wallH + FACADE_RIDGE_H : wallH;
 }
 
+// Find the layer group a building belongs to based on its source_file/group property.
+// Returns the THREE.Group so facade panels can be added to it and hide with the layer.
+function findLayerGroup(props){
+  const sf=props?.source_file||props?.group||'';
+  const m=sf.match(/\b(1880|1906|1916)\b/);
+  if(!m) return null;
+  const yr=m[1];
+  return (layerGroups.find(lg=>lg.year===yr)||{}).group||null;
+}
+
 async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   const{feat,props}=match;
   const floors=props.floors??1;
@@ -1007,6 +1017,7 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
 
   const stemKey=normName(filename.replace(/\.[^.]+$/,''));
+  const layerGroup=findLayerGroup(props);
 
   // Orthographic projection UVs — project each vertex onto the frontal plane.
   // Frontage axis = perpendicular to primary normal in world XZ (Up ≠ N).
@@ -1021,7 +1032,7 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   const geoHeight = facadeHeight(wallH,hasPara,hasPeak,longestEdge.len,verts,bestNx,bestNz);
   let height;
   if(hOverride){ height=parseFloat(hOverride[1]); }
-  else if(imgAspect){ height=Math.min(projSpan*imgAspect, geoHeight*1.5); }
+  else if(imgAspect){ height=Math.min(projSpan*imgAspect, geoHeight*1.15); }
   else { height=geoHeight; }
 
 
@@ -1034,7 +1045,7 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   for(const e of frontEdges){
     const uA=(e.a.x*fax+e.a.z*faz-projMin)/projSpan;
     const uB=(e.b.x*fax+e.b.z*faz-projMin)/projSpan;
-    const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat);
+    const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup);
     if(!firstMesh)firstMesh=m;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
@@ -1044,7 +1055,7 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
 // Apply one panel with orthographically projected UV coordinates.
 // uA/uB: pre-computed projected U values for left and right vertices.
 // Up ≠ N: rotation around world Y only — height axis stays vertical.
-function applyFacadePanel(edgeA,edgeB,nx,nz,height,uA,uB,sharedMat){
+function applyFacadePanel(edgeA,edgeB,nx,nz,height,uA,uB,sharedMat,targetGroup){
   const edgeDx=edgeB.x-edgeA.x,edgeDz=edgeB.z-edgeA.z;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   const midX=(edgeA.x+edgeB.x)/2,midZ=(edgeA.z+edgeB.z)/2;
@@ -1067,7 +1078,7 @@ function applyFacadePanel(edgeA,edgeB,nx,nz,height,uA,uB,sharedMat){
   mesh.position.set(midX+nx*0.03, height/2, midZ+nz*0.03);
   mesh.rotation.y=Math.atan2(nx,nz);
   mesh.receiveShadow=true;
-  scene.add(mesh);
+  (targetGroup||scene).add(mesh);
   return mesh;
 }
 async function placeFacadeOnBuilding(info,worldNormal){
@@ -1119,11 +1130,12 @@ async function placeFacadeOnBuilding(info,worldNormal){
   const imgAspect2=facadePending.imgAspect||null;
   const hOverride2=facadePending.filename.match(/_h([\d.]+)\.[^.]+$/i);
   const geoHeight2=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
-  const projectedHeight2=hOverride2 ? parseFloat(hOverride2[1]) : imgAspect2 ? Math.min(projSpan2*imgAspect2, geoHeight2*1.5) : null;
+  const projectedHeight2=hOverride2 ? parseFloat(hOverride2[1]) : imgAspect2 ? Math.min(projSpan2*imgAspect2, geoHeight2*1.15) : null;
   const height=projectedHeight2??geoHeight2;
   const wallCol=MATS[info.material??'unknown']?.color??0x808078;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
   const stemKey=normName(facadePending.filename.replace(/\.[^.]+$/,''));
+  const layerGroup2=findLayerGroup(info.feat?.properties);
   const sharedMat=new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
@@ -1133,7 +1145,7 @@ async function placeFacadeOnBuilding(info,worldNormal){
   for(const e of frontEdges){
     const uA=(e.a.x*fax2+e.a.z*faz2-projMin2)/projSpan2;
     const uB=(e.b.x*fax2+e.b.z*faz2-projMin2)/projSpan2;
-    const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat);
+    const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup2);
     if(!firstMesh)firstMesh=m;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
