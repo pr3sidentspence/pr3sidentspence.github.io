@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-03 23:08 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-04 02:42 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-06-03 23:08 UTC</div>
+  <div id="build-ts">v4 · 2026-06-04 02:42 UTC</div>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -290,7 +290,7 @@ window.grid = grid;
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.enableDamping=true;orbit.dampingFactor=0.07;
 orbit.enableZoom=false;
-orbit.maxPolarAngle=Math.PI/2-0.015;orbit.minDistance=15;orbit.maxDistance=3000;
+orbit.maxPolarAngle=Math.PI*0.98;orbit.minDistance=2;orbit.maxDistance=3000;
 orbit.target.set(0,0,0);orbit.update();
 
 renderer.domElement.addEventListener('wheel',e=>{
@@ -300,8 +300,17 @@ renderer.domElement.addEventListener('wheel',e=>{
   const capped=Math.sign(d)*Math.min(Math.abs(d),120);
   const factor=Math.pow(0.998,-capped*0.5);
   const offset=camera.position.clone().sub(orbit.target);
-  const newLen=THREE.MathUtils.clamp(offset.length()*factor,orbit.minDistance,orbit.maxDistance);
-  camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
+  const oldLen=offset.length();
+  const newLen=oldLen*factor;
+  if(newLen<30){
+    // Push target forward so zoom never bottoms out — dolly through the scene
+    const pushDist=(30-newLen)*0.5;
+    const dir=offset.clone().normalize().negate();
+    orbit.target.addScaledVector(dir,pushDist);
+    camera.position.copy(orbit.target).addScaledVector(offset.normalize(),Math.max(2,newLen));
+  }else{
+    camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
+  }
   orbit.update();
 },{passive:false});
 
@@ -1238,7 +1247,7 @@ function exitFPS(){
   const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
   fwd.y=0;if(fwd.lengthSq()<0.001)fwd.set(0,0,-1);else fwd.normalize();
   orbit.target.copy(camera.position).addScaledVector(fwd,30);
-  orbit.target.y=0;
+  orbit.target.y=camera.position.y;  // keep target at eye height — allows looking up and down
   orbit.enabled=true;
   orbit.update();
   document.getElementById('crosshair').style.display='none';
