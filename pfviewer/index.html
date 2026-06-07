@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-06 23:02 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-07 00:04 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,7 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-06-06 23:02 UTC</div>
+  <div id="build-ts">v4 · 2026-06-07 00:04 UTC</div>
   <div id="bldg-tooltip" style="display:none;position:fixed;pointer-events:none;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:5px;padding:5px 10px;font-size:0.68rem;color:#C8A05A;letter-spacing:0.08em;z-index:20;white-space:nowrap;"></div>
   <div id="minimap-wrap" style="display:none;position:fixed;bottom:70px;right:14px;width:200px;height:200px;border:1px solid #2a1e0e;border-radius:6px;overflow:hidden;z-index:10;background:rgba(9,8,10,0.85);">
     <canvas id="minimap" width="200" height="200" style="width:200px;height:200px;cursor:crosshair;"></canvas>
@@ -651,6 +651,14 @@ async function buildCity(geojson){
       wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
       matCounts[mat]++;
       // Place procedural windows on all wall edges of this building
+      const areaOk=props.area_m2==null||props.area_m2>25;
+      const isBridge=props.type==='bridge';
+      const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
+      const nm=(props.name||'').toLowerCase();
+      const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
+                   ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
+                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
+
       if(!isPlatform&&!isChurch&&floors>0.5){
         const outerCoords=outer.slice(0,-1);
         const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
@@ -667,14 +675,6 @@ async function buildCity(geojson){
           placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat);
         }
       }
-      const areaOk=props.area_m2==null||props.area_m2>25;
-      const isBridge=props.type==='bridge';
-      const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
-      const nm=(props.name||'').toLowerCase();
-      const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
-                   ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
-                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
-
       // Standard peaked roofs: wood/iron/etc, low-rise
       if(!isPlatform&&!isBridge&&!isUpperFort&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
         const ring=[];
