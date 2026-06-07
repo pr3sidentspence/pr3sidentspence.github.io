@@ -70,7 +70,7 @@ canvas{display:block;position:fixed;inset:0;}
     <small style="color:#3a2810;">bump_brick.png · bump_wood.png · merchanthotel_bump.png</small></p>
   </div>
   <input type="file" id="file-input" accept=".geojson,.json,.jpg,.jpeg,.png,.webp" multiple>
-  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-04 02:42 UTC</p>
+  <p style="margin-top:1.4rem;font-size:0.62rem;color:#2e2010;letter-spacing:0.12em;">v4 &nbsp;·&nbsp; 2026-06-06 23:02 UTC</p>
 </div>
 <div id="loading">
   <h2 id="loading-label">Reading file…</h2>
@@ -96,7 +96,12 @@ canvas{display:block;position:fixed;inset:0;}
     </span>
   </div>
   <div id="stat-bar"></div>
-  <div id="build-ts">v4 · 2026-06-04 02:42 UTC</div>
+  <div id="build-ts">v4 · 2026-06-06 23:02 UTC</div>
+  <div id="bldg-tooltip" style="display:none;position:fixed;pointer-events:none;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:5px;padding:5px 10px;font-size:0.68rem;color:#C8A05A;letter-spacing:0.08em;z-index:20;white-space:nowrap;"></div>
+  <div id="minimap-wrap" style="display:none;position:fixed;bottom:70px;right:14px;width:200px;height:200px;border:1px solid #2a1e0e;border-radius:6px;overflow:hidden;z-index:10;background:rgba(9,8,10,0.85);">
+    <canvas id="minimap" width="200" height="200" style="width:200px;height:200px;cursor:crosshair;"></canvas>
+  </div>
+  <button id="minimap-btn" style="display:none;position:fixed;top:18px;right:18px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#8a7040;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">⊞ Map</button>
   <div id="live-toast"></div>
   <div id="info-panel">
     <div class="info-name" id="info-name"></div>
@@ -302,8 +307,8 @@ renderer.domElement.addEventListener('wheel',e=>{
   const offset=camera.position.clone().sub(orbit.target);
   const oldLen=offset.length();
   const newLen=oldLen*factor;
-  if(newLen<30){
-    // Push target forward so zoom never bottoms out — dolly through the scene
+  if(newLen<30 && factor<1){
+    // Zooming IN past 30m — push target forward so zoom continues indefinitely
     const pushDist=(30-newLen)*0.5;
     const dir=offset.clone().normalize().negate();
     orbit.target.addScaledVector(dir,pushDist);
@@ -311,6 +316,7 @@ renderer.domElement.addEventListener('wheel',e=>{
   }else{
     camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
   }
+  camera.position.y=Math.max(1.0, camera.position.y);  // never go underground
   orbit.update();
 },{passive:false});
 
@@ -431,6 +437,151 @@ function insetRing(pts, dist) {
 }
 
 // ── Build city geometry ────────────────────────────────────────────
+// ── Per-building colour variation ──────────────────────────────────
+// Vertex colours baked into merged geometry — one draw call per material,
+// but each building gets a unique hue sampled from a material-appropriate palette.
+// Hash source: props.uid (stable) → deterministic colour per building.
+
+function simpleHash(str){
+  let h=2166136261;
+  for(let i=0;i<str.length;i++){h=Math.imul(h^str.charCodeAt(i),16777619);}
+  return h>>>0;
+}
+
+
+// Winnipeg 1906 brick: predominantly red-brown Red River clay,
+// notable proportion of buff/yellow imported brick, some orange-red.
+const BRICK_PALETTES=[
+  [0x9A3020,0xC05838],  // dark red (35%)
+  [0xB84030,0xCC5840],  // mid red (25%)
+  [0xC86040,0xD87050],  // orange-red (10%)
+  [0xC8A030,0xD8B850],  // yellow/buff brick (20%)
+  [0xD4C070,0xE0CF90],  // pale limestone-yellow (10%)
+];
+const BRICK_WEIGHTS=[35,60,70,90,100]; // cumulative %
+
+const WOOD_COMM_PALETTES=[
+  [0xC49A30,0xD4AA40],  // ochre (most common Victorian exterior)
+  [0x6A7A50,0x7A8A60],  // sage green
+  [0xCDC0A0,0xDDD0B0],  // cream/buff
+  [0x8B3020,0xA04030],  // barn red
+  [0x3A5A30,0x4A6A40],  // dark green
+  [0x8090A0,0x909AB0],  // French grey (later fashion)
+  [0xA89070,0xBEA888],  // raw/weathered wood (small buildings)
+];
+const WOOD_COMM_WEIGHTS=[20,35,50,60,72,82,100];
+
+function buildingColour(mat,uid,floors,areaSqM){
+  const h=simpleHash(uid||String(Math.random()));
+  const h01=(h&0xFFFF)/0xFFFF;
+  const pct=h%100;
+
+  if(mat==='brick'){
+    let idx=0;for(let i=0;i<BRICK_WEIGHTS.length;i++)if(pct<BRICK_WEIGHTS[i]){idx=i;break;}
+    const[lo,hi]=BRICK_PALETTES[idx];
+    return lerpHex(lo,hi,h01);
+  }
+  if(mat==='wood'){
+    // Volume proxy: prestige = floors * sqrt(area). Low → raw wood, high → fashionable colour
+    const prestige=Math.min(100,(floors||1)*Math.sqrt(areaSqM||50)*0.5);
+    const rawWoodRange=Math.max(0,60-prestige);  // 0-60% chance of raw wood for small bldgs
+    const adjWeights=[...WOOD_COMM_WEIGHTS];
+    // Squeeze raw wood weight based on size — last palette is raw wood
+    adjWeights[adjWeights.length-1]=Math.max(adjWeights[adjWeights.length-2],rawWoodRange);
+    let idx=WOOD_COMM_WEIGHTS.length-1;
+    for(let i=0;i<adjWeights.length-1;i++)if(pct<adjWeights[i]){idx=i;break;}
+    const[lo,hi]=WOOD_COMM_PALETTES[idx];
+    return lerpHex(lo,hi,h01);
+  }
+  if(mat==='iron'){
+    // Corrugated iron — weathered grey-silver to rust-brown, some bright galvanised
+    const ironPals=[[0x707870,0x909890],[0x806858,0x907060],[0xA07050,0x985840],[0xD0D4D0,0xE0E4E0]];
+    const ironW=[40,65,85,100];
+    let idx=0;for(let i=0;i<ironW.length;i++)if(pct<ironW[i]){idx=i;break;}
+    return lerpHex(ironPals[idx][0],ironPals[idx][1],h01);
+  }
+  if(mat==='stone'){
+    // Tyndall limestone — cream to buff, slight warm variation
+    return lerpHex(0xDDD0B0,0xF0E8D0,h01);
+  }
+  if(mat==='log'){return lerpHex(0x80603A,0x987858,h01);}
+  if(mat==='concrete'){return lerpHex(0x888880,0xA0A098,h01);}
+  if(mat==='unknown'){return lerpHex(0x787068,0x908880,h01);}
+  if(mat==='blue'){return MATS.blue.color;}  // railways — keep consistent
+  return MATS[mat]?.color??0x808080;
+}
+
+function applyVertexColour(geom, hexCol){
+  // Apply a flat colour to all vertices of a (possibly indexed) geometry.
+  const r=((hexCol>>16)&0xff)/255;
+  const g=((hexCol>>8)&0xff)/255;
+  const b=(hexCol&0xff)/255;
+  const n=geom.attributes.position.count;
+  const cols=new Float32Array(n*3);
+  for(let i=0;i<n;i++){cols[i*3]=r;cols[i*3+1]=g;cols[i*3+2]=b;}
+  geom.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+}
+
+// ── Procedural windows ─────────────────────────────────────────────
+// Glass quads accumulated per buildCity call, merged into one mesh.
+// Up ≠ N: all placement in world XZ (X=east, Z=south).
+const WIN_W      = 1.00;   // standard window width (m)
+const WIN_H      = 1.75;   // standard window height (m)
+const WIN_SILL   = 0.90;   // sill height above floor (m)
+const WIN_GAP    = 0.90;   // gap between windows
+const WIN_MARGIN = 0.70;   // margin from wall ends
+const WIN_INSET  = 0.06;   // glass set back from wall face (m)
+const WIN_GF_W   = 1.50;   // ground-floor commercial width
+const WIN_GF_H_F = 0.78;   // ground-floor height as fraction of FLOOR_H
+
+const glassMat=new THREE.MeshPhongMaterial({
+  color:0x1A2530, shininess:90, specular:0x4868A0,
+  transparent:true, opacity:0.72,
+  side:THREE.DoubleSide,
+  polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
+});
+
+function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat){
+  const edgeDx=bx-ax, edgeDz=bz-az;
+  const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
+  if(edgeLen<2.5) return;
+  const ex=edgeDx/edgeLen, ez=edgeDz/edgeLen;   // edge direction unit vector
+
+  const isCommercial=(mat==='brick'||mat==='stone');
+  const usable=edgeLen-2*WIN_MARGIN;
+  if(usable<(WIN_W+WIN_GAP)) return;
+
+  for(let f=0;f<floors;f++){
+    const isGF=(f===0&&isCommercial);
+    const wW=isGF?WIN_GF_W:WIN_W;
+    const wH=isGF?FLOOR_H*WIN_GF_H_F:WIN_H;
+    const sill=WIN_SILL;
+    const cell=wW+WIN_GAP;
+    const n=Math.max(1,Math.floor(usable/cell));
+    const totalSpan=n*cell-WIN_GAP;
+    const startT=WIN_MARGIN+(usable-totalSpan)*0.5;
+    const winBaseY=f*FLOOR_H+sill;
+    const winTopY=winBaseY+wH;
+    const inx=nx*WIN_INSET, inz=nz*WIN_INSET;  // inset vector
+
+    for(let w=0;w<n;w++){
+      const t=startT+(w+0.5)*cell;
+      const cx=ax+ex*t+inx, cz=az+ez*t+inz;  // window centre on wall (inset)
+      const hw=wW*0.5;
+      // 4 corners: bl, br, tr, tl (viewed from outside = from normal direction)
+      // Edge goes in (ex,ez) direction. Outward normal is (nx,nz).
+      // For CCW winding viewed from outward: bl→br→tr and bl→tr→tl
+      const blx=cx-ex*hw, blz=cz-ez*hw;
+      const brx=cx+ex*hw, brz=cz+ez*hw;
+      // Triangle 1: bl-bottom, br-bottom, br-top
+      glassVerts.push(
+        blx,winBaseY,blz,  brx,winBaseY,brz,  brx,winTopY,brz,
+        blx,winBaseY,blz,  brx,winTopY,brz,   blx,winTopY,blz
+      );
+    }
+  }
+}
+
 async function buildCity(geojson){
   const year=detectYear(geojson);
   const group=new THREE.Group();
@@ -448,6 +599,7 @@ async function buildCity(geojson){
   if(creekFeatures.length>0){
     await buildWater({type:'FeatureCollection',features:creekFeatures});
   }
+  const glassVerts=[];  // accumulated window glass vertex data
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
@@ -487,10 +639,34 @@ async function buildCity(geojson){
       wallGeom.rotateX(-Math.PI/2);
       const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
       if(tris===0){wallGeom.dispose();continue;}
+      // Bake per-building colour into vertex colours before merging
+      const bldgCol=buildingColour(mat,props.uid,floors,props.area_m2);
+      applyVertexColour(wallGeom,bldgCol);
       wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
       wallGeos[mat].push(wallGeom);
-      wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat});
+      // Centroid for mini-map
+      let mcx=0,mcz=0;
+      for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);mcx+=sx;mcz+=(-sy);}
+      mcx/=(outer.length-1);mcz/=(outer.length-1);
+      wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
       matCounts[mat]++;
+      // Place procedural windows on all wall edges of this building
+      if(!isPlatform&&!isChurch&&floors>0.5){
+        const outerCoords=outer.slice(0,-1);
+        const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
+        const wcz=outerCoords.reduce((s,c)=>s+(-project(c[0],c[1])[1]),0)/outerCoords.length;
+        for(let j=0;j<outerCoords.length-1;j++){
+          const[ax0,ay0]=project(outerCoords[j][0],outerCoords[j][1]);
+          const[bx0,by0]=project(outerCoords[j+1][0],outerCoords[j+1][1]);
+          const ax=ax0,az=-ay0,bx=bx0,bz=-by0;
+          const dx=bx-ax,dz=bz-az,elen=Math.sqrt(dx*dx+dz*dz);
+          if(elen<0.3)continue;
+          let nx=-dz/elen,nz=dx/elen;
+          const midX=(ax+bx)/2,midZ=(az+bz)/2;
+          if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}  // ensure outward
+          placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat);
+        }
+      }
       const areaOk=props.area_m2==null||props.area_m2>25;
       const isBridge=props.type==='bridge';
       const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
@@ -580,13 +756,21 @@ async function buildCity(geojson){
     if(wallGeos[mat].length===0)continue;
     const wMerged=mergeGeometries(wallGeos[mat],false);
     for(const g of wallGeos[mat])g.dispose();
-    const wMat=new THREE.MeshPhongMaterial({color:MATS[mat].color,shininess:MATS[mat].shininess,specular:0x1a1a1a});
+    const wMat=new THREE.MeshPhongMaterial({
+      vertexColors:true,              // per-building colour baked in at merge time
+      shininess:MATS[mat].shininess,
+      specular:mat==='iron'?0x303838:0x1a1a1a,  // iron gets slight metallic specular
+    });
     wallMaterials[mat]=wMat;
     const wMesh=new THREE.Mesh(wMerged,wMat);
     wallMeshes[mat]=wMesh;
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
     group.add(wMesh);buildingMeshes.push(wMesh);
+    // Collect centroids for mini-map
+    const col='#'+MATS[mat].color.toString(16).padStart(6,'0');
+    for(const info of wallInfos[mat]){
+      if(info.cx!==undefined) minimapDots.push({x:info.cx,z:info.cz,col});}
     const lcEl=document.getElementById(`lc-${mat}`);if(lcEl)lcEl.textContent=matCounts[mat].toLocaleString();
     if(roofGeos[mat].length>0){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
@@ -628,6 +812,18 @@ async function buildCity(geojson){
     seasonalMats.push({mat3:cMat,summerCol:0x38342E,winterCol:0xD8D8E4});
     const cMesh=new THREE.Mesh(cMerged,cMat);
     cMesh.receiveShadow=true;group.add(cMesh);
+  }
+
+  // ── Glass window mesh ──────────────────────────────────────────────
+  if(glassVerts.length>0){
+    setProgress(96,'Adding windows…');await tick();
+    const gGeom=new THREE.BufferGeometry();
+    gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
+    gGeom.computeVertexNormals();
+    const gMesh=new THREE.Mesh(gGeom,glassMat);
+    gMesh.renderOrder=1;   // draw after opaque walls
+    group.add(gMesh);
+    console.log(`Windows: ${glassVerts.length/18} panes`);
   }
 
   return total;
@@ -851,6 +1047,56 @@ async function buildWater(geojson){
 // Width axis = polygon edge direction (horizontal XZ).
 // Height axis = world Y (up — not north).
 // Front face matched by dot product of clicked face normal vs polygon edge normals.
+
+// ── Mini-map ───────────────────────────────────────────────────────
+// Up ≠ N: worldX=east, worldZ=south → map draws X→right, Z→down (standard plan view).
+const minimapCanvas=document.getElementById('minimap');
+const minimapCtx=minimapCanvas?.getContext('2d');
+const minimapWrap=document.getElementById('minimap-wrap');
+const minimapBtn=document.getElementById('minimap-btn');
+let minimapVisible=false;
+let minimapDots=[];
+const MAP_SIZE=200, MAP_RANGE=2500;
+
+function minimapW2C(wx,wz){
+  return[(wx/MAP_RANGE)*0.5*MAP_SIZE+MAP_SIZE/2,(wz/MAP_RANGE)*0.5*MAP_SIZE+MAP_SIZE/2];
+}
+function drawMinimap(){
+  if(!minimapVisible||!minimapCtx)return;
+  const ctx=minimapCtx;
+  ctx.clearRect(0,0,MAP_SIZE,MAP_SIZE);
+  ctx.fillStyle='rgba(14,12,10,0.92)';ctx.fillRect(0,0,MAP_SIZE,MAP_SIZE);
+  ctx.strokeStyle='#2a1e0e';ctx.lineWidth=1;ctx.beginPath();
+  ctx.arc(MAP_SIZE/2,MAP_SIZE/2,MAP_SIZE*0.45,0,Math.PI*2);ctx.stroke();
+  for(const{x,z,col}of minimapDots){
+    const[cx,cz]=minimapW2C(x,z);
+    if(cx<0||cx>MAP_SIZE||cz<0||cz>MAP_SIZE)continue;
+    ctx.fillStyle=col;ctx.fillRect(cx-1.5,cz-1.5,3,3);
+  }
+  const[camX,camZ]=minimapW2C(camera.position.x,camera.position.z);
+  const hdg=fpsMode?yaw:Math.atan2(camera.position.x-orbit.target.x,camera.position.z-orbit.target.z)+Math.PI;
+  ctx.save();ctx.translate(camX,camZ);ctx.rotate(hdg);
+  ctx.fillStyle='#FFD080';ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();
+  ctx.strokeStyle='#3a2a10';ctx.lineWidth=0.5;
+  ctx.beginPath();ctx.moveTo(MAP_SIZE/2-6,MAP_SIZE/2);ctx.lineTo(MAP_SIZE/2+6,MAP_SIZE/2);
+  ctx.moveTo(MAP_SIZE/2,MAP_SIZE/2-6);ctx.lineTo(MAP_SIZE/2,MAP_SIZE/2+6);ctx.stroke();
+}
+function toggleMinimap(){
+  minimapVisible=!minimapVisible;
+  if(minimapWrap)minimapWrap.style.display=minimapVisible?'block':'none';
+  if(minimapBtn)minimapBtn.style.color=minimapVisible?'#C8A05A':'#8a7040';
+}
+if(minimapCanvas){
+  minimapCanvas.addEventListener('click',e=>{
+    if(fpsMode)return;
+    const r=minimapCanvas.getBoundingClientRect();
+    const wx=(e.clientX-r.left-MAP_SIZE/2)/(MAP_SIZE*0.5)*MAP_RANGE;
+    const wz=(e.clientY-r.top-MAP_SIZE/2)/(MAP_SIZE*0.5)*MAP_RANGE;
+    orbit.target.set(wx,0,wz);camera.position.set(wx,Math.max(80,camera.position.y),wz-200);orbit.update();
+  });
+}
+if(minimapBtn)minimapBtn.addEventListener('click',toggleMinimap);
+window.toggleMinimap=toggleMinimap;
 
 let facadePending = null;  // {tex, filename} when waiting for a building click
 
@@ -1261,6 +1507,7 @@ window.addEventListener('keydown',e=>{
   if(e.code==='Escape'&&fpsMode)exitFPS();
   if(e.code==='Escape'&&facadePending)exitFacadePlacement();
   if(e.code==='KeyH'&&!fpsMode){camera.position.set(startX+700,380,startZ);orbit.target.set(startX,0,startZ);orbit.update();}
+  if(e.code==='KeyM'&&!fpsMode)toggleMinimap();
   initAudio();
 });
 window.addEventListener('keyup',e=>{keys[e.code]=false;sprinting=e.shiftKey;});
@@ -1273,6 +1520,26 @@ document.addEventListener('mousemove',e=>{
     const r=renderer.domElement.getBoundingClientRect();
     mouseNDC.x=((e.clientX-r.left)/r.width)*2-1;
     mouseNDC.y=-((e.clientY-r.top)/r.height)*2+1;
+
+    // Ctrl+hover: show building ID and name near cursor
+    const tip=document.getElementById('bldg-tooltip');
+    if(e.ctrlKey&&buildingMeshes.length){
+      raycaster.setFromCamera(mouseNDC,camera);
+      const hits=raycaster.intersectObjects(buildingMeshes);
+      if(hits.length){
+        const mesh=hits[0].object;
+        const idx=upperBound(mesh.userData.cums,hits[0].faceIndex);
+        const info=mesh.userData.infos?.[idx];
+        if(info){
+          const id=info.feat?.properties?.id??'?';
+          const nm=info.name||'(unnamed)';
+          tip.textContent=`id:${id}  "${nm}"`;
+          tip.style.display='block';
+          tip.style.left=(e.clientX+14)+'px';
+          tip.style.top=(e.clientY-10)+'px';
+        }else{tip.style.display='none';}
+      }else{tip.style.display='none';}
+    }else{tip.style.display='none';}
   }
 });
 renderer.domElement.addEventListener('click',initAudio,{once:true});
@@ -1349,6 +1616,7 @@ function startLoop(){
       }
     }else{orbit.update();updateHover();}
     renderer.render(scene,camera);
+  drawMinimap();
   }
   lastTime=performance.now();requestAnimationFrame(loop);
 }
@@ -1670,6 +1938,7 @@ async function loadFiles(fileList){
   const sb=document.getElementById('stat-bar');sb.style.display='block';
   updateStatBar();startLoop();enableLiveDrops();
   document.getElementById('winter-btn').style.display='block';
+  if(minimapBtn) minimapBtn.style.display='block';
   window.toggleWinter=toggleWinter;
 
   // ── Start position ────────────────────────────────────────────────
@@ -1736,11 +2005,31 @@ renderer.render(scene,camera);
   document.getElementById('hud').style.display='block';
   document.getElementById('tod-control').style.display='flex';
   document.getElementById('winter-btn').style.display='block';
+  if(minimapBtn) minimapBtn.style.display='block';
   document.getElementById('stat-bar').style.display='block';
   document.getElementById('tod-slider')
     .addEventListener('input',e=>setTimeOfDay(parseFloat(e.target.value)));
   window.toggleWinter=toggleWinter;
   buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
+
+  // ── Facade manifest ───────────────────────────────────────────────
+  // ./data/facades.json: array of filenames, images loaded from ./images/
+  // e.g. ["Dominion_Bank_Facade.png","CNR_Building.png"]
+  try{
+    const mres=await fetch('./data/facades.json');
+    if(mres.ok){
+      const manifest=await mres.json();
+      for(const fname of manifest){
+        try{
+          const ires=await fetch('./images/'+fname);
+          if(!ires.ok)continue;
+          const blob=await ires.blob();
+          const file=new File([blob],fname,{type:blob.type});
+          await loadFacade(file);
+        }catch(e){console.warn('Facade manifest: failed to load',fname,e);}
+      }
+    }
+  }catch(e){/* no manifest — silent */}
 })();
 </script>
 </body>
