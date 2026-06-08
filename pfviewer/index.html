@@ -705,7 +705,7 @@ async function buildCity(geojson){
           for(let j=1;j<shapeInner.length;j++) shelfHole.lineTo(shapeInner[j][0],shapeInner[j][1]);
           shelfShape.holes.push(shelfHole);
           try{
-            const shelfGeom=new THREE.ShapeGeometry(shelfShape);
+            const shelfGeom=new THREE.ExtrudeGeometry(shelfShape,{depth:0.15,bevelEnabled:false});
             shelfGeom.rotateX(-Math.PI/2); shelfGeom.translate(0,lowerH,0);
             applyVertexColour(shelfGeom,bldgCol); wallGeos[mat].push(shelfGeom);
           }catch(e){/* skip degenerate shelf */}
