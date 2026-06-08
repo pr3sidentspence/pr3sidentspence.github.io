@@ -645,7 +645,7 @@ async function buildCity(geojson){
   const group=new THREE.Group();
   group.name=year;
   scene.add(group);
-  layerGroups.push({year,group});
+  layerGroups.push({year,group,geojson});
   const yearRadius = year==='1880' ? 1000 : 3000;
   roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
 
@@ -2029,7 +2029,93 @@ function isBumpFile(f){
   return s.startsWith('bump ')||s.endsWith(' bump');
 }
 
-// ── Window mask system ──────────────────────────────────────────────
+// Re-run only the glass vert collection for a layer and replace its glass mesh.
+// Called after a window mask is drag-dropped in. Up ≠ N — all geometry in world XZ.
+function rebuildGlassMesh(layerEntry){
+  const{group,geojson}=layerEntry;
+  if(!group||!geojson) return;
+
+  // Dispose and remove the existing glass mesh from this group
+  group.traverse(child=>{
+    if(child.isMesh&&child.material===glassMat){
+      child.geometry.dispose();
+      group.remove(child);
+    }
+  });
+
+  // Re-collect glass verts using same logic as buildCity
+  const glassVerts=[];
+  for(const feat of geojson.features){
+    const props=feat.properties;
+    const mat=MATS[props.material]?props.material:'unknown';
+    const floors=props.floors??1, isPlatform=floors<=0.2;
+    const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+    if(feat.geometry.type!=='Polygon'&&feat.geometry.type!=='MultiPolygon') continue;
+    const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
+    for(const rings of polygons){
+      const outer=rings[0];
+      if(!outer||outer.length<4) continue;
+      const areaOk=props.area_m2==null||props.area_m2>25;
+      const isBridge=props.type==='bridge';
+      const nm=(props.name||'').toLowerCase();
+      const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
+                   ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
+                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
+      if(!isPlatform&&!isChurch&&!isBridge&&floors>0.5&&areaOk){
+        const outerCoords=outer.slice(0,-1);
+        const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
+        const wcz=outerCoords.reduce((s,c)=>s+(-project(c[0],c[1])[1]),0)/outerCoords.length;
+        const wEdges=[];
+        for(let j=0;j<outerCoords.length-1;j++){
+          const[ax0,ay0]=project(outerCoords[j][0],outerCoords[j][1]);
+          const[bx0,by0]=project(outerCoords[j+1][0],outerCoords[j+1][1]);
+          const ax=ax0,az=-ay0,bx=bx0,bz=-by0;
+          const dx=bx-ax,dz=bz-az,elen=Math.sqrt(dx*dx+dz*dz);
+          if(elen<0.3) continue;
+          let nx=-dz/elen,nz=dx/elen;
+          const midX=(ax+bx)/2,midZ=(az+bz)/2;
+          if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}
+          wEdges.push({ax,az,bx,bz,nx,nz,len:elen});
+        }
+        if(wEdges.length===0) continue;
+        let primaryIdx=0,bestDot=-Infinity;
+        for(let i=0;i<wEdges.length;i++){
+          const d=wEdges[i].nx;
+          if(d>bestDot){bestDot=d;primaryIdx=i;}
+        }
+        const primaryNx=wEdges[primaryIdx].nx, primaryNz=wEdges[primaryIdx].nz;
+        const primaryLen=wEdges[primaryIdx].len;
+        const perpEdges=wEdges.filter(e=>Math.abs(e.nx*primaryNx+e.nz*primaryNz)<0.35);
+        const maxPerpLen=perpEdges.length?Math.max(...perpEdges.map(e=>e.len)):0;
+        const isNarrow=primaryLen<7&&maxPerpLen>primaryLen*1.5;
+        const bldgStem=props.name?normName(props.name):null;
+        const maskEntry=bldgStem?windowMaskCache.get(bldgStem):null;
+        for(let i=0;i<wEdges.length;i++){
+          const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
+          const isPrimary=(i===primaryIdx);
+          if(isNarrow&&!isPrimary) continue;
+          const isFacadeFace=maskEntry&&(nx*primaryNx+nz*primaryNz>0.65);
+          if(isFacadeFace){
+            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,height,maskEntry.windows,len);
+          } else {
+            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
+          }
+        }
+      }
+    }
+  }
+
+  if(glassVerts.length>0){
+    const gGeom=new THREE.BufferGeometry();
+    gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
+    gGeom.computeVertexNormals();
+    const gMesh=new THREE.Mesh(gGeom,glassMat);
+    gMesh.renderOrder=1;
+    group.add(gMesh);
+    console.log(`Glass rebuilt: ${glassVerts.length/18} panes`);
+  }
+}
+
 // Mask PNGs named e.g. "Dominion_Bank_mask.png" — black with white window rectangles.
 // Stored by building stem; used to replace procedural windows on the facade face.
 const windowMaskCache=new Map(); // stem → {canvas,W,H,windows:[{u0,u1,v0,v1}]}
@@ -2125,6 +2211,8 @@ async function loadWindowMask(imageFile){
   const stem=normName(match.props.name||String(match.props.id||rawStem));
   windowMaskCache.set(stem,{canvas,W:canvas.width,H:canvas.height,windows,props:match.props});
   console.log(`Window mask: "${imageFile.name}" → "${match.props.name||match.props.id}" | ${windows.length} windows detected`);
+  // Rebuild glass geometry for all layers so mask takes effect immediately
+  for(const lg of layerGroups) rebuildGlassMesh(lg);
 }
 
 
