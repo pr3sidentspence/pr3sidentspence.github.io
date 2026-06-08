@@ -276,6 +276,9 @@ function setTimeOfDay(t){
   const hour=TOD_START_H+t*TOD_RANGE_H,hh=Math.floor(hour),mm=Math.round((hour-hh)*60);
   const lbl=document.getElementById('tod-label');
   if(lbl)lbl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
+  // Oil-lamp night glow on windows — warm amber when sun below horizon
+  const nightness = Math.max(0, Math.min(1, 1 - sUp * 10));
+  if(typeof glassMat !== 'undefined') glassMat.emissive.setRGB(0.47 * nightness, 0.19 * nightness, 0.02 * nightness);
 }
 setTimeOfDay(0.42);
 
@@ -541,7 +544,7 @@ const glassMat=new THREE.MeshPhongMaterial({
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
 
-function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat){
+function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false){
   const edgeDx=bx-ax, edgeDz=bz-az;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   if(edgeLen<2.5) return;
@@ -552,32 +555,62 @@ function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat)
   if(usable<(WIN_W+WIN_GAP)) return;
 
   for(let f=0;f<floors;f++){
-    const isGF=(f===0&&isCommercial);
-    const wW=isGF?WIN_GF_W:WIN_W;
-    const wH=isGF?FLOOR_H*WIN_GF_H_F:WIN_H;
-    const sill=WIN_SILL;
-    const cell=wW+WIN_GAP;
-    const n=Math.max(1,Math.floor(usable/cell));
-    const totalSpan=n*cell-WIN_GAP;
-    const startT=WIN_MARGIN+(usable-totalSpan)*0.5;
+    let wW, wH, sill, n, startT;
+    if(isStorefront && f===0){
+      // Ground floor storefront: one wide shop window spanning nearly full width
+      wW = Math.max(WIN_GF_W, edgeLen - 1.0);
+      wH = FLOOR_H * WIN_GF_H_F;
+      sill = 0.4;
+      n = 1;
+      startT = edgeLen * 0.5;  // centre of edge
+    } else {
+      const isGF=(f===0&&isCommercial);
+      wW=isGF?WIN_GF_W:WIN_W;
+      wH=isGF?FLOOR_H*WIN_GF_H_F:WIN_H;
+      sill=WIN_SILL;
+      const cell=wW+WIN_GAP;
+      n=Math.max(1,Math.floor(usable/cell));
+      const totalSpan=n*cell-WIN_GAP;
+      startT=WIN_MARGIN+(usable-totalSpan)*0.5 + (n===1 ? (usable-(wW+WIN_GAP))*0.5 + wW*0.5 : 0);
+      // Simpler: recompute per-window t below
+    }
     const winBaseY=f*FLOOR_H+sill;
     const winTopY=winBaseY+wH;
-    const inx=nx*WIN_INSET, inz=nz*WIN_INSET;  // inset vector
+    const inx=nx*WIN_INSET, inz=nz*WIN_INSET;
 
-    for(let w=0;w<n;w++){
-      const t=startT+(w+0.5)*cell;
-      const cx=ax+ex*t+inx, cz=az+ez*t+inz;  // window centre on wall (inset)
-      const hw=wW*0.5;
-      // 4 corners: bl, br, tr, tl (viewed from outside = from normal direction)
-      // Edge goes in (ex,ez) direction. Outward normal is (nx,nz).
-      // For CCW winding viewed from outward: bl→br→tr and bl→tr→tl
+    if(isStorefront && f===0){
+      // Single centred storefront window
+      const cx=ax+ex*(edgeLen*0.5)+inx, cz=az+ez*(edgeLen*0.5)+inz;
+      const hw=Math.min(wW,edgeLen-1.0)*0.5;
+      if(hw<0.3) continue;
       const blx=cx-ex*hw, blz=cz-ez*hw;
       const brx=cx+ex*hw, brz=cz+ez*hw;
-      // Triangle 1: bl-bottom, br-bottom, br-top
       glassVerts.push(
         blx,winBaseY,blz,  brx,winBaseY,brz,  brx,winTopY,brz,
         blx,winBaseY,blz,  brx,winTopY,brz,   blx,winTopY,blz
       );
+    } else {
+      const isGF=(f===0&&isCommercial);
+      const _wW=isGF?WIN_GF_W:WIN_W;
+      const _wH=isGF?FLOOR_H*WIN_GF_H_F:WIN_H;
+      const _sill=WIN_SILL;
+      const cell=_wW+WIN_GAP;
+      const _n=Math.max(1,Math.floor(usable/cell));
+      const totalSpan=_n*cell-WIN_GAP;
+      const _startT=WIN_MARGIN+(usable-totalSpan)*0.5;
+      const _winBaseY=f*FLOOR_H+_sill;
+      const _winTopY=_winBaseY+_wH;
+      for(let w=0;w<_n;w++){
+        const t=_startT+(w+0.5)*cell;
+        const cx=ax+ex*t+inx, cz=az+ez*t+inz;
+        const hw=_wW*0.5;
+        const blx=cx-ex*hw, blz=cz-ez*hw;
+        const brx=cx+ex*hw, brz=cz+ez*hw;
+        glassVerts.push(
+          blx,_winBaseY,blz,  brx,_winBaseY,brz,  brx,_winTopY,brz,
+          blx,_winBaseY,blz,  brx,_winTopY,brz,   blx,_winTopY,blz
+        );
+      }
     }
   }
 }
@@ -633,6 +666,77 @@ async function buildCity(geojson){
         for(let j=1;j<rings[h].length-1;j++){const[hx,hy]=project(rings[h][j][0],rings[h][j][1]);hole.lineTo(hx,hy);}
         shape.holes.push(hole);
       }
+      // ── Grain elevator: multi-stage geometry (lower body + shoulder + cupola + roof) ──
+      {
+        const _nm=(props.name||'').toLowerCase();
+        if(_nm.includes('elevator')){
+          const ELEV_STEP_H=0.75;
+          const ELEV_STEP_SCALE=0.55;
+          const lowerH=height*ELEV_STEP_H;
+          const upperH=height*(1-ELEV_STEP_H);
+          const bldgCol=buildingColour(mat,props.uid,floors,props.area_m2);
+
+          // Collect shape points in shapeXY
+          const shapeOuter=[];
+          for(let j=0;j<outer.length-1;j++){
+            const[sx,sy]=project(outer[j][0],outer[j][1]);
+            shapeOuter.push([sx,sy]);
+          }
+          // Centroid in shapeXY space
+          const sCx=shapeOuter.reduce((s,p)=>s+p[0],0)/shapeOuter.length;
+          const sCy=shapeOuter.reduce((s,p)=>s+p[1],0)/shapeOuter.length;
+          // Scale toward centroid for inner (cupola) footprint
+          const shapeInner=shapeOuter.map(([x,y])=>[sCx+(x-sCx)*ELEV_STEP_SCALE, sCy+(y-sCy)*ELEV_STEP_SCALE]);
+
+          // Lower body
+          const loShape=new THREE.Shape();
+          loShape.moveTo(shapeOuter[0][0],shapeOuter[0][1]);
+          for(let j=1;j<shapeOuter.length;j++) loShape.lineTo(shapeOuter[j][0],shapeOuter[j][1]);
+          try{
+            const loGeom=new THREE.ExtrudeGeometry(loShape,{depth:lowerH,bevelEnabled:false});
+            loGeom.rotateX(-Math.PI/2); applyVertexColour(loGeom,bldgCol); wallGeos[mat].push(loGeom);
+          }catch(e){console.warn('elevator lower body failed',props.id,e.message);}
+
+          // Shoulder shelf (annular ring at lowerH)
+          const shelfShape=new THREE.Shape();
+          shelfShape.moveTo(shapeOuter[0][0],shapeOuter[0][1]);
+          for(let j=1;j<shapeOuter.length;j++) shelfShape.lineTo(shapeOuter[j][0],shapeOuter[j][1]);
+          const shelfHole=new THREE.Path();
+          shelfHole.moveTo(shapeInner[0][0],shapeInner[0][1]);
+          for(let j=1;j<shapeInner.length;j++) shelfHole.lineTo(shapeInner[j][0],shapeInner[j][1]);
+          shelfShape.holes.push(shelfHole);
+          try{
+            const shelfGeom=new THREE.ShapeGeometry(shelfShape);
+            shelfGeom.rotateX(-Math.PI/2); shelfGeom.translate(0,lowerH,0);
+            applyVertexColour(shelfGeom,bldgCol); wallGeos[mat].push(shelfGeom);
+          }catch(e){/* skip degenerate shelf */}
+
+          // Upper cupola
+          const upShape=new THREE.Shape();
+          upShape.moveTo(shapeInner[0][0],shapeInner[0][1]);
+          for(let j=1;j<shapeInner.length;j++) upShape.lineTo(shapeInner[j][0],shapeInner[j][1]);
+          try{
+            const upGeom=new THREE.ExtrudeGeometry(upShape,{depth:upperH,bevelEnabled:false});
+            upGeom.rotateX(-Math.PI/2); upGeom.translate(0,lowerH,0);
+            applyVertexColour(upGeom,bldgCol); wallGeos[mat].push(upGeom);
+          }catch(e){console.warn('elevator cupola failed',props.id,e.message);}
+
+          // Steep peaked roof on inner footprint
+          const innerRing=shapeInner.map(([x,y])=>[x,-y]); // shapeY → worldZ
+          const elevRidgeH=upperH*0.9;
+          const rg=buildRoofGeometry(innerRing,height+0.05,elevRidgeH);
+          if(rg&&roofGeos[mat]) roofGeos[mat].push(rg);
+
+          // Register for minimap
+          matCounts[mat]++;
+          let emcx=0,emcz=0;
+          for(const[x,y] of shapeOuter){emcx+=x;emcz+=(-y);}
+          emcx/=shapeOuter.length;emcz/=shapeOuter.length;
+          wallInfos[mat].push({name:props.name||null,floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:emcx,cz:emcz});
+          continue;  // skip normal wall creation for elevator
+        }
+      }
+
       let wallGeom;
       try{wallGeom=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false});}
       catch(err){console.warn('earcut failed id:',props.id,err.message);continue;}
@@ -658,11 +762,15 @@ async function buildCity(geojson){
       const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
                    ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
+      const isElevator=nm.includes('elevator');
 
       if(!isPlatform&&!isChurch&&floors>0.5){
         const outerCoords=outer.slice(0,-1);
         const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
         const wcz=outerCoords.reduce((s,c)=>s+(-project(c[0],c[1])[1]),0)/outerCoords.length;
+
+        // Collect edges with outward normals first
+        const wEdges=[];
         for(let j=0;j<outerCoords.length-1;j++){
           const[ax0,ay0]=project(outerCoords[j][0],outerCoords[j][1]);
           const[bx0,by0]=project(outerCoords[j+1][0],outerCoords[j+1][1]);
@@ -671,8 +779,29 @@ async function buildCity(geojson){
           if(elen<0.3)continue;
           let nx=-dz/elen,nz=dx/elen;
           const midX=(ax+bx)/2,midZ=(az+bz)/2;
-          if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}  // ensure outward
-          placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat);
+          if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}
+          wEdges.push({ax,az,bx,bz,nx,nz,len:elen});
+        }
+        if(wEdges.length===0) continue;
+
+        // Find primary front edge (most eastward-facing outward normal)
+        let primaryIdx=0,bestDot=-Infinity;
+        for(let i=0;i<wEdges.length;i++){
+          const d=wEdges[i].nx;  // eastward component
+          if(d>bestDot){bestDot=d;primaryIdx=i;}
+        }
+        const primaryLen=wEdges[primaryIdx].len;
+
+        // Detect narrow strip building: primary face much shorter than perpendicular sides
+        const perpEdges=wEdges.filter(e=>Math.abs(e.nx*wEdges[primaryIdx].nx+e.nz*wEdges[primaryIdx].nz)<0.35);
+        const maxPerpLen=perpEdges.length?Math.max(...perpEdges.map(e=>e.len)):0;
+        const isNarrow=primaryLen<7&&maxPerpLen>primaryLen*1.5;
+
+        for(let i=0;i<wEdges.length;i++){
+          const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
+          const isPrimary=(i===primaryIdx);
+          if(isNarrow&&!isPrimary) continue;  // skip party walls on narrow buildings
+          placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
         }
       }
       // Standard peaked roofs: wood/iron/etc, low-rise
