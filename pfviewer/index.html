@@ -278,10 +278,8 @@ function setTimeOfDay(t){
   if(lbl)lbl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
   // Oil-lamp night glow on windows — warm amber when sun below horizon
   const nightness = Math.max(0, Math.min(1, 1 - sUp * 10));
-  if(typeof glassMat !== 'undefined') glassMat.emissive.setRGB(0.47 * nightness, 0.19 * nightness, 0.02 * nightness);
+  glassMat.emissive.setRGB(0.47 * nightness, 0.19 * nightness, 0.02 * nightness);
 }
-setTimeOfDay(0.42);
-
 // ── Ground ─────────────────────────────────────────────────────────
 const groundMat=new THREE.MeshLambertMaterial({color:0x2D4A1A});
 groundMatRef=groundMat;
@@ -543,6 +541,7 @@ const glassMat=new THREE.MeshPhongMaterial({
   side:THREE.DoubleSide,
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
+setTimeOfDay(0.42); // initial sky/lighting — must be after glassMat
 
 function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false){
   const edgeDx=bx-ax, edgeDz=bz-az;
