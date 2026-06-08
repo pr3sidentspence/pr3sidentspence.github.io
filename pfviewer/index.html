@@ -543,6 +543,32 @@ const glassMat=new THREE.MeshPhongMaterial({
 });
 setTimeOfDay(0.42); // initial sky/lighting — must be after glassMat
 
+// Place glass quads derived from a window mask on a single wall edge.
+// maskWindows: [{u0,u1,v0,v1}] in [0,1] UV space (u=horizontal, v=vertical 0=bottom).
+// The mask's full width maps to this edge's full length; full height maps to worldHeight.
+// Up ≠ N: edge direction and outward normal are in world XZ — no screen-up assumption.
+function placeMaskWindows(glassVerts, ax,az,bx,bz, nx,nz, worldHeight, maskWindows, edgeLen){
+  const edgeDx=bx-ax, edgeDz=bz-az;
+  const elen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
+  if(elen<0.3||maskWindows.length===0) return;
+  const ex=edgeDx/elen, ez=edgeDz/elen;
+  const inx=nx*WIN_INSET, inz=nz*WIN_INSET;
+
+  for(const w of maskWindows){
+    const wLeft =ax + ex*(w.u0*elen) + inx;
+    const wLeftZ=az + ez*(w.u0*elen) + inz;
+    const wRight =ax + ex*(w.u1*elen) + inx;
+    const wRightZ=az + ez*(w.u1*elen) + inz;
+    const yBot=w.v0*worldHeight;
+    const yTop=w.v1*worldHeight;
+    if(yTop-yBot<0.1||w.u1-w.u0<0.01) continue;
+    glassVerts.push(
+      wLeft, yBot,wLeftZ,   wRight,yBot,wRightZ,  wRight,yTop,wRightZ,
+      wLeft, yBot,wLeftZ,   wRight,yTop,wRightZ,  wLeft, yTop,wLeftZ
+    );
+  }
+}
+
 function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false){
   const edgeDx=bx-ax, edgeDz=bz-az;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
@@ -790,17 +816,31 @@ async function buildCity(geojson){
           if(d>bestDot){bestDot=d;primaryIdx=i;}
         }
         const primaryLen=wEdges[primaryIdx].len;
+        const primaryNx=wEdges[primaryIdx].nx, primaryNz=wEdges[primaryIdx].nz;
 
         // Detect narrow strip building: primary face much shorter than perpendicular sides
-        const perpEdges=wEdges.filter(e=>Math.abs(e.nx*wEdges[primaryIdx].nx+e.nz*wEdges[primaryIdx].nz)<0.35);
+        const perpEdges=wEdges.filter(e=>Math.abs(e.nx*primaryNx+e.nz*primaryNz)<0.35);
         const maxPerpLen=perpEdges.length?Math.max(...perpEdges.map(e=>e.len)):0;
         const isNarrow=primaryLen<7&&maxPerpLen>primaryLen*1.5;
+
+        // Check for window mask for this building
+        const bldgStem=props.name?normName(props.name):null;
+        const maskEntry=bldgStem?windowMaskCache.get(bldgStem):null;
 
         for(let i=0;i<wEdges.length;i++){
           const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
           const isPrimary=(i===primaryIdx);
           if(isNarrow&&!isPrimary) continue;  // skip party walls on narrow buildings
-          placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
+
+          // Is this edge part of the facade face? (within 60° of primary normal)
+          const isFacadeFace= maskEntry && (nx*primaryNx+nz*primaryNz>0.65);
+
+          if(isFacadeFace){
+            // Place mask-derived windows on this face instead of procedural ones
+            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,height,maskEntry.windows,len);
+          } else {
+            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
+          }
         }
       }
       // Standard peaked roofs: wood/iron/etc, low-rise
@@ -1989,6 +2029,105 @@ function isBumpFile(f){
   return s.startsWith('bump ')||s.endsWith(' bump');
 }
 
+// ── Window mask system ──────────────────────────────────────────────
+// Mask PNGs named e.g. "Dominion_Bank_mask.png" — black with white window rectangles.
+// Stored by building stem; used to replace procedural windows on the facade face.
+const windowMaskCache=new Map(); // stem → {canvas,W,H,windows:[{u0,u1,v0,v1}]}
+
+function isMaskFile(f){
+  const s=normName(f.name.replace(/\.[^.]+$/,''));
+  return s.endsWith(' mask');
+}
+
+// Scan mask canvas → array of {u0,u1,v0,v1} in [0,1] UV space.
+// White (R>200) = window. Scans column-by-column, merges adjacent columns with
+// overlapping runs into rectangles. UV origin: left=0, right=1, bottom=0, top=1.
+function parseMaskWindows(canvas){
+  const W=canvas.width,H=canvas.height;
+  const ctx=canvas.getContext('2d');
+  const px=ctx.getImageData(0,0,W,H).data;
+  const isWhite=(x,y)=>px[(y*W+x)*4]>200;
+
+  // Per column: find contiguous white vertical runs → [{y0,y1}]
+  const colRuns=[];
+  for(let x=0;x<W;x++){
+    const runs=[];
+    let inRun=false,runStart=0;
+    for(let y=0;y<H;y++){
+      if(isWhite(x,y)){
+        if(!inRun){inRun=true;runStart=y;}
+      } else {
+        if(inRun){runs.push({y0:runStart,y1:y-1});inRun=false;}
+      }
+    }
+    if(inRun) runs.push({y0:runStart,y1:H-1});
+    colRuns.push(runs);
+  }
+
+  // Merge adjacent columns: carry open rectangles forward if run overlaps
+  const rects=[];
+  let open=[]; // [{x0,y0,y1,lastX}]
+  for(let x=0;x<W;x++){
+    const newOpen=[];
+    for(const run of colRuns[x]){
+      // Try to extend an existing open rect that overlaps this run
+      const match=open.find(o=>o.lastX===x-1&&o.y0<=run.y1&&o.y1>=run.y0);
+      if(match){
+        match.y0=Math.min(match.y0,run.y0);
+        match.y1=Math.max(match.y1,run.y1);
+        match.lastX=x;
+        newOpen.push(match);
+      } else {
+        newOpen.push({x0:x,y0:run.y0,y1:run.y1,lastX:x});
+      }
+    }
+    // Close rects that weren't extended
+    for(const o of open){
+      if(!newOpen.includes(o)) rects.push({x0:o.x0,x1:o.lastX,y0:o.y0,y1:o.y1});
+    }
+    open=newOpen;
+  }
+  for(const o of open) rects.push({x0:o.x0,x1:o.lastX,y0:o.y0,y1:o.y1});
+
+  // Convert pixel coords to UV [0,1]. Image V=0 is top; world Y=0 is bottom → flip V.
+  const MIN_PX=4; // ignore noise smaller than 4px
+  return rects
+    .filter(r=>r.x1-r.x0>=MIN_PX&&r.y1-r.y0>=MIN_PX)
+    .map(r=>({
+      u0: r.x0/W,
+      u1: (r.x1+1)/W,
+      v0: 1-(r.y1+1)/H,   // bottom of window in world space
+      v1: 1-r.y0/H,       // top of window in world space
+    }));
+}
+
+async function loadWindowMask(imageFile){
+  // Strip _mask suffix to get building stem
+  const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,'').replace(/_?mask$/i,'').replace(/^mask_?/i,''));
+  let match=buildingIndex.get(rawStem);
+  if(!match){
+    // Partial match — longest key wins
+    let bestKey='',bestVal=null;
+    for(const[key,val]of buildingIndex){
+      if(rawStem.includes(key)||key.includes(rawStem)){
+        if(key.length>bestKey.length){bestKey=key;bestVal=val;}
+      }
+    }
+    match=bestVal;
+  }
+  if(!match){
+    console.warn(`Window mask: no building match for "${imageFile.name}" (stem: "${rawStem}")`);
+    return;
+  }
+
+  const canvas=await loadImageToCanvas(imageFile);
+  const windows=parseMaskWindows(canvas);
+  const stem=normName(match.props.name||String(match.props.id||rawStem));
+  windowMaskCache.set(stem,{canvas,W:canvas.width,H:canvas.height,windows,props:match.props});
+  console.log(`Window mask: "${imageFile.name}" → "${match.props.name||match.props.id}" | ${windows.length} windows detected`);
+}
+
+
 function bumpMatKey(f){
   const s=normName(f.name.replace(/\.[^.]+$/,''));
   return Object.keys(MATS).find(k=>s.includes(k))||null;
@@ -1997,7 +2136,9 @@ function bumpMatKey(f){
 async function liveLoad(fileList){
   for(const f of fileList){
     if(isImage(f)){
-      if(isBumpFile(f)){
+      if(isMaskFile(f)){
+        showToast(`Loading window mask: ${f.name}…`); await loadWindowMask(f);
+      } else if(isBumpFile(f)){
         const mk=bumpMatKey(f);
         if(mk){ showToast(`Applying wall bump: ${f.name}…`); await applyWallBump(f,mk); }
         else  { showToast(`Applying facade bump: ${f.name}…`); await applyFacadeBump(f); }
@@ -2154,6 +2295,15 @@ renderer.render(scene,camera);
           const blob=await ires.blob();
           const file=new File([blob],fname,{type:blob.type});
           await loadFacade(file);
+          // Attempt to auto-load a companion window mask (_mask suffix)
+          const maskName=fname.replace(/(\.[^.]+)$/,'_mask$1');
+          try{
+            const mires=await fetch('./images/'+maskName);
+            if(mires.ok){
+              const mblob=await mires.blob();
+              await loadWindowMask(new File([mblob],maskName,{type:mblob.type}));
+            }
+          }catch(e){/* no mask — silent */}
         }catch(e){console.warn('Facade manifest: failed to load',fname,e);}
       }
     }
