@@ -788,7 +788,8 @@ async function buildCity(geojson){
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
                    ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
       const isElevator=nm.includes('elevator');
-      const noWindows=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls')||isElevator;
+      const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
+      const noWindows=isWall||isElevator;
 
       if(!isPlatform&&!isChurch&&!noWindows&&floors>0.5){
         const outerCoords=outer.slice(0,-1);
@@ -845,7 +846,7 @@ async function buildCity(geojson){
         }
       }
       // Standard peaked roofs: wood/iron/etc, low-rise
-      if(!isPlatform&&!isBridge&&!isUpperFort&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
+      if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const rg=buildRoofGeometry(ring,height+0.05);if(rg)roofGeos[mat].push(rg);
@@ -863,7 +864,7 @@ async function buildCity(geojson){
 
       // ── Brick flat-roof details ──────────────────────────────────
       // Only for brick, non-platform, tall enough to matter
-      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&height>MIN_H+0.5;
+      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&height>MIN_H+0.5;
       if(hasParapet){
         // Stone parapets are more substantial than brick
         const pW = mat==='stone' ? 0.55 : PARAPET_W;   // thickness
@@ -918,6 +919,37 @@ async function buildCity(geojson){
       }
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
+  }
+
+  // ── Fence/wall LineString renderer ──────────────────────────────
+  // Only type:'fence' features — walkways/bridges are polygons handled elsewhere.
+  // Up ≠ N: all geometry in world XZ (X=east, Z=south).
+  for(const feat of features){
+    if(feat.geometry.type!=='LineString'&&feat.geometry.type!=='MultiLineString') continue;
+    if(feat.properties.type!=='fence') continue;
+    const fMat=MATS[feat.properties.material]?feat.properties.material:'stone';
+    const fFloors=feat.properties.floors??1;
+    const fHeight=Math.max(fFloors*FLOOR_H,MIN_H);
+    const FENCE_W=0.6; // wall thickness in metres
+    const fCol=buildingColour(fMat,feat.properties.uid,fFloors,feat.properties.area_m2);
+    const lines=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
+    for(const line of lines){
+      for(let i=0;i<line.length-1;i++){
+        const[sx1,sy1]=project(line[i][0],line[i][1]);
+        const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
+        const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+        const dx=x2-x1,dz=z2-z1,segLen=Math.sqrt(dx*dx+dz*dz);
+        if(segLen<0.05) continue;
+        // Build a box for this segment: length=segLen, width=FENCE_W, height=fHeight
+        const geo=new THREE.BoxGeometry(FENCE_W,fHeight,segLen);
+        applyVertexColour(geo,fCol);
+        const cx=(x1+x2)*0.5,cz=(z1+z2)*0.5;
+        const yaw=Math.atan2(dx,dz); // align box +Z to segment direction
+        geo.rotateY(yaw);
+        geo.translate(cx,fHeight*0.5,cz);
+        if(wallGeos[fMat]) wallGeos[fMat].push(geo);
+      }
+    }
   }
 
   setProgress(74,'Merging geometry…');await tick();
