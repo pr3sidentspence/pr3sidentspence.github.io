@@ -160,16 +160,18 @@ function project(lon, lat) {
 }
 
 const MATS = {
-  brick:    { color: 0xC0604A, label: 'Brick',          shininess: 20 },
-  wood:     { color: 0xCFA840, label: 'Wood / Frame',   shininess: 6  },
-  iron:     { color: 0x687888, label: 'Iron / Metal',   shininess: 45 },
-  stone:    { color: 0xE8DFC8, label: 'Stone',          shininess: 55 },
-  blue:     { color: 0x3A6898, label: 'Railway Siding', shininess: 35 },
-  concrete: { color: 0x989890, label: 'Concrete',       shininess: 18 },
-  unknown:  { color: 0x808078, label: 'Unknown',        shininess: 5  },
-  log:      { color: 0x807040, label: 'Log',            shininess: 4  },
+  brick:            { color: 0xC0604A, label: 'Brick',              shininess: 20 },
+  brick_veneer:     { color: 0xC07858, label: 'Brick Veneer',        shininess: 18 },
+  wood:             { color: 0xCFA840, label: 'Wood / Frame',        shininess: 6  },
+  wood_industrial:  { color: 0x687888, label: 'Wood / Industrial',   shininess: 8  },
+  iron:             { color: 0x687888, label: 'Iron / Metal',        shininess: 45 },
+  stone:            { color: 0xE8DFC8, label: 'Stone',               shininess: 55 },
+  blue:             { color: 0x3A6898, label: 'Railway Siding',      shininess: 35 },
+  concrete:         { color: 0x989890, label: 'Concrete',            shininess: 18 },
+  unknown:          { color: 0x808078, label: 'Unknown',             shininess: 5  },
+  log:              { color: 0x807040, label: 'Log',                 shininess: 4  },
 };
-const PEAKED_MATS = new Set(['wood','log','concrete','unknown','iron']);  // iron = grey-painted wood utility buildings
+const PEAKED_MATS = new Set(['wood','log','concrete','unknown','iron','wood_industrial']);
 const FLOOR_H    = 4.2;   // Victorian commercial avg: ~5m ground floor, ~4m upper
 const PLATFORM_H = 0.6;
 const MIN_H      = 2.0;
@@ -351,7 +353,46 @@ function normName(s){
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
 }
 
-// ── Legend ─────────────────────────────────────────────────────────
+// ── Wall-edge spatial index for facade face selection ───────────────
+// Populated during scene build. Each cell holds edge midpoints + outward normals.
+// Used by hasNeighbourAlongNormal() to detect party walls / rear walls.
+// Up ≠ N: grid is in world XZ. Cell size matches the clearance probe distance.
+const WALL_EDGE_CELL = 10;   // metres per grid cell
+const wallEdgeGrid = new Map();  // "cx,cz" → [{mx,mz,nx,nz}]
+
+function _wallEdgeCell(wx, wz){
+  return `${Math.floor(wx/WALL_EDGE_CELL)},${Math.floor(wz/WALL_EDGE_CELL)}`;
+}
+function addWallEdge(mx, mz, nx, nz){
+  const k = _wallEdgeCell(mx, mz);
+  if(!wallEdgeGrid.has(k)) wallEdgeGrid.set(k,[]);
+  wallEdgeGrid.get(k).push({mx,mz,nx,nz});
+}
+// Returns true if a foreign building edge midpoint lies within the probe corridor
+// along this edge's outward normal (0.5m to maxDist m ahead, ±lateralHalf m wide).
+// Up ≠ N: probe is purely in world XZ.
+function hasNeighbourAlongNormal(mx, mz, nx, nz, maxDist=10, lateralHalf=5){
+  const px = -nz, pz = nx;  // perpendicular axis in XZ (Up ≠ N)
+  for(let d = 1; d <= Math.ceil(maxDist / WALL_EDGE_CELL) + 1; d++){
+    const probeX = mx + nx * d * WALL_EDGE_CELL;
+    const probeZ = mz + nz * d * WALL_EDGE_CELL;
+    const gcx = Math.floor(probeX / WALL_EDGE_CELL);
+    const gcz = Math.floor(probeZ / WALL_EDGE_CELL);
+    for(let ci = -1; ci <= 1; ci++){
+      for(let cj = -1; cj <= 1; cj++){
+        const cell = wallEdgeGrid.get(`${gcx+ci},${gcz+cj}`);
+        if(!cell) continue;
+        for(const e of cell){
+          const fwd = (e.mx - mx)*nx + (e.mz - mz)*nz;
+          if(fwd < 0.5 || fwd > maxDist) continue;
+          const lat = Math.abs((e.mx - mx)*px + (e.mz - mz)*pz);
+          if(lat <= lateralHalf) return true;
+        }
+      }
+    }
+  }
+  return false;
+}
 const legendBody=document.getElementById('legend-body');
 for(const[key,def]of Object.entries(MATS)){
   const hex='#'+def.color.toString(16).padStart(6,'0');
@@ -400,6 +441,7 @@ function roofColor(hex){
 const AUTOLOAD = [
   './data/mcphillips_1880.geojson',
   './data/goad_1906.geojson',
+  './data/combined.geojson',
   './data/wpg_rivers.geojson',
   './data/wpg_roads.geojson',
 ];
@@ -410,6 +452,9 @@ const layerGroups = [];   // [{year, group, label}]
 let roadDrawRadius = 0;   // set by buildCity based on detected year; 0 = not yet set
 
 function detectYear(geojson){
+  // Check filename hint stored on the geojson object by the loader
+  const hint=(geojson._filename||'').toLowerCase();
+  if(hint.includes('combined'))return'combined';
   // Try source_file property of first named feature
   for(const f of geojson.features){
     const src=(f.properties.source_file||f.properties.group||'').toLowerCase();
@@ -427,14 +472,44 @@ const PARAPET_H = 0.50;  // parapet height above roof
 // Inset a shapeXY ring toward its centroid by `dist` metres.
 // Centroid-based inset: artifact-free for convex/near-convex Winnipeg lots.
 function insetRing(pts, dist) {
-  const cx=pts.reduce((s,p)=>s+p[0],0)/pts.length;
-  const cz=pts.reduce((s,p)=>s+p[1],0)/pts.length;
-  return pts.map(([x,y])=>{
-    const dx=x-cx,dy=y-cz,len=Math.sqrt(dx*dx+dy*dy);
-    if(len<0.001)return[x,y];
-    const scale=Math.max(0,(len-dist)/len);
-    return[cx+dx*scale,cz+dy*scale];
-  });
+  const n = pts.length;
+  if(n < 3) return pts;
+
+  // Detect winding: positive signed area = CW (in screen/shape space where Y-up)
+  let signedArea = 0;
+  for(let i = 0; i < n; i++){
+    const a = pts[i], b = pts[(i+1)%n];
+    signedArea += (b[0]-a[0])*(b[1]+a[1]);
+  }
+  // CW winding → inward normals point left of edge direction; CCW → right
+  // For CW: inward normal of edge (dx,dy) is (-dy/len, dx/len) [rotated +90°]
+  // For CCW: inward normal is (dy/len, -dx/len) [rotated -90°]
+  const cwSign = signedArea > 0 ? 1 : -1;
+
+  const result = [];
+  for(let i = 0; i < n; i++){
+    const prev = pts[(i + n - 1) % n];
+    const curr = pts[i];
+    const next = pts[(i + 1) % n];
+    const ax = curr[0]-prev[0], ay = curr[1]-prev[1];
+    const bx = next[0]-curr[0], by = next[1]-curr[1];
+    const aLen = Math.sqrt(ax*ax+ay*ay)||1;
+    const bLen = Math.sqrt(bx*bx+by*by)||1;
+    // Inward normals (sign corrected for winding)
+    const nax = cwSign*( ay/aLen), nay = cwSign*(-ax/aLen);
+    const nbx = cwSign*( by/bLen), nby = cwSign*(-bx/bLen);
+    let bsx = nax+nbx, bsy = nay+nby;
+    const bsLen = Math.sqrt(bsx*bsx+bsy*bsy);
+    if(bsLen < 0.001){
+      result.push([curr[0]+nax*dist, curr[1]+nay*dist]);
+      continue;
+    }
+    bsx /= bsLen; bsy /= bsLen;
+    const dot = nax*bsx+nay*bsy;
+    const scale = dot > 0.1 ? dist/dot : dist;
+    result.push([curr[0]+bsx*scale, curr[1]+bsy*scale]);
+  }
+  return result;
 }
 
 // ── Build city geometry ────────────────────────────────────────────
@@ -477,12 +552,12 @@ function buildingColour(mat,uid,floors,areaSqM){
   const h01=(h&0xFFFF)/0xFFFF;
   const pct=h%100;
 
-  if(mat==='brick'){
+  if(mat==='brick'||mat==='brick_veneer'){
     let idx=0;for(let i=0;i<BRICK_WEIGHTS.length;i++)if(pct<BRICK_WEIGHTS[i]){idx=i;break;}
     const[lo,hi]=BRICK_PALETTES[idx];
     return lerpHex(lo,hi,h01);
   }
-  if(mat==='wood'){
+  if(mat==='wood'||mat==='wood_residential'){
     // Volume proxy: prestige = floors * sqrt(area). Low → raw wood, high → fashionable colour
     const prestige=Math.min(100,(floors||1)*Math.sqrt(areaSqM||50)*0.5);
     const rawWoodRange=Math.max(0,60-prestige);  // 0-60% chance of raw wood for small bldgs
@@ -494,7 +569,7 @@ function buildingColour(mat,uid,floors,areaSqM){
     const[lo,hi]=WOOD_COMM_PALETTES[idx];
     return lerpHex(lo,hi,h01);
   }
-  if(mat==='iron'){
+  if(mat==='iron'||mat==='wood_industrial'){
     // Corrugated iron — weathered grey-silver to rust-brown, some bright galvanised
     const ironPals=[[0x707870,0x909890],[0x806858,0x907060],[0xA07050,0x985840],[0xD0D4D0,0xE0E4E0]];
     const ironW=[40,65,85,100];
@@ -780,7 +855,7 @@ async function buildCity(geojson){
       wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
       matCounts[mat]++;
       // Place procedural windows on all wall edges of this building
-      const areaOk=props.area_m2==null||props.area_m2>25;
+      const areaOk=props.area_m2==null||props.area_m2>0.3;
       const isBridge=props.type==='bridge';
       const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
       const nm=(props.name||'').toLowerCase();
@@ -808,6 +883,8 @@ async function buildCity(geojson){
           const midX=(ax+bx)/2,midZ=(az+bz)/2;
           if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}
           wEdges.push({ax,az,bx,bz,nx,nz,len:elen});
+          // Register in spatial index for facade face selection (Up ≠ N: XZ only)
+          addWallEdge(midX, midZ, nx, nz);
         }
         if(wEdges.length===0) continue;
 
@@ -839,7 +916,7 @@ async function buildCity(geojson){
 
           if(isFacadeFace){
             // Place mask-derived windows on this face instead of procedural ones
-            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,height,maskEntry.windows,len);
+            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
           } else {
             placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
           }
@@ -913,6 +990,7 @@ async function buildCity(geojson){
             const pGeom=new THREE.ExtrudeGeometry(pShape,{depth:pH,bevelEnabled:false});
             pGeom.rotateX(-Math.PI/2);
             pGeom.translate(0,height,0);
+            applyVertexColour(pGeom,bldgCol);
             (mat==='stone'?stoneParapetGeos:parapetGeos).push(pGeom);
           }catch(e){/* skip degenerate */}
         }
@@ -924,14 +1002,109 @@ async function buildCity(geojson){
   // ── Fence/wall LineString renderer ──────────────────────────────
   // Only type:'fence' features — walkways/bridges are polygons handled elsewhere.
   // Up ≠ N: all geometry in world XZ (X=east, Z=south).
+  // Fence style varies by material:
+  //   stone/brick → solid masonry wall
+  //   wood        → white picket fence (alternating pickets + rail)
+  //   iron/wood_industrial → rough horizontal rail fence
+  //   log         → log corral (stacked horizontal rail logs)
+  //   unknown     → thin generic wall
+
+  function buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol){
+    const geos=[];
+    const dx=x2-x1,dz=z2-z1,segLen=Math.sqrt(dx*dx+dz*dz);
+    if(segLen<0.05) return geos;
+    const cx=(x1+x2)*0.5,cz=(z1+z2)*0.5;
+    const yaw=Math.atan2(dx,dz);
+
+    // All geometry built in local fence space, then rotated and placed.
+    // Local axes after rotateY(yaw): +Z along fence, +X perpendicular (outward), +Y up.
+    // along  = position along the fence from centre (metres)
+    // baseY  = world Y of geometry bottom
+    // across = perpendicular offset from fence centreline
+    function box(w,h,l,along,baseY,across,col){
+      const g=new THREE.BoxGeometry(w,h,l).toNonIndexed();
+      applyVertexColour(g,col??fCol);
+      // In local space: centre of box is at (across, h/2, along)
+      g.translate(across, h*0.5, along);
+      g.rotateY(yaw);
+      // Now shift to world centroid and correct Y baseline
+      g.translate(cx, baseY, cz);
+      geos.push(g);
+    }
+
+    const isWoodFence=fMatRaw==='wood'||fMatRaw==='wood_residential';
+    const isIronFence=fMatRaw==='iron'||fMatRaw==='wood_industrial';
+
+    if(isWoodFence){
+      const picketW=0.12, spacing=0.22;
+      const n=Math.max(1,Math.floor(segLen/spacing));
+      const col=0xEEEEE0;
+      for(let i=0;i<=n;i++){
+        const along=(i/n - 0.5)*segLen;
+        box(picketW,fHeight,picketW, along,0,0,col);
+      }
+      box(0.04,0.07,segLen, 0,fHeight*0.72,0,col);
+      box(0.04,0.07,segLen, 0,fHeight*0.38,0,col);
+
+    }else if(isIronFence){
+      const rails=Math.max(2,Math.round(fHeight/0.5));
+      const postCol=0x554433,railCol=0x665544;
+      box(0.12,fHeight,0.12,  segLen*0.5-0.08, 0,0,postCol);
+      box(0.12,fHeight,0.12, -segLen*0.5+0.08, 0,0,postCol);
+      for(let r=0;r<rails;r++){
+        const ry=fHeight*(0.18+r*(0.64/Math.max(1,rails-1)));
+        box(0.05,0.07,segLen*0.96, 0,ry,0,railCol);
+      }
+
+    }else if(fMat==='log'){
+      // Split-rail: X-crossed posts every ~2m, rails through notches
+      const postCol=0x7A5C3A, railCol=0x8A6845;
+      const postSpacing=2.0;
+      const nPosts=Math.max(2,Math.round(segLen/postSpacing)+1);
+      const leanAng=0.30; // ~17° lean
+
+      for(let p=0;p<nPosts;p++){
+        const along=(p/(nPosts-1) - 0.5)*segLen;
+        // Post A leans forward along fence (+Z in local space = rotateX lean)
+        const ga=new THREE.BoxGeometry(0.16,fHeight*1.15,0.16).toNonIndexed();
+        applyVertexColour(ga,postCol);
+        ga.rotateX( leanAng);  // tilt in the vertical plane along fence direction
+        ga.translate(0, fHeight*0.5, along);
+        ga.rotateY(yaw);
+        ga.translate(cx, 0, cz);
+        geos.push(ga);
+        // Post B leans backward
+        const gb=new THREE.BoxGeometry(0.16,fHeight*1.15,0.16).toNonIndexed();
+        applyVertexColour(gb,postCol);
+        gb.rotateX(-leanAng);
+        gb.translate(0, fHeight*0.5, along);
+        gb.rotateY(yaw);
+        gb.translate(cx, 0, cz);
+        geos.push(gb);
+      }
+      // Rails through the notches
+      const railCount=Math.max(2,Math.round(fHeight/0.55));
+      for(let r=0;r<railCount;r++){
+        const ry=fHeight*(0.22+r*(0.55/Math.max(1,railCount-1)));
+        const sideOff=0.04*(r%2===0?1:-1);
+        box(0.10,0.09,segLen, 0,ry,sideOff,railCol);
+      }
+
+    }else{
+      const FENCE_W=fMatRaw==='stone'?0.7:fMatRaw==='brick'?0.55:0.25;
+      box(FENCE_W,fHeight,segLen, 0,0,0,null);
+    }
+    return geos;
+  }
+
   const fenceGeos=[];
   for(const feat of features){
     if(feat.geometry.type!=='LineString'&&feat.geometry.type!=='MultiLineString') continue;
     if(feat.properties.type!=='fence') continue;
-    const fMat=MATS[feat.properties.material]?feat.properties.material:'stone';
+    const fMatRaw=feat.properties.material||'';
+    const fMat=MATS[fMatRaw]?fMatRaw:'unknown';
     const fFloors=feat.properties.floors??1;
-    const fHeight=Math.max(fFloors*FLOOR_H,MIN_H);
-    const FENCE_W=0.6;
+    const fHeight=Math.max(fFloors*FLOOR_H, 0.3); // no MIN_H clamp — fences can be short
     const fCol=buildingColour(fMat,feat.properties.uid,fFloors,feat.properties.area_m2);
     const lines=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
     for(const line of lines){
@@ -939,16 +1112,8 @@ async function buildCity(geojson){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
-        const dx=x2-x1,dz=z2-z1,segLen=Math.sqrt(dx*dx+dz*dz);
-        if(segLen<0.05) continue;
-        // Build non-indexed geometry for each segment to ensure merge compatibility
-        const geo=new THREE.BoxGeometry(FENCE_W,fHeight,segLen).toNonIndexed();
-        applyVertexColour(geo,fCol);
-        const cx=(x1+x2)*0.5,cz=(z1+z2)*0.5;
-        const yaw=Math.atan2(dx,dz);
-        geo.rotateY(yaw);
-        geo.translate(cx,fHeight*0.5,cz);
-        fenceGeos.push(geo);
+        for(const g of buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol))
+          fenceGeos.push(g);
       }
     }
   }
@@ -959,10 +1124,10 @@ async function buildCity(geojson){
     if(fMerged){
       fMerged.computeVertexNormals();
       const fMesh=new THREE.Mesh(fMerged,new THREE.MeshPhongMaterial({
-        vertexColors:true,shininess:40,specular:0x222222
+        vertexColors:true,shininess:30,specular:0x111111
       }));
       group.add(fMesh);
-      console.log(`Fences: ${fenceGeos.length} segments`);
+      console.log(`Fences: ${fenceGeos.length} geos`);
     }
   }
 
@@ -1004,7 +1169,7 @@ async function buildCity(geojson){
     const pMerged=mergeGeometries(parapetGeos,false);
     for(const g of parapetGeos)g.dispose();
     const pMesh=new THREE.Mesh(pMerged,new THREE.MeshPhongMaterial({
-      color:MATS.brick.color,shininess:MATS.brick.shininess,specular:0x1a1a1a,
+      vertexColors:true,shininess:MATS.brick.shininess,specular:0x1a1a1a,
       side:THREE.DoubleSide,
     }));    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
   }
@@ -1013,7 +1178,7 @@ async function buildCity(geojson){
     const spMerged=mergeGeometries(stoneParapetGeos,false);
     for(const g of stoneParapetGeos)g.dispose();
     const spMesh=new THREE.Mesh(spMerged,new THREE.MeshPhongMaterial({
-      color:MATS.stone.color,shininess:MATS.stone.shininess,specular:0xC8B890,
+      vertexColors:true,shininess:MATS.stone.shininess,specular:0xC8B890,
       side:THREE.DoubleSide,
     }));    spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
   }
@@ -1456,16 +1621,23 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   const cx=verts.reduce((s,v)=>s+v.x,0)/verts.length;
   const cz=verts.reduce((s,v)=>s+v.z,0)/verts.length;
 
-  // Find primary front normal (most outward-eastward edge)
-  let bestScore=-Infinity,bestNx=1,bestNz=0;
+  // Find primary front face: longest edge with no neighbour building within 10m
+  // along its outward normal. Street-facing edges are clear; party/rear walls aren't.
+  // Up ≠ N: all proximity probing is in world XZ.
+  // Fallback: if all edges have neighbours (fully enclosed), use longest overall.
+  const _eCands=[];
   for(let i=0;i<verts.length;i++){
     const a=verts[i],b=verts[(i+1)%verts.length];
     const dx=b.x-a.x,dz=b.z-a.z,len=Math.sqrt(dx*dx+dz*dz);if(len<0.3)continue;
     let nx=-dz/len,nz=dx/len;
     const midX=(a.x+b.x)/2,midZ=(a.z+b.z)/2;
     if(nx*(midX-cx)+nz*(midZ-cz)<0){nx=-nx;nz=-nz;}
-    if(nx>bestScore){bestScore=nx;bestNx=nx;bestNz=nz;}
+    const clear=!hasNeighbourAlongNormal(midX,midZ,nx,nz,10,5);
+    _eCands.push({nx,nz,len,clear});
   }
+  const _clearPool=_eCands.filter(e=>e.clear);
+  const _bestE=(_clearPool.length>0?_clearPool:_eCands).reduce((b,e)=>e.len>b.len?e:b);
+  let bestNx=_bestE.nx,bestNz=_bestE.nz;
 
   // Collect ALL edges within 60° of primary normal (dot > 0.5)
   const frontEdges=[];
@@ -1518,8 +1690,14 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
     const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup);
     if(!firstMesh)firstMesh=m;
   }
-  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
+  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
   console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | ${frontEdges.length} panels, ${projSpan.toFixed(1)}m projected`);
+  // If a window mask was loaded before this facade, update its panelHeight and rebuild glass
+  if(stemKey){
+    const nm2=normName(props.name||'');
+    const mc=windowMaskCache.get(nm2);
+    if(mc){mc.panelHeight=height;for(const lg of layerGroups)rebuildGlassMesh(lg);}
+  }
 }
 
 // Apply one panel with orthographically projected UV coordinates.
@@ -1618,7 +1796,7 @@ async function placeFacadeOnBuilding(info,worldNormal){
     const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup2);
     if(!firstMesh)firstMesh=m;
   }
-  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat});
+  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
   console.log(`Facade placed: "${facadePending.filename}" | ${frontEdges.length} panels, ${projSpan2.toFixed(1)}m projected`);
   exitFacadePlacement();
 
@@ -1634,7 +1812,7 @@ document.getElementById('facade-cancel').addEventListener('click',exitFacadePlac
 
 // Building click handler for facade placement
 renderer.domElement.addEventListener('click',e=>{
-  if(!facadePending||fpsMode||!e.ctrlKey)return;
+  if(fpsMode)return;
   const r=renderer.domElement.getBoundingClientRect();
   const clickNDC=new THREE.Vector2(
     ((e.clientX-r.left)/r.width)*2-1,
@@ -1644,11 +1822,18 @@ renderer.domElement.addEventListener('click',e=>{
   const hits=raycaster.intersectObjects(buildingMeshes);
   if(!hits.length)return;
   const hit=hits[0];
+  if(facadePending&&e.ctrlKey){
+    const info=queryBuilding(hit.faceIndex,hit.object);
+    if(!info)return;
+    const worldNormal=hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
+    placeFacadeOnBuilding(info,worldNormal);
+    return;
+  }
+  // Plain click: log full feature properties to console for diagnostics
   const info=queryBuilding(hit.faceIndex,hit.object);
   if(!info)return;
-  // World-space face normal — tells us which wall face was clicked
-  const worldNormal=hit.face.normal.clone().transformDirection(hit.object.matrixWorld);
-  placeFacadeOnBuilding(info,worldNormal);
+  const props=info.feat?.properties||{};
+  console.log('📍 Building clicked:',JSON.parse(JSON.stringify(props)));
 });
 
 // ── Hover ──────────────────────────────────────────────────────────
@@ -1667,11 +1852,15 @@ function updateHover(){
   const hex='#'+MATS[info.material].color.toString(16).padStart(6,'0');
   const label=MATS[info.material]?.label||info.material;
   document.getElementById('info-name').textContent=info.name||'(unnamed building)';
+  const props=info.feat?.properties||{};
   document.getElementById('info-rows').innerHTML=[
     `<span class="info-dot" style="background:${hex}"></span>Material: <span>${label}</span>`,
     info.floors!=null?`Floors: <span>${info.floors}</span>`:'',
     info.area_m2!=null?`Footprint: <span>${info.area_m2.toFixed(0)} m²</span>`:'',
     info.source?`Sheet: <span>${(info.source||'').replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>`:'',
+    props.born!=null?`Born: <span>${props.born}</span>`:'',
+    props.died!=null?`Died: <span>${props.died}</span>`:'',
+    props.id!=null?`ID: <span>${props.id}</span>`:'',
   ].filter(Boolean).join('<br>');
   panel.style.display='block';
 }
@@ -1742,9 +1931,7 @@ document.addEventListener('mousemove',e=>{
       raycaster.setFromCamera(mouseNDC,camera);
       const hits=raycaster.intersectObjects(buildingMeshes);
       if(hits.length){
-        const mesh=hits[0].object;
-        const idx=upperBound(mesh.userData.cums,hits[0].faceIndex);
-        const info=mesh.userData.infos?.[idx];
+        const info=queryBuilding(hits[0].faceIndex,hits[0].object);
         if(info){
           const id=info.feat?.properties?.id??'?';
           const nm=info.name||'(unnamed)';
@@ -1848,7 +2035,13 @@ function updateStatBar(){
 
 function buildLayerBar(){
   const bar=document.getElementById('layer-bar');
-  if(!bar||layerGroups.length<2)return;
+  if(!bar)return;
+
+  const has1880    = layerGroups.some(lg=>lg.year==='1880');
+  const has1906    = layerGroups.some(lg=>lg.year==='1906');
+  const hasCombined= layerGroups.some(lg=>lg.year==='combined');
+  const hasMultiple= (has1880&&has1906)||((has1880||has1906)&&hasCombined)||hasCombined;
+
   bar.innerHTML='';
   bar.style.display='flex';
 
@@ -1856,47 +2049,46 @@ function buildLayerBar(){
   const activeStyle=`background:#C8A05A;color:#09080a;`;
   const inactiveStyle=`background:transparent;color:#5a4830;`;
 
-  // Default to 1880 if present, otherwise 'all'
-  const has1880=layerGroups.some(lg=>lg.year==='1880');
-  let activeLayer=has1880?'1880':'all';
+  // Default active layer: 1906 if present, else 1880, else combined
+  let activeLayer = has1906?'1906': has1880?'1880':'combined';
 
-  // Apply initial visibility
-  for(const lg of layerGroups){
-    lg.group.visible=(activeLayer==='all'||activeLayer===lg.year);
+  function applyVisibility(){
+    for(const lg of layerGroups){
+      if(activeLayer==='all')       lg.group.visible = lg.year==='1880'||lg.year==='1906';
+      else if(activeLayer==='combined') lg.group.visible = lg.year==='combined';
+      else                          lg.group.visible = lg.year===activeLayer;
+    }
+    buildingMeshes.length=0;
+    for(const lg of layerGroups){
+      if(!lg.group.visible)continue;
+      lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
+    }
   }
-  buildingMeshes.length=0;
-  for(const lg of layerGroups){
-    if(!lg.group.visible)continue;
-    lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
-  }
+  applyVisibility();  // always run — hides non-active layers even if bar is suppressed
 
-  // 'ALL' button
-  const allBtn=document.createElement('button');
-  allBtn.textContent='ALL';allBtn.dataset.layer='all';
-  allBtn.style.cssText=btnStyle+(activeLayer==='all'?activeStyle:inactiveStyle);
-  bar.appendChild(allBtn);
+  if(!hasMultiple){bar.style.display='none';return;}
 
-  // One button per layer
-  for(const lg of layerGroups){
+  // Button definitions — only add buttons for layers that are loaded.
+  // Order: 1880 | 1906 | 1880 & 1906 | Combined
+  const defs=[];
+  if(has1880)     defs.push({layer:'1880',    label:'1880'});
+  if(has1906)     defs.push({layer:'1906',    label:'1906'});
+  if(has1880&&has1906) defs.push({layer:'all',label:'1880 & 1906'});
+  if(hasCombined) defs.push({layer:'combined',label:'Combined'});
+
+  for(const{layer,label}of defs){
     const btn=document.createElement('button');
-    btn.textContent=lg.year;btn.dataset.layer=lg.year;
-    btn.style.cssText=btnStyle+(activeLayer===lg.year?activeStyle:inactiveStyle);
+    btn.textContent=label; btn.dataset.layer=layer;
+    btn.style.cssText=btnStyle+(activeLayer===layer?activeStyle:inactiveStyle);
     bar.appendChild(btn);
   }
 
   bar.addEventListener('click',e=>{
     const btn=e.target.closest('button');if(!btn)return;
     activeLayer=btn.dataset.layer;
-    for(const lg of layerGroups){
-      lg.group.visible=(activeLayer==='all'||activeLayer===lg.year);
-    }
+    applyVisibility();
     for(const b of bar.querySelectorAll('button')){
       b.style.cssText=btnStyle+(b.dataset.layer===activeLayer?activeStyle:inactiveStyle);
-    }
-    buildingMeshes.length=0;
-    for(const lg of layerGroups){
-      if(!lg.group.visible)continue;
-      lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
     }
   });
 }
@@ -2102,7 +2294,7 @@ function rebuildGlassMesh(layerEntry){
     for(const rings of polygons){
       const outer=rings[0];
       if(!outer||outer.length<4) continue;
-      const areaOk=props.area_m2==null||props.area_m2>25;
+      const areaOk=props.area_m2==null||props.area_m2>0.3;
       const isBridge=props.type==='bridge';
       const nm=(props.name||'').toLowerCase();
       const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
@@ -2144,7 +2336,7 @@ function rebuildGlassMesh(layerEntry){
           if(isNarrow&&!isPrimary) continue;
           const isFacadeFace=maskEntry&&(nx*primaryNx+nz*primaryNz>0.65);
           if(isFacadeFace){
-            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,height,maskEntry.windows,len);
+            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
           } else {
             placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
           }
@@ -2257,7 +2449,9 @@ async function loadWindowMask(imageFile){
   const canvas=await loadImageToCanvas(imageFile);
   const windows=parseMaskWindows(canvas);
   const stem=normName(match.props.name||String(match.props.id||rawStem));
-  windowMaskCache.set(stem,{canvas,W:canvas.width,H:canvas.height,windows,props:match.props});
+  const facadeEntry=facadeMeshes.get(stem);
+  const panelHeight=facadeEntry?.panelHeight??null;
+  windowMaskCache.set(stem,{canvas,W:canvas.width,H:canvas.height,windows,props:match.props,panelHeight});
   console.log(`Window mask: "${imageFile.name}" → "${match.props.name||match.props.id}" | ${windows.length} windows detected`);
   // Rebuild glass geometry for all layers so mask takes effect immediately
   for(const lg of layerGroups) rebuildGlassMesh(lg);
@@ -2290,6 +2484,7 @@ async function liveLoad(fileList){
     try{gj=JSON.parse(await f.text());}
     catch(err){showToast(`Parse error: ${f.name}`);await sleep(1800);continue;}
     if(!gj.features?.length)continue;
+    gj._filename=f.name;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water'){await buildWater(gj);}
     else if(kind==='building'){const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
@@ -2386,7 +2581,7 @@ renderer.render(scene,camera);
   const found=[];
   for(const url of AUTOLOAD){
     try{
-      const res=await fetch(url);
+      const res=await fetch(url+'?v='+Date.now());
       if(!res.ok) continue;
       const gj=await res.json();
       if(gj.features?.length) found.push({url,gj});
@@ -2399,6 +2594,7 @@ renderer.render(scene,camera);
 
   for(const{url,gj}of found){
     setProgress(10,`Loading ${url.split('/').pop()}…`);await tick();
+    gj._filename=url;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water')        await buildWater(gj);
     else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n; }
@@ -2416,6 +2612,7 @@ renderer.render(scene,camera);
     .addEventListener('input',e=>setTimeOfDay(parseFloat(e.target.value)));
   window.toggleWinter=toggleWinter;
   buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
+  window._layerGroups=layerGroups;  // debug: inspect in console
 
   // ── Facade manifest ───────────────────────────────────────────────
   // ./data/facades.json: array of filenames, images loaded from ./images/
