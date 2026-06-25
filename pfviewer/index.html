@@ -170,6 +170,7 @@ const MATS = {
   concrete:         { color: 0x989890, label: 'Concrete',            shininess: 18 },
   unknown:          { color: 0x808078, label: 'Unknown',             shininess: 5  },
   log:              { color: 0x807040, label: 'Log',                 shininess: 4  },
+  lumber:           { color: 0xC0A040, label: 'Stacked Lumber',      shininess: 6  },
 };
 const PEAKED_MATS = new Set(['wood','log','concrete','unknown','iron','wood_industrial']);
 const FLOOR_H    = 4.2;   // Victorian commercial avg: ~5m ground floor, ~4m upper
@@ -199,7 +200,7 @@ camera.lookAt(0, 0, 0);
 // ── Season state (declared here — used before buildingMeshes block) ─
 let winterMode=false;
 const seasonalMats=[];   // {mat3, summerCol, winterCol}
-let groundMatRef=null, roadMatRef=null, cartTrackMesh=null;
+let groundMatRef=null, roadMatRef=null, cartTrackMesh=null, railMesh=null, roadColBuf=null;
 const SNOW_SKIP=new Set(['blue']); // railways/sidings only — no snow accumulation
 
 // ── Lighting ───────────────────────────────────────────────────────
@@ -291,7 +292,8 @@ scene.add(ground);
 window.ground = ground;
 const grid=new THREE.GridHelper(12000,1200,0x3A5A22,0x324A1C);
 grid.position.y=0.01;grid.material.opacity=0.18;grid.material.transparent=true;
-scene.add(grid);
+// grid removed from scene — kept as variable so winter toggle doesn't throw
+// scene.add(grid);
 window.grid = grid;
 
 // ── Orbit controls ─────────────────────────────────────────────────
@@ -444,12 +446,16 @@ const AUTOLOAD = [
   './data/combined.geojson',
   './data/wpg_rivers.geojson',
   './data/wpg_roads.geojson',
+  './data/wpg_rails_1906.geojson',
 ];
 const layerGroups = [];   // [{year, group, label}]
 // Road draw radius — updated when building layers load.
 // 1880 layers: sparse settlement, 1km radius.
 // 1906 layers: dense city, 3km radius. Both: use largest.
 let roadDrawRadius = 0;   // set by buildCity based on detected year; 0 = not yet set
+const buildingCentroids = new Map(); // year→[{cx,cz}] — populated by buildCity, used by buildRoads
+window._buildingCentroids = buildingCentroids;
+let activeLayer='1906';   // module-scope: read by tickStreetcars for 1880 hide logic
 
 function detectYear(geojson){
   // Check filename hint stored on the geojson object by the loader
@@ -581,6 +587,14 @@ function buildingColour(mat,uid,floors,areaSqM){
     return lerpHex(0xDDD0B0,0xF0E8D0,h01);
   }
   if(mat==='log'){return lerpHex(0x80603A,0x987858,h01);}
+  if(mat==='lumber'){
+    // Fresh-cut warm gold → weathered grey-tan.  Never fully grey — boom-years stock turns over fast.
+    // uid hash gives each yard a stable weathering level; h01 adds slight per-feature tint variation.
+    const weather=pct/100;  // 0=fresh, 1=most weathered
+    const fresh  =0xC8A840; // warm gold, freshly milled
+    const aged   =0xA09070; // desaturated tan, several seasons out
+    return lerpHex(fresh,aged, weather*0.65 + h01*0.08);
+  }
   if(mat==='concrete'){return lerpHex(0x888880,0xA0A098,h01);}
   if(mat==='unknown'){return lerpHex(0x787068,0x908880,h01);}
   if(mat==='blue'){return MATS.blue.color;}  // railways — keep consistent
@@ -737,6 +751,8 @@ async function buildCity(geojson){
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
   const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[];
+  const lumberWallGeos=[];  // separate accumulator → own mesh → wallMaterials['lumber']
+  const lumberLog=[];  // [{name, floors}] for end-of-load console summary
 
   for(let i=0;i<total;i++){
     const feat=features[i],props=feat.properties;
@@ -837,6 +853,15 @@ async function buildCity(geojson){
         }
       }
 
+      // ── Lumber yard: reroute to wood wall path, no roof/windows/parapet ──
+      // type:'lumber' uses the actual footprint polygon via ExtrudeGeometry
+      // (correct orientation, no bbox overflow).  Mat forced to 'lumber' for
+      // weathered-gold colour variation in buildingColour().
+      // Roof, peaked roof, parapet, and windows all suppressed below.
+      const isLumberYard = props.type==='lumber';
+      if(isLumberYard) lumberLog.push({name:props.name||'(unnamed)', floors});
+
+
       let wallGeom;
       try{wallGeom=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false});}
       catch(err){console.warn('earcut failed id:',props.id,err.message);continue;}
@@ -844,14 +869,20 @@ async function buildCity(geojson){
       const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
       if(tris===0){wallGeom.dispose();continue;}
       // Bake per-building colour into vertex colours before merging
-      const bldgCol=buildingColour(mat,props.uid,floors,props.area_m2);
+      const bldgCol=buildingColour(isLumberYard?'lumber':mat,props.uid,floors,props.area_m2);
       applyVertexColour(wallGeom,bldgCol);
-      wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
-      wallGeos[mat].push(wallGeom);
+      if(isLumberYard){
+        lumberWallGeos.push(wallGeom);
+      }else{
+        wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
+        wallGeos[mat].push(wallGeom);
+      }
       // Centroid for mini-map
       let mcx=0,mcz=0;
       for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);mcx+=sx;mcz+=(-sy);}
       mcx/=(outer.length-1);mcz/=(outer.length-1);
+      buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
+      buildingCentroids.get(year).push({cx:mcx,cz:mcz});
       wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
       matCounts[mat]++;
       // Place procedural windows on all wall edges of this building
@@ -864,7 +895,7 @@ async function buildCity(geojson){
                    ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
       const isElevator=nm.includes('elevator');
       const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
-      const noWindows=isWall||isElevator;
+      const noWindows=isWall||isElevator||isLumberYard;
 
       if(!isPlatform&&!isChurch&&!noWindows&&floors>0.5){
         const outerCoords=outer.slice(0,-1);
@@ -923,7 +954,7 @@ async function buildCity(geojson){
         }
       }
       // Standard peaked roofs: wood/iron/etc, low-rise
-      if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
+      if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const rg=buildRoofGeometry(ring,height+0.05);if(rg)roofGeos[mat].push(rg);
@@ -941,7 +972,7 @@ async function buildCity(geojson){
 
       // ── Brick flat-roof details ──────────────────────────────────
       // Only for brick, non-platform, tall enough to matter
-      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&height>MIN_H+0.5;
+      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&!isLumberYard&&height>MIN_H+0.5;
       if(hasParapet){
         // Stone parapets are more substantial than brick
         const pW = mat==='stone' ? 0.55 : PARAPET_W;   // thickness
@@ -1132,6 +1163,12 @@ async function buildCity(geojson){
   }
 
   setProgress(74,'Merging geometry…');await tick();
+  if(lumberLog.length>0){
+    console.log(`🪵 Lumber yards found: ${lumberLog.length}`);
+    console.table(lumberLog.map(e=>({name:e.name, floors:e.floors})));
+  }else{
+    console.log('🪵 Lumber yards: none found in this GeoJSON');
+  }
   for(const mat of matKeys){
     if(wallGeos[mat].length===0)continue;
     const wMerged=mergeGeometries(wallGeos[mat],false);
@@ -1158,11 +1195,24 @@ async function buildCity(geojson){
       for(const g of roofGeos[mat])g.dispose();
       const summerCol=roofColor(MATS[mat].color);
       const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:0x080808,side:THREE.DoubleSide});
-      if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:0xEEEEF8});
+      if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:0xF5F6FA});
       const rMesh=new THREE.Mesh(rMerged,rMat);
       rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
     }
   }
+  // ── Lumber yard walls (own mesh → wallMaterials['lumber'] for bump map) ──
+  if(lumberWallGeos.length>0){
+    const lMerged=mergeGeometries(lumberWallGeos,false);
+    for(const g of lumberWallGeos)g.dispose();
+    const lMat=new THREE.MeshPhongMaterial({
+      vertexColors:true, shininess:MATS.lumber.shininess, specular:0x111111,
+    });
+    wallMaterials['lumber']=lMat;
+    const lMesh=new THREE.Mesh(lMerged,lMat);
+    lMesh.castShadow=true;lMesh.receiveShadow=true;
+    group.add(lMesh);
+  }
+
   // ── Brick parapet (raised brick border, 0.5m above roof) ──────────
   if(parapetGeos.length>0){
     setProgress(74,'Merging parapets…');await tick();
@@ -1189,7 +1239,7 @@ async function buildCity(geojson){
     const cMerged=mergeGeometries(roofCapGeos,false);
     for(const g of roofCapGeos)g.dispose();
     const cMat=new THREE.MeshLambertMaterial({color:0x38342E,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
-    seasonalMats.push({mat3:cMat,summerCol:0x38342E,winterCol:0xD8D8E4});
+    seasonalMats.push({mat3:cMat,summerCol:0x38342E,winterCol:0xF5F6FA});
     const cMesh=new THREE.Mesh(cMerged,cMat);
     cMesh.receiveShadow=true;group.add(cMesh);
   }
@@ -1212,9 +1262,77 @@ async function buildCity(geojson){
 // ── Road surface ───────────────────────────────────────────────────
 async function buildRoads(geojson){
   setProgress(88,'Building road network…');await tick();
-  const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[];
+  // Dispose previous road mesh if rebuilding for layer change
+  if(roadMatRef){
+    const toRemove=[];
+    scene.traverse(obj=>{if(obj.isMesh&&obj.material===roadMatRef)toRemove.push(obj);});
+    for(const obj of toRemove){obj.geometry.dispose();scene.remove(obj);}
+    roadMatRef=null;
+  }
+  if(railMesh){railMesh.geometry.dispose();scene.remove(railMesh);railMesh=null;}
+  if(cartTrackMesh){cartTrackMesh.geometry.dispose();scene.remove(cartTrackMesh);cartTrackMesh=null;}
+  const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[];
+
+  // ── Road filtering: skip roads with no nearby buildings ────────────
+  // Always render: Main, Portage, Broadway, Higgins (historic arterials).
+  // Skip: Waterfront (anachronistic). All others: only render if a building
+  // centroid falls within ROAD_NEAR_M of any point on the road segment.
+  // Up ≠ N: distance measured in world XZ.
+  const ROAD_ALWAYS_TERMS = ['main','portage','broadway','higgins'];
+  const ROAD_NEVER_TERMS  = ['waterfront','israel asper'];
+  const ROAD_NEAR_M  = 80;   // metres — one city block roughly
+  const ROAD_NEAR_M2 = ROAD_NEAR_M * ROAD_NEAR_M;
+  const isAlways = s=>ROAD_ALWAYS_TERMS.some(t=>s.toLowerCase().includes(t));
+  const isNever  = s=>ROAD_NEVER_TERMS.some(t=>s.toLowerCase().includes(t));
+
+  // Build centroid grid from active-layer buildings only.
+  // Up ≠ N: grid is in world XZ. Segments tested individually so only
+  // the portion of a road near actual buildings gets drawn.
+  const activeCents=[];
+  for(const[yr,cents]of buildingCentroids){
+    if(activeLayer==='all'||activeLayer==='combined'||activeLayer===yr)
+      for(const c of cents) activeCents.push(c);
+  }
+  console.log(`buildRoads: activeLayer='${activeLayer}', keys=[${[...buildingCentroids.keys()]}], activeCents=${activeCents.length}`);
+  const CENT_CELL = ROAD_NEAR_M;
+  const centGrid  = new Map();
+  for(const{cx,cz}of activeCents){
+    const k=`${Math.floor(cx/CENT_CELL)},${Math.floor(cz/CENT_CELL)}`;
+    if(!centGrid.has(k))centGrid.set(k,[]);
+    centGrid.get(k).push({cx,cz});
+  }
+  console.log(`buildRoads: ${activeCents.length} active centroids, ${centGrid.size} grid cells`);
+  function hasBuildingNear(x,z){
+    const gcx=Math.floor(x/CENT_CELL),gcz=Math.floor(z/CENT_CELL);
+    for(let ci=-1;ci<=1;ci++){
+      for(let cj=-1;cj<=1;cj++){
+        const cell=centGrid.get(`${gcx+ci},${gcz+cj}`);
+        if(!cell)continue;
+        for(const{cx,cz}of cell){
+          if((cx-x)**2+(cz-z)**2<ROAD_NEAR_M2)return true;
+        }
+      }
+    }
+    return false;
+  }
+  // Per-segment visibility: each segment tested independently so only the
+  // portion of a road near buildings renders. No name-level caching.
+  function isSegmentVisible(stName,mx,mz){
+    if(isNever(stName))return false;
+    if(isAlways(stName))return true;
+    return hasBuildingNear(mx,mz);
+  }
+
   for(const feat of geojson.features){
-    const w=ROAD_W[feat.properties.st_type]??9;
+    const baseW=ROAD_W[feat.properties.st_type]??9;
+    const stName=feat.properties.st_name||'';
+    if(isNever(stName)) continue;  // quick skip for always-hidden roads
+    const fr=parseInt(feat.properties.from_right||feat.properties.from_left||'0')||0;
+    // Portage Ave East (addresses < 200, east of Main) keeps standard 2x width.
+    // Portage proper and Main get 4x. All others 2x.
+    const isPortageEast=stName==='Portage'&&fr<200;
+    const isMajor=(stName==='Portage'&&!isPortageEast)||stName==='Main';
+    const w=baseW*(isMajor?4:2);
     for(const line of feat.geometry.coordinates){
       for(let i=0;i<line.length-1;i++){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
@@ -1223,16 +1341,51 @@ async function buildRoads(geojson){
         if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
-        const px=(-dz/len)*(w*0.5),pz=(dx/len)*(w*0.5),y=0.18;
-        pos.push(x1+px,y,z1+pz,x2+px,y,z2+pz,x1-px,y,z1-pz,x2+px,y,z2+pz,x2-px,y,z2-pz,x1-px,y,z1-pz);
+        // Per-segment building proximity check (Up ≠ N: midpoint in world XZ)
+        const mx=(x1+x2)/2, mz=(z1+z2)/2;
+        if(!isSegmentVisible(stName,mx,mz))continue;
+        const pxu=(-dz/len),pzu=(dx/len),y=0.18;
+        // 3 lateral strips: outer-dry → inner-dry → centre-wet
+        // Lateral offsets as fractions of half-width: ±1=edge, ±0.35=inner, 0=centre
+        const strips=[
+          [1.0, 0.35],   // right shoulder (dry→inner)
+          [0.35, 0.0],   // right inner to centre (inner→wet)
+          [0.0, -0.35],  // centre to left inner (wet→inner)
+          [-0.35,-1.0],  // left shoulder (inner→dry)
+        ];
+        for(const[tA,tB]of strips){
+          const ax1=x1+pxu*tA*(w*0.5), az1=z1+pzu*tA*(w*0.5);
+          const bx1=x1+pxu*tB*(w*0.5), bz1=z1+pzu*tB*(w*0.5);
+          const ax2=x2+pxu*tA*(w*0.5), az2=z2+pzu*tA*(w*0.5);
+          const bx2=x2+pxu*tB*(w*0.5), bz2=z2+pzu*tB*(w*0.5);
+          // 6 verts: two triangles per strip quad
+          pos.push(ax1,y,az1, ax2,y,az2, bx1,y,bz1,
+                   ax2,y,az2, bx2,y,bz2, bx1,y,bz1);
+          // Vertex colours: lerp dry→wet based on lateral position
+      // MeshLambertMaterial: target sRGB ~0x55 edge (dark charcoal), ~0x30 centre (dark mud).
+      // Under scene lighting (~1.42x at noon): linear = pow(sRGB/255,2.2)/1.42
+      // 0x55→pow(0.333,2.2)/1.42≈0.072 edge; 0x30→pow(0.188,2.2)/1.42≈0.021 centre
+      for(const t of[tA,tA,tB, tA,tB,tB]){
+        const f=Math.abs(t);
+        col.push(
+          0.072*f + 0.021*(1-f),
+          0.065*f + 0.018*(1-f),
+          0.058*f + 0.016*(1-f)
+        );
+      }
+        }
       }
     }
   }
   if(pos.length===0)return;
+  console.log(`buildRoads: pos=${pos.length/3} verts, col=${col.length/3} colours, ratio=${col.length/pos.length}`);
   const geom=new THREE.BufferGeometry();
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geom.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  roadColBuf=geom.attributes.color;  // stored for winter/summer swap
   geom.computeVertexNormals();
-  roadMatRef=new THREE.MeshLambertMaterial({color:0x8B7450,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  roadMatRef=new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  roadMatRef.receiveShadow=true;
   const roadMesh=new THREE.Mesh(geom,roadMatRef);
   roadMesh.receiveShadow=true;scene.add(roadMesh);
 
@@ -1240,6 +1393,8 @@ async function buildRoads(geojson){
   const trackPos=[];
   const TW=0.18,TG=0.55;   // track width, half-gauge
   for(const feat of geojson.features){
+    const stName=feat.properties.st_name||'';
+    if(isNever(stName)) continue;
     for(const line of feat.geometry.coordinates){
       for(let i=0;i<line.length-1;i++){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
@@ -1248,6 +1403,7 @@ async function buildRoads(geojson){
         if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
+        if(!isSegmentVisible(stName,(x1+x2)/2,(z1+z2)/2))continue;
         const px=(-dz/len),pz=(dx/len),y=0.20;
         // Two ruts (left and right of centre)
         for(const sign of[-1,1]){
@@ -1271,6 +1427,61 @@ async function buildRoads(geojson){
     cartTrackMesh.visible=false;   // hidden in summer
     cartTrackMesh.receiveShadow=true;
     scene.add(cartTrackMesh);
+  }
+
+  // ── Streetcar rails — Portage and Main only ─────────────────────
+  // Standard gauge: 1.435m → half-gauge 0.7175m from centreline.
+  // Up ≠ N: offsets in world XZ. Rail Y slightly above road surface.
+  // Two lanes of traffic share centreline; each direction offset by STREETCAR_LANE.
+  // Rails run along the centreline of each lane (one pair per direction).
+  const railPos=[];
+  const RAIL_W=0.12;       // rail head width (m)
+  const RAIL_H=0.22;       // rail Y above road surface
+  const RAIL_GAUGE=0.7175; // half-gauge from track centreline
+  const RAIL_LANE=STREETCAR_LANE; // match streetcar lane offset
+  for(const feat of geojson.features){
+    const stName=feat.properties.st_name||'';
+    if(stName!=='Portage'&&stName!=='Main') continue;
+    for(const line of feat.geometry.coordinates){
+      for(let i=0;i<line.length-1;i++){
+        const[sx1,sy1]=project(line[i][0],line[i][1]);
+        const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
+        const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+        if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
+        const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+        if(len<0.1)continue;
+        // Perpendicular unit vector (Up ≠ N: XZ only)
+        const px=-dz/len, pz=dx/len;
+        const y=0.18+RAIL_H;
+        // Two track lanes (one per direction), each with two rails
+        for(const laneSign of[-1,1]){          // -1=one dir, +1=other
+          const lx=px*RAIL_LANE*laneSign;
+          const lz=pz*RAIL_LANE*laneSign;
+          for(const railSign of[-1,1]){        // inner and outer rail of each pair
+            const rx=px*(RAIL_GAUGE*railSign);
+            const rz=pz*(RAIL_GAUGE*railSign);
+            const hx=px*(RAIL_W/2), hz=pz*(RAIL_W/2);
+            const ox=lx+rx, oz=lz+rz;
+            railPos.push(
+              x1+ox+hx,y,z1+oz+hz,  x2+ox+hx,y,z2+oz+hz,  x1+ox-hx,y,z1+oz-hz,
+              x2+ox+hx,y,z2+oz+hz,  x2+ox-hx,y,z2+oz-hz,  x1+ox-hx,y,z1+oz-hz
+            );
+          }
+        }
+      }
+    }
+  }
+  if(railPos.length>0){
+    const rGeom=new THREE.BufferGeometry();
+    rGeom.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
+    rGeom.computeVertexNormals();
+    railMesh=new THREE.Mesh(rGeom,new THREE.MeshPhongMaterial({
+      color:0x222222,shininess:40,specular:0x333333,
+      polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4
+    }));
+    railMesh.receiveShadow=true;
+    scene.add(railMesh);
+    console.log(`Rails: ${railPos.length/18} segments`);
   }
 }
 
@@ -1603,9 +1814,15 @@ function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, fro
 function findLayerGroup(props){
   const sf=props?.source_file||props?.group||'';
   const m=sf.match(/\b(1880|1906|1916)\b/);
-  if(!m) return null;
-  const yr=m[1];
-  return (layerGroups.find(lg=>lg.year===yr)||{}).group||null;
+  if(m){
+    const yr=m[1];
+    const lg=layerGroups.find(lg=>lg.year===yr);
+    if(lg) return lg.group;
+  }
+  // Fallback: use the currently visible non-combined layer group, or first available.
+  // This ensures facades never escape layer visibility control via scene.add().
+  const visible=layerGroups.find(lg=>lg.group.visible&&lg.year!=='combined');
+  return (visible||layerGroups[0]||{}).group||null;
 }
 
 async function autoPlaceFacade(tex,match,filename,imgAspect=null){
@@ -1986,6 +2203,732 @@ function initAudio(){
 
 // ── Render loop ────────────────────────────────────────────────────
 let lastTime=performance.now();
+// ── Streetcar traffic system ────────────────────────────────────────
+// Up ≠ N: all waypoints are world XZ (X=east, Z=south).
+
+const STREETCAR_SPEED = 4.5;   // m/s (~16 km/h)
+const STREETCAR_INTERVAL = 60; // seconds between cars each direction
+const STREETCAR_LANE = 2.5;    // metres offset from centreline (right of travel dir)
+
+const ROUTE_CLIPS = {
+  'Portage': { min: 1,   max: 558 },
+  'Main':    { min: 54,  max: 960 },
+};
+
+const STREETCAR_MIN_YEAR = 1891;
+
+function seededRand(seed){ const x=Math.sin(seed+1)*43758.5453123; return x-Math.floor(x); }
+
+function buildRouteWaypoints(roadGJ, stName){
+  const clip = ROUTE_CLIPS[stName];
+  const segs = roadGJ.features.filter(f=>f.properties.st_name===stName);
+  const parsed = [];
+  for(const feat of segs){
+    const fr = parseInt(feat.properties.from_right||feat.properties.from_left||'0')||0;
+    const to = parseInt(feat.properties.to_right||feat.properties.to_left||'9999')||9999;
+    if(clip && to < clip.min && fr > clip.max) continue;
+    const lines = feat.geometry.type==='MultiLineString'
+      ? feat.geometry.coordinates : [feat.geometry.coordinates];
+    for(const line of lines){
+      const pts = line.map(([lng,lat])=>{ const[sx,sy]=project(lng,lat); return{x:sx,z:-sy}; });
+      if(pts.length>=2) parsed.push({pts, addr:fr});
+    }
+  }
+  if(!parsed.length) return null;
+  parsed.sort((a,b)=>a.addr-b.addr);
+  const ordered=[...parsed[0].pts];
+  const used=new Set([0]);
+  for(let iter=0;iter<parsed.length-1;iter++){
+    const tail=ordered[ordered.length-1];
+    let bestIdx=-1,bestDist=Infinity,bestFlip=false;
+    for(let i=1;i<parsed.length;i++){
+      if(used.has(i))continue;
+      const ps=parsed[i].pts;
+      const d0=(ps[0].x-tail.x)**2+(ps[0].z-tail.z)**2;
+      const d1=(ps[ps.length-1].x-tail.x)**2+(ps[ps.length-1].z-tail.z)**2;
+      if(d0<bestDist){bestDist=d0;bestIdx=i;bestFlip=false;}
+      if(d1<bestDist){bestDist=d1;bestIdx=i;bestFlip=true;}
+    }
+    if(bestIdx<0||bestDist>6400) break;
+    used.add(bestIdx);
+    const seg=bestFlip?[...parsed[bestIdx].pts].reverse():parsed[bestIdx].pts;
+    const start=(Math.abs(seg[0].x-tail.x)<0.5&&Math.abs(seg[0].z-tail.z)<0.5)?1:0;
+    for(let i=start;i<seg.length;i++) ordered.push(seg[i]);
+  }
+  const dists=[0];
+  for(let i=1;i<ordered.length;i++){
+    const dx=ordered[i].x-ordered[i-1].x,dz=ordered[i].z-ordered[i-1].z;
+    dists.push(dists[i-1]+Math.sqrt(dx*dx+dz*dz));
+  }
+  return {pts:ordered, dists, totalLen:dists[dists.length-1]};
+}
+
+function sampleRoute(route, t){
+  const target=Math.max(0,Math.min(1,t))*route.totalLen;
+  let lo=0,hi=route.pts.length-2;
+  while(lo<hi){const mid=(lo+hi+1)>>1;if(route.dists[mid]<=target)lo=mid;else hi=mid-1;}
+  const f=route.dists[lo+1]>route.dists[lo]?(target-route.dists[lo])/(route.dists[lo+1]-route.dists[lo]):0;
+  const a=route.pts[lo],b=route.pts[lo+1];
+  const x=a.x+(b.x-a.x)*f, z=a.z+(b.z-a.z)*f;
+  const dx=b.x-a.x, dz=b.z-a.z, len=Math.sqrt(dx*dx+dz*dz)||1;
+  const px=dz/len, pz=-dx/len;
+  const yaw=Math.atan2(dx,dz);
+  return{x,z,yaw,px,pz};
+}
+
+function ringBell(worldX, worldZ){
+  try{
+    if(!audioCtx) return;
+    if(audioCtx.state==='suspended') return;
+    const panner=audioCtx.createPanner();
+    panner.panningModel='HRTF';
+    panner.setPosition(worldX,2,worldZ);
+    panner.connect(audioCtx.destination);
+    [660,1320].forEach((freq,i)=>{
+      const osc=audioCtx.createOscillator(),gain=audioCtx.createGain();
+      osc.type='sine'; osc.frequency.value=freq;
+      gain.gain.setValueAtTime(0.18-i*0.06,audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001,audioCtx.currentTime+1.2);
+      osc.connect(gain); gain.connect(panner);
+      osc.start(); osc.stop(audioCtx.currentTime+1.2);
+    });
+  }catch(e){}
+}
+
+const streetcarMeshes=[];
+
+// ── Streetcar colours (Winnipeg Electric Railway) ───────────────────
+const SC_COL_BODY   = 0xF0A800;  // brighter/more saturated golden yellow
+const SC_COL_SKIRT  = 0x3A1A0A;  // dark maroon/brown lower trapezoid
+const SC_COL_ROOF   = 0x3A2E22;  // dark weathered brown roof
+const SC_COL_WIN    = 0x1A2A35;  // dark tinted glass — near-black interior
+const SC_COL_HEAD   = 0xFFFFCC;  // headlight emissive white
+const SC_COL_TAIL   = 0xDD1100;  // tail light emissive red
+
+// Shared geometries and materials — built once, instanced per car
+const SC_W=2.4, SC_H=2.8, SC_L=12.0;   // main body (above skirt)
+const SC_SKIRT_H=0.75;                  // lower trapezoid height
+const SC_ROOF_H=0.55;                   // clerestory roof height
+const SC_Y_BASE=0.18;                   // road surface Y
+
+// Body
+const scBodyGeo=new THREE.BoxGeometry(SC_W,SC_H,SC_L);
+const scBodyMat=new THREE.MeshPhongMaterial({color:SC_COL_BODY,shininess:30,specular:0x332200});
+// Skirt (slightly wider/taller at bottom for trapezoid feel — just a flat box)
+const scSkirtGeo=new THREE.BoxGeometry(SC_W+0.12,SC_SKIRT_H,SC_L+0.05);
+const scSkirtMat=new THREE.MeshPhongMaterial({color:SC_COL_SKIRT,shininess:10});
+// Roof
+const scRoofGeo=new THREE.BoxGeometry(SC_W-0.1,SC_ROOF_H,SC_L*0.82);
+const scRoofMat=new THREE.MeshPhongMaterial({color:SC_COL_ROOF,shininess:5});
+// Window strips — long side panels
+const scWinSideGeo=new THREE.BoxGeometry(0.05,SC_H*0.52,SC_L*0.88);
+const scWinFrontGeo=new THREE.BoxGeometry(SC_W*0.62,SC_H*0.42,0.05);
+const scWinMat=new THREE.MeshPhongMaterial({color:SC_COL_WIN,transparent:true,opacity:0.82,shininess:60,specular:0x334455});
+// Headlight disc (front)
+const scHeadGeo=new THREE.CylinderGeometry(0.28,0.28,0.12,12);
+const scHeadMat=new THREE.MeshPhongMaterial({color:SC_COL_HEAD,emissive:SC_COL_HEAD,emissiveIntensity:1.0,shininess:120});
+// Tail light disc (rear)
+const scTailGeo=new THREE.CylinderGeometry(0.18,0.18,0.10,12);
+const scTailMat=new THREE.MeshPhongMaterial({color:SC_COL_TAIL,emissive:SC_COL_TAIL,emissiveIntensity:1.0,shininess:80});
+
+function buildStreetcarGroup(){
+  const group=new THREE.Group();
+  const bodyY = SC_Y_BASE + SC_SKIRT_H + SC_H*0.5;
+  const skirtY= SC_Y_BASE + SC_SKIRT_H*0.5;
+  const roofY = bodyY + SC_H*0.5 + SC_ROOF_H*0.5;
+
+  const body =new THREE.Mesh(scBodyGeo, scBodyMat);  body.position.y=bodyY;
+  const skirt=new THREE.Mesh(scSkirtGeo,scSkirtMat); skirt.position.y=skirtY;
+  const roof =new THREE.Mesh(scRoofGeo, scRoofMat);  roof.position.y=roofY;
+
+  // Window strips — left, right sides and front, rear faces
+  // +X and -X sides (Up ≠ N: X=east in world, but group-local X is car width axis)
+  const winL=new THREE.Mesh(scWinSideGeo,scWinMat);
+  winL.position.set( SC_W*0.5+0.01, bodyY+SC_H*0.04, 0);
+  const winR=new THREE.Mesh(scWinSideGeo,scWinMat);
+  winR.position.set(-SC_W*0.5-0.01, bodyY+SC_H*0.04, 0);
+  // Front and rear window panels
+  const winF=new THREE.Mesh(scWinFrontGeo,scWinMat);
+  winF.position.set(0, bodyY+SC_H*0.06, SC_L*0.5+0.01);
+  const winB=new THREE.Mesh(scWinFrontGeo,scWinMat);
+  winB.position.set(0, bodyY+SC_H*0.06,-SC_L*0.5-0.01);
+
+  // Headlight on front face
+  const head=new THREE.Mesh(scHeadGeo,scHeadMat);
+  head.rotation.x=Math.PI/2;
+  head.position.set(0, bodyY-SC_H*0.1, SC_L*0.5+0.07);
+
+  // Tail light on rear face — red, slightly smaller
+  const tail=new THREE.Mesh(scTailGeo,scTailMat);
+  tail.rotation.x=Math.PI/2;
+  tail.position.set(0, bodyY-SC_H*0.1, -SC_L*0.5-0.07);
+
+  group.add(body,skirt,roof,winL,winR,winF,winB,head,tail);
+  return{group};
+}
+
+function spawnStreetcars(route, count, dir, routeIdx){
+  for(let i=0;i<count;i++){
+    const{group}=buildStreetcarGroup();
+    scene.add(group);
+    const seed=routeIdx*1000+dir*100+i;
+    const jitterT=(seededRand(seed)-0.5)*0.35/count;
+    const tBase=((i/count)+jitterT+1)%1;
+    const tOffset=dir>0?tBase:(tBase+0.5/count)%1;
+    const speedMult=0.85+seededRand(seed+0.5)*0.30;
+    const bellInterval=15+seededRand(seed+1)*30;
+    streetcarMeshes.push({mesh:group,route,dir,t:tOffset,speedMult,bellTimer:seededRand(seed+2)*bellInterval,bellInterval});
+  }
+}
+
+// ── Horse/ox cart system (1880 era) ────────────────────────────────
+// Reuses route waypoints + sampleRoute from the streetcar system.
+// Carts are slower, fewer, and only visible pre-STREETCAR_MIN_YEAR.
+// Up ≠ N: all positioning in world XZ.
+
+const CART_SPEED    = 1.2;   // m/s (~4.3 km/h, walking pace)
+const CART_LANE     = 2.0;   // metres from centreline (narrower than streetcar lane)
+const CART_INTERVAL = 90;    // seconds between carts each direction
+const CART_COUNT    = 2;     // carts per direction per route
+
+// Cart geometry — simple box body + smaller box for horse
+const CT_W=1.6, CT_H=1.2, CT_L=3.0;
+const CT_Y_BASE=0.18;
+const CT_BODY_Y=CT_Y_BASE+CT_H*0.5+0.3;  // lifted on wheels
+
+const ctBodyGeo =new THREE.BoxGeometry(CT_W, CT_H, CT_L);
+const ctBodyMat =new THREE.MeshPhongMaterial({color:0x8B5E2A,shininess:8});  // warm mid brown
+const ctHorseGeo=new THREE.BoxGeometry(0.7, 1.2, 2.0);
+const ctHorseMat=new THREE.MeshPhongMaterial({color:0x6B3A1F,shininess:5});  // dark bay
+const ctHeadGeo =new THREE.BoxGeometry(0.35, 0.5, 0.65);
+const ctHeadMat =new THREE.MeshPhongMaterial({color:0x6B3A1F,shininess:5});
+
+function buildCartGroup(){
+  const group=new THREE.Group();
+  const body=new THREE.Mesh(ctBodyGeo,ctBodyMat);
+  body.position.y=CT_BODY_Y;
+  // Horse positioned in front of cart (+Z in car-local space = forward)
+  const horse=new THREE.Mesh(ctHorseGeo,ctHorseMat);
+  horse.position.set(0, CT_Y_BASE+0.6+0.3, CT_L*0.5+1.1);
+  const head=new THREE.Mesh(ctHeadGeo,ctHeadMat);
+  head.position.set(0, CT_Y_BASE+1.2+0.3, CT_L*0.5+2.0);
+  head.rotation.x=0.25;  // slight downward nose tilt
+  group.add(body,horse,head);
+  return group;
+}
+
+const cartMeshes=[];
+
+function spawnCarts(route, count, dir, routeIdx){
+  for(let i=0;i<count;i++){
+    const group=buildCartGroup();
+    scene.add(group);
+    const seed=(routeIdx+10)*1000+dir*100+i;  // offset seed space from streetcars
+    const jitterT=(seededRand(seed)-0.5)*0.4/count;
+    const tBase=((i/count)+jitterT+1)%1;
+    const tOffset=dir>0?tBase:(tBase+0.5/count)%1;
+    const speedMult=0.80+seededRand(seed+0.5)*0.35;
+    cartMeshes.push({mesh:group,route,dir,t:tOffset,speedMult});
+  }
+}
+
+// Cart routes restricted to downtown segment — full streetcar route is 10km,
+// carts at random t values would spawn kilometres outside the visible 1880 area.
+// Up ≠ N: clip is by street address number, not world coordinate.
+const CART_ROUTE_CLIPS = {
+  'Main': { min: 54, max: 260 },  // Fort Garry to roughly McDermot — downtown core
+};
+
+function buildCartRouteWaypoints(roadGJ, stName){
+  const clip = CART_ROUTE_CLIPS[stName];
+  const segs = roadGJ.features.filter(f=>f.properties.st_name===stName);
+  const parsed = [];
+  for(const feat of segs){
+    const fr = parseInt(feat.properties.from_right||feat.properties.from_left||'0')||0;
+    const to = parseInt(feat.properties.to_right||feat.properties.to_left||'9999')||9999;
+    if(clip && (to < clip.min || fr > clip.max)) continue;
+    const lines = feat.geometry.type==='MultiLineString'
+      ? feat.geometry.coordinates : [feat.geometry.coordinates];
+    for(const line of lines){
+      const pts = line.map(([lng,lat])=>{ const[sx,sy]=project(lng,lat); return{x:sx,z:-sy}; });
+      if(pts.length>=2) parsed.push({pts, addr:fr});
+    }
+  }
+  if(!parsed.length) return null;
+  parsed.sort((a,b)=>a.addr-b.addr);
+  const ordered=[...parsed[0].pts];
+  const used=new Set([0]);
+  for(let iter=0;iter<parsed.length-1;iter++){
+    const tail=ordered[ordered.length-1];
+    let bestIdx=-1,bestDist=Infinity,bestFlip=false;
+    for(let i=1;i<parsed.length;i++){
+      if(used.has(i))continue;
+      const ps=parsed[i].pts;
+      const d0=(ps[0].x-tail.x)**2+(ps[0].z-tail.z)**2;
+      const d1=(ps[ps.length-1].x-tail.x)**2+(ps[ps.length-1].z-tail.z)**2;
+      if(d0<bestDist){bestDist=d0;bestIdx=i;bestFlip=false;}
+      if(d1<bestDist){bestDist=d1;bestIdx=i;bestFlip=true;}
+    }
+    if(bestIdx<0||bestDist>6400) break;
+    used.add(bestIdx);
+    const seg=bestFlip?[...parsed[bestIdx].pts].reverse():parsed[bestIdx].pts;
+    const start=(Math.abs(seg[0].x-tail.x)<0.5&&Math.abs(seg[0].z-tail.z)<0.5)?1:0;
+    for(let i=start;i<seg.length;i++) ordered.push(seg[i]);
+  }
+  const dists=[0];
+  for(let i=1;i<ordered.length;i++){
+    const dx=ordered[i].x-ordered[i-1].x,dz=ordered[i].z-ordered[i-1].z;
+    dists.push(dists[i-1]+Math.sqrt(dx*dx+dz*dz));
+  }
+  return {pts:ordered, dists, totalLen:dists[dists.length-1]};
+}
+
+function initCarts(roadGJ){
+  const r=buildCartRouteWaypoints(roadGJ,'Main');
+  if(!r||r.totalLen<10){console.warn('Cart route "Main" failed');return;}
+  console.log(`Cart route "Main": ${r.pts.length} waypoints, ${r.totalLen.toFixed(0)}m (downtown clip)`);
+  spawnCarts(r,CART_COUNT,+1,0);
+  spawnCarts(r,CART_COUNT,-1,0);
+  console.log(`Carts on Main: ${CART_COUNT} each direction, ${cartMeshes.length} total meshes`);
+  window._cartMeshes=cartMeshes;
+  for(const cart of cartMeshes){
+    const{x,z,yaw,px,pz}=sampleRoute(cart.route,cart.t);
+    const ox=x+px*CART_LANE*(cart.dir>0?1:-1);
+    const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
+    cart.mesh.position.set(ox,0,oz);
+    cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
+    cart.mesh.visible=false;
+  }
+}
+
+function tickCarts(dt){
+  if(!cartMeshes.length) return;
+  // Carts only visible in pre-electric era (< STREETCAR_MIN_YEAR)
+  // They exist in all eras really but we suppress in 1906 for simplicity
+  const layerYear=parseInt(activeLayer)||9999;
+  const showCarts=layerYear<STREETCAR_MIN_YEAR;
+  for(const cart of cartMeshes){
+    cart.mesh.visible=showCarts;
+    if(!showCarts) continue;
+    const tStep=(CART_SPEED*cart.speedMult*dt)/cart.route.totalLen;
+    cart.t+=tStep*cart.dir;
+    if(cart.t>=1){cart.t=1-(cart.t-1);cart.dir*=-1;}
+    else if(cart.t<=0){cart.t=Math.abs(cart.t);cart.dir*=-1;}
+    const{x,z,yaw,px,pz}=sampleRoute(cart.route,cart.t);
+    const ox=x+px*CART_LANE*(cart.dir>0?1:-1);
+    const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
+    cart.mesh.position.set(ox,0,oz);
+    cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
+  }
+}
+
+function initStreetcars(roadGJ){
+  const routeDefs=[['Portage',0],['Main',1]];
+  for(const[name,idx]of routeDefs){
+    const r=buildRouteWaypoints(roadGJ,name);
+    if(!r||r.totalLen<10){console.warn(`Route "${name}" failed`);continue;}
+    console.log(`Route "${name}": ${r.pts.length} waypoints, ${r.totalLen.toFixed(0)}m`);
+    const carsPerDir=Math.max(2,Math.ceil(r.totalLen/(STREETCAR_SPEED*STREETCAR_INTERVAL)));
+    spawnStreetcars(r,carsPerDir,+1,idx);
+    spawnStreetcars(r,carsPerDir,-1,idx);
+    console.log(`Streetcars on ${name}: ${carsPerDir} each direction`);
+  }
+}
+
+function tickStreetcars(dt){
+  // Streetcars and rails only exist from electrification year onward (Up ≠ N irrelevant here)
+  const layerYear=parseInt(activeLayer)||9999;
+  const preElectric=layerYear<STREETCAR_MIN_YEAR;
+  if(railMesh) railMesh.visible=!preElectric;
+  for(const car of streetcarMeshes){
+    car.mesh.visible=!preElectric;
+    if(preElectric) continue;
+    const tStep=(STREETCAR_SPEED*car.speedMult*dt)/car.route.totalLen;
+    car.t+=tStep*car.dir;
+    if(car.t>=1){car.t=1-(car.t-1);car.dir*=-1;}
+    else if(car.t<=0){car.t=Math.abs(car.t);car.dir*=-1;}
+    const{x,z,yaw,px,pz}=sampleRoute(car.route,car.t);
+    const ox=x+px*STREETCAR_LANE*(car.dir>0?1:-1);
+    const oz=z+pz*STREETCAR_LANE*(car.dir>0?1:-1);
+    // Position the group at road level — internal geometry already offset by SC_Y_BASE
+    car.mesh.position.set(ox,0,oz);
+    car.mesh.rotation.y=car.dir>0?yaw:yaw+Math.PI;
+    car.bellTimer-=dt;
+    if(car.bellTimer<=0){
+      ringBell(ox,oz);
+      car.bellTimer=car.bellInterval*(0.7+seededRand(car.t*999)*0.6);
+    }
+  }
+}
+
+// ── Rail (steam train) traffic system ───────────────────────────────
+// Up ≠ N: all rail geometry/world positions in world XZ (X=east, Z=south).
+//
+// Source: wpg_rails_1906.geojson — 282 LineStrings digitized from Goad's
+// 1906-07 fire-insurance atlas sheets. Endpoints don't snap across sheets
+// (each sheet digitized independently), so routes are built per-feature
+// rather than stitched into one connected network. Offline pre-processing
+// tagged each feature rail_class='through' (length ≥500m, or explicitly
+// named "...Mainline"/"...Transfer...") vs 'siding' (the historical
+// majority — short industrial spurs feeding into warehouse blocks), plus a
+// 'switcher' flag on ~1-in-4 sidings (by length) to host a yard shunting move.
+//
+// SIMPLIFICATION (documented, not hidden): we don't know which historical
+// service ran on which digitized fragment, so each animated route gets ONE
+// train that bounces end-to-end with a station/yard dwell, rather than a
+// timetabled fleet. Round-trip time then sets the effective per-direction
+// headway. Speeds and dwell times are stylised to roughly evoke "~hourly
+// passenger arrivals per line" (per user's recollection) compressed 30x —
+// not a reconstructed timetable. Freight runs less often and longer;
+// yard switchers crawl back and forth on short sidings.
+
+let railBedMesh=null, railRailLineMesh=null, railGeojson=null, railsLoaded=false;
+const RAIL_MIN_YEAR=1900; // Goad rail data is ~1906-07 — hidden on the 1880 layer
+
+const trainConsists=[];
+const TRAIN_SPEED  ={passenger:9.0, freight:6.5, switcher:2.3};   // m/s — stylised, not literal scale
+const TRAIN_DWELL  ={passenger:[6,12], freight:[14,26], switcher:[10,24]}; // seconds paused at each end
+const PASSENGER_ROUTE_COUNT   = 12;   // top-N longest "through" fragments get passenger service
+const FREIGHT_THROUGH_MIN_LEN = 900;  // metres — only mainline-scale fragments get a through freight
+
+function buildRailRoute(feat){
+  const geom=feat.geometry;
+  const lines=geom.type==='MultiLineString'?geom.coordinates:[geom.coordinates];
+  const ordered=[];
+  for(const line of lines){
+    for(const[lng,lat]of line){
+      const[sx,sy]=project(lng,lat);
+      ordered.push({x:sx,z:-sy});
+    }
+  }
+  if(ordered.length<2) return null;
+  const dists=[0];
+  for(let i=1;i<ordered.length;i++){
+    const dx=ordered[i].x-ordered[i-1].x,dz=ordered[i].z-ordered[i-1].z;
+    dists.push(dists[i-1]+Math.sqrt(dx*dx+dz*dz));
+  }
+  return {pts:ordered,dists,totalLen:dists[dists.length-1]};
+}
+
+// ── Track bed + rails (visual only — reuses streetcar-rail strip pattern) ──
+function buildRailTracks(geojson){
+  if(railBedMesh){railBedMesh.geometry.dispose();scene.remove(railBedMesh);railBedMesh=null;}
+  if(railRailLineMesh){railRailLineMesh.geometry.dispose();scene.remove(railRailLineMesh);railRailLineMesh=null;}
+  const bedPos=[],bedCol=[],railPos=[];
+  const GAUGE=0.7175, RAIL_W=0.10, RAIL_H=0.20;
+  for(const feat of geojson.features){
+    const through=feat.properties.rail_class==='through';
+    const w=through?4.0:2.4;
+    const geom=feat.geometry;
+    const lines=geom.type==='MultiLineString'?geom.coordinates:[geom.coordinates];
+    for(const line of lines){
+      for(let i=0;i<line.length-1;i++){
+        const[lng1,lat1]=line[i],[lng2,lat2]=line[i+1];
+        const[sx1,sy1]=project(lng1,lat1),[sx2,sy2]=project(lng2,lat2);
+        const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+        const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+        if(len<0.05)continue;
+        const px=-dz/len,pz=dx/len,y=0.16;
+        const hx=px*(w/2),hz=pz*(w/2);
+        bedPos.push(x1+hx,y,z1+hz, x2+hx,y,z2+hz, x1-hx,y,z1-hz,
+                    x2+hx,y,z2+hz, x2-hx,y,z2-hz, x1-hx,y,z1-hz);
+        const c=through?0.095:0.075;
+        for(let k=0;k<6;k++) bedCol.push(c,c*0.86,c*0.74);
+        const ry=y+RAIL_H;
+        for(const sign of[-1,1]){
+          const rx=px*GAUGE*sign, rz=pz*GAUGE*sign;
+          const rhx=px*(RAIL_W/2), rhz=pz*(RAIL_W/2);
+          railPos.push(
+            x1+rx+rhx,ry,z1+rz+rhz,  x2+rx+rhx,ry,z2+rz+rhz,  x1+rx-rhx,ry,z1+rz-rhz,
+            x2+rx+rhx,ry,z2+rz+rhz,  x2+rx-rhx,ry,z2+rz-rhz,  x1+rx-rhx,ry,z1+rz-rhz
+          );
+        }
+      }
+    }
+  }
+  if(bedPos.length){
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(bedPos,3));
+    g.setAttribute('color',new THREE.Float32BufferAttribute(bedCol,3));
+    g.computeVertexNormals();
+    railBedMesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+    railBedMesh.receiveShadow=true;
+    scene.add(railBedMesh);
+  }
+  if(railPos.length){
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
+    g.computeVertexNormals();
+    railRailLineMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:0x2a2a28,shininess:35,specular:0x2c2c2c,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+    railRailLineMesh.receiveShadow=true;
+    scene.add(railRailLineMesh);
+  }
+  console.log(`Rail tracks: ${geojson.features.length} segments → ${bedPos.length/18} bed quads`);
+}
+
+// ── Rolling stock — shared geometry/materials, instanced per car ───────
+const LOCO_BODY_L=9.5, LOCO_BODY_W=2.5, LOCO_BODY_H=2.9;
+const TENDER_L=6.0, TENDER_W=2.4, TENDER_H=2.3;
+const CAR_GAP=0.6;
+const PASS_CAR_L=18.0, PASS_CAR_W=2.7, PASS_CAR_H=3.2;
+const FREIGHT_CAR_L=11.5, FREIGHT_CAR_W=2.6, FREIGHT_CAR_H=2.5;
+const SWITCH_CAR_L=10.0;
+
+const locoBoilerGeo=new THREE.CylinderGeometry(LOCO_BODY_H*0.42,LOCO_BODY_H*0.42,LOCO_BODY_L*0.8,14);
+const locoCabGeo=new THREE.BoxGeometry(LOCO_BODY_W,LOCO_BODY_H*0.9,LOCO_BODY_L*0.22);
+const locoStackGeo=new THREE.CylinderGeometry(0.32,0.4,1.3,10);
+const locoDomeGeo=new THREE.CylinderGeometry(0.45,0.45,0.55,12);
+const locoPilotGeo=new THREE.BoxGeometry(LOCO_BODY_W*0.7,0.7,1.1);
+const locoMat=new THREE.MeshPhongMaterial({color:0x14110f,shininess:55,specular:0x444444});
+const locoCabMat=new THREE.MeshPhongMaterial({color:0x2a2420,shininess:20});
+const tenderGeo=new THREE.BoxGeometry(TENDER_W,TENDER_H,TENDER_L);
+const tenderMat=new THREE.MeshPhongMaterial({color:0x1c1814,shininess:15});
+const tenderCoalGeo=new THREE.BoxGeometry(TENDER_W*0.86,TENDER_H*0.4,TENDER_L*0.62);
+const tenderCoalMat=new THREE.MeshPhongMaterial({color:0x0c0c0c,shininess:5});
+const headlightGeo=new THREE.CylinderGeometry(0.22,0.22,0.18,10);
+const headlightMat=new THREE.MeshPhongMaterial({color:0xfff2c0,emissive:0xfff2c0,emissiveIntensity:0.9});
+
+function buildLocoGroup(){
+  const g=new THREE.Group();
+  const baseY=0.16+0.9;
+  const boiler=new THREE.Mesh(locoBoilerGeo,locoMat);
+  boiler.rotation.x=Math.PI/2; boiler.position.set(0,baseY,LOCO_BODY_L*0.06);
+  const cab=new THREE.Mesh(locoCabGeo,locoCabMat);
+  cab.position.set(0,baseY+LOCO_BODY_H*0.18,-LOCO_BODY_L*0.5+LOCO_BODY_L*0.11);
+  const stack=new THREE.Mesh(locoStackGeo,locoMat);
+  stack.position.set(0,baseY+LOCO_BODY_H*0.46,LOCO_BODY_L*0.34);
+  const dome=new THREE.Mesh(locoDomeGeo,locoMat);
+  dome.position.set(0,baseY+LOCO_BODY_H*0.42,LOCO_BODY_L*0.02);
+  const pilot=new THREE.Mesh(locoPilotGeo,locoMat);
+  pilot.position.set(0,baseY-LOCO_BODY_H*0.32,LOCO_BODY_L*0.5+0.4);
+  const head=new THREE.Mesh(headlightGeo,headlightMat);
+  head.rotation.x=Math.PI/2; head.position.set(0,baseY+LOCO_BODY_H*0.05,LOCO_BODY_L*0.5+0.55);
+  const tender=new THREE.Mesh(tenderGeo,tenderMat);
+  tender.position.set(0,baseY+0.05,-LOCO_BODY_L*0.5-CAR_GAP-TENDER_L*0.5);
+  const coal=new THREE.Mesh(tenderCoalGeo,tenderCoalMat);
+  coal.position.set(0,baseY+0.05+TENDER_H*0.5+0.02,-LOCO_BODY_L*0.5-CAR_GAP-TENDER_L*0.32);
+  g.add(boiler,cab,stack,dome,pilot,head,tender,coal);
+  g.userData.stackAnchor=stack;  // smoke emission point
+  return g;
+}
+
+const PASS_COLORS=[0x6e2c2c,0x5a2a28,0x4d2624];  // tuscan-red wooden-coach liveries
+const passBodyGeo=new THREE.BoxGeometry(PASS_CAR_W,PASS_CAR_H*0.62,PASS_CAR_L);
+const passRoofGeo=new THREE.BoxGeometry(PASS_CAR_W*0.94,PASS_CAR_H*0.18,PASS_CAR_L*0.94);
+const passWinGeo=new THREE.BoxGeometry(0.04,PASS_CAR_H*0.28,PASS_CAR_L*0.86);
+const passWinMat=new THREE.MeshPhongMaterial({color:0x1a2025,transparent:true,opacity:0.78});
+const passRoofMat=new THREE.MeshPhongMaterial({color:0x3a332c,shininess:8});
+
+function buildPassengerCar(idx){
+  const g=new THREE.Group();
+  const bodyMat=new THREE.MeshPhongMaterial({color:PASS_COLORS[idx%PASS_COLORS.length],shininess:22});
+  const baseY=0.16+PASS_CAR_H*0.5-0.25;
+  const body=new THREE.Mesh(passBodyGeo,bodyMat); body.position.y=baseY;
+  const roof=new THREE.Mesh(passRoofGeo,passRoofMat); roof.position.y=baseY+PASS_CAR_H*0.40;
+  const winL=new THREE.Mesh(passWinGeo,passWinMat); winL.position.set(PASS_CAR_W*0.5+0.01,baseY+PASS_CAR_H*0.06,0);
+  const winR=new THREE.Mesh(passWinGeo,passWinMat); winR.position.set(-PASS_CAR_W*0.5-0.01,baseY+PASS_CAR_H*0.06,0);
+  g.add(body,roof,winL,winR);
+  return g;
+}
+
+// Mixed freight rake: boxcar / gondola / flatcar, varied colour+height per car
+const FREIGHT_KINDS=[
+  {color:0x8b3a2e,h:1.00},
+  {color:0x55524c,h:0.62},
+  {color:0x6b6357,h:0.50},
+  {color:0x7a4a33,h:0.95},
+];
+const freightBodyGeo=new THREE.BoxGeometry(FREIGHT_CAR_W,1,FREIGHT_CAR_L);
+
+function buildFreightCar(seed){
+  const kind=FREIGHT_KINDS[Math.floor(seededRand(seed)*FREIGHT_KINDS.length)%FREIGHT_KINDS.length];
+  const mat=new THREE.MeshPhongMaterial({color:kind.color,shininess:10});
+  const h=FREIGHT_CAR_H*kind.h;
+  const mesh=new THREE.Mesh(freightBodyGeo,mat);
+  mesh.scale.y=h; mesh.position.y=0.16+h*0.5;
+  const g=new THREE.Group(); g.add(mesh);
+  return g;
+}
+
+// ── Smoke / steam puffs — small per-locomotive sprite pool, no per-frame alloc ──
+function makeSmokeTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const ctx=c.getContext('2d');
+  const grad=ctx.createRadialGradient(32,32,2,32,32,30);
+  grad.addColorStop(0,'rgba(232,230,226,0.85)');
+  grad.addColorStop(0.5,'rgba(198,196,190,0.45)');
+  grad.addColorStop(1,'rgba(198,196,190,0)');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+const smokeTexture=makeSmokeTexture();
+const SMOKE_PER_LOCO=7;
+const _smokeVec=new THREE.Vector3();
+
+function buildSmokePool(seed){
+  const pool=[];
+  for(let i=0;i<SMOKE_PER_LOCO;i++){
+    const mat=new THREE.SpriteMaterial({map:smokeTexture,transparent:true,opacity:0,depthWrite:false});
+    const spr=new THREE.Sprite(mat);
+    spr.scale.set(0.1,0.1,1);
+    spr.visible=false;
+    scene.add(spr);
+    pool.push({spr,age:999,life:1.6+seededRand(seed+i)*1.0,active:false,vel:{x:0,y:0,z:0}});
+  }
+  return pool;
+}
+
+function tickSmoke(train,dt,stackWorldPos,moving){
+  train.smokeTimer-=dt;
+  if(moving&&train.smokeTimer<=0){
+    train.smokeTimer=train.smokeInterval*(0.7+seededRand(performance.now()*0.001+train.t)*0.6);
+    const slot=train.smoke[train.smokeNext];
+    train.smokeNext=(train.smokeNext+1)%train.smoke.length;
+    slot.active=true; slot.age=0;
+    slot.spr.visible=true;
+    slot.spr.material.opacity=0.5;
+    slot.spr.scale.set(1.0,1.0,1);
+    slot.spr.position.copy(stackWorldPos);
+    slot.vel.x=(seededRand(performance.now()*0.0013+1)-0.5)*0.6;
+    slot.vel.y=2.0+seededRand(performance.now()*0.0017+2)*0.8;
+    slot.vel.z=(seededRand(performance.now()*0.0019+3)-0.5)*0.6;
+  }
+  for(const slot of train.smoke){
+    if(!slot.active)continue;
+    slot.age+=dt;
+    const f=slot.age/slot.life;
+    if(f>=1){slot.active=false;slot.spr.visible=false;continue;}
+    slot.spr.position.x+=slot.vel.x*dt;
+    slot.spr.position.y+=slot.vel.y*dt;
+    slot.spr.position.z+=slot.vel.z*dt;
+    const sc=1.0+f*3.2;
+    slot.spr.scale.set(sc,sc,1);
+    slot.spr.material.opacity=0.5*(1-f);
+  }
+}
+
+// ── Spawn + tick ─────────────────────────────────────────────────────
+function spawnTrain(route,kind,seed){
+  const loco=buildLocoGroup();
+  scene.add(loco);
+  const cars=[];
+  let carCount,carLen,carBuilder;
+  if(kind==='passenger'){
+    carCount=4+Math.floor(seededRand(seed+1)*3);          // 4–6 wooden coaches
+    carLen=PASS_CAR_L; carBuilder=i=>buildPassengerCar(i);
+  }else if(kind==='freight'){
+    carCount=14+Math.floor(seededRand(seed+1)*9);         // 14–22 cars
+    carLen=FREIGHT_CAR_L; carBuilder=i=>buildFreightCar(seed*7+i);
+  }else{
+    carCount=2+Math.floor(seededRand(seed+1)*3);          // 2–4 cars, yard shunt
+    carLen=SWITCH_CAR_L; carBuilder=i=>buildFreightCar(seed*11+i);
+  }
+  for(let i=0;i<carCount;i++){const c=carBuilder(i);scene.add(c);cars.push(c);}
+  const headLen=LOCO_BODY_L+CAR_GAP+TENDER_L;
+  const carSpacingM=carLen+CAR_GAP;
+  const dwellRange=TRAIN_DWELL[kind];
+  const dir=seededRand(seed+2)<0.5?-1:1;
+  const train={
+    loco,cars,route,dir,kind,
+    t:0.15+seededRand(seed+3)*0.7,
+    speedMult:0.9+seededRand(seed+4)*0.2,
+    headOffsetT:headLen/route.totalLen,
+    carSpacingT:carSpacingM/route.totalLen,
+    pauseTimer:0, dwellMin:dwellRange[0], dwellMax:dwellRange[1],
+    smoke:buildSmokePool(seed+5), smokeNext:0, smokeTimer:0,
+    smokeInterval: kind==='freight'?0.22:(kind==='switcher'?0.5:0.30),
+  };
+  trainConsists.push(train);
+  return train;
+}
+
+function initTrains(geojson){
+  for(const train of trainConsists){
+    scene.remove(train.loco);
+    for(const c of train.cars) scene.remove(c);
+    for(const slot of train.smoke) if(slot.spr) scene.remove(slot.spr);
+  }
+  trainConsists.length=0;
+
+  const through=geojson.features.filter(f=>f.properties.rail_class==='through');
+  const sidingSwitchers=geojson.features.filter(f=>f.properties.rail_class==='siding'&&f.properties.switcher);
+
+  // Passenger: top-N longest through fragments. "Transfer" railway excluded —
+  // historically an interchange/freight-only line between the CPR/CNoR/GTP yards.
+  const passengerCandidates=through
+    .filter(f=>!/transfer/i.test(f.properties.name||''))
+    .slice().sort((a,b)=>b.properties.length_m-a.properties.length_m)
+    .slice(0,PASSENGER_ROUTE_COUNT);
+
+  let seed=1000;
+  for(const feat of passengerCandidates){
+    const route=buildRailRoute(feat);
+    if(!route||route.totalLen<200) continue;
+    spawnTrain(route,'passenger',seed++);
+  }
+  for(const feat of through){
+    if((feat.properties.length_m||0)<FREIGHT_THROUGH_MIN_LEN) continue;
+    const route=buildRailRoute(feat);
+    if(!route||route.totalLen<200) continue;
+    spawnTrain(route,'freight',seed++);
+  }
+  for(const feat of sidingSwitchers){
+    const route=buildRailRoute(feat);
+    if(!route||route.totalLen<40) continue;
+    spawnTrain(route,'switcher',seed++);
+  }
+
+  console.log(`Trains: ${trainConsists.filter(t=>t.kind==='passenger').length} passenger, `+
+    `${trainConsists.filter(t=>t.kind==='freight').length} freight, `+
+    `${trainConsists.filter(t=>t.kind==='switcher').length} yard switchers`);
+}
+
+function tickTrains(dt){
+  const layerYear=parseInt(activeLayer)||9999;
+  const visible=layerYear>=RAIL_MIN_YEAR;
+  if(railBedMesh) railBedMesh.visible=visible;
+  if(railRailLineMesh) railRailLineMesh.visible=visible;
+  for(const train of trainConsists){
+    train.loco.visible=visible;
+    for(const c of train.cars) c.visible=visible;
+    if(!visible){
+      for(const slot of train.smoke) if(slot.spr) slot.spr.visible=false;
+      continue;
+    }
+
+    let moving=true;
+    if(train.pauseTimer>0){
+      train.pauseTimer-=dt;
+      moving=false;
+    }else{
+      const speed=TRAIN_SPEED[train.kind];
+      const tStep=(speed*train.speedMult*dt)/train.route.totalLen;
+      train.t+=tStep*train.dir;
+      if(train.t>=1){
+        train.t=1; train.dir=-1; moving=false;
+        train.pauseTimer=train.dwellMin+seededRand(performance.now()*0.001+train.route.totalLen)*(train.dwellMax-train.dwellMin);
+      }else if(train.t<=0){
+        train.t=0; train.dir=1; moving=false;
+        train.pauseTimer=train.dwellMin+seededRand(performance.now()*0.001+train.route.totalLen+7)*(train.dwellMax-train.dwellMin);
+      }
+    }
+
+    const head=sampleRoute(train.route,train.t);
+    train.loco.position.set(head.x,0,head.z);
+    train.loco.rotation.y=train.dir>0?head.yaw:head.yaw+Math.PI;
+    for(let i=0;i<train.cars.length;i++){
+      const ct=train.t-train.dir*(train.headOffsetT+i*train.carSpacingT);
+      const samp=sampleRoute(train.route,ct);
+      train.cars[i].position.set(samp.x,0,samp.z);
+      train.cars[i].rotation.y=train.dir>0?samp.yaw:samp.yaw+Math.PI;
+    }
+
+    train.loco.updateMatrixWorld(true);
+    train.loco.userData.stackAnchor.getWorldPosition(_smokeVec);
+    tickSmoke(train,dt,_smokeVec,moving);
+  }
+}
+
 function startLoop(){
   function loop(now){
     requestAnimationFrame(loop);
@@ -2017,6 +2960,9 @@ function startLoop(){
         camera.position.y=Math.max(EYE_H,camera.position.y);
       }
     }else{orbit.update();updateHover();}
+    tickStreetcars(dt);
+    tickCarts(dt);
+    tickTrains(dt);
     renderer.render(scene,camera);
   drawMinimap();
   }
@@ -2024,7 +2970,7 @@ function startLoop(){
 }
 
 // ── File loading ───────────────────────────────────────────────────
-let totalBuildings=0,roadsLoaded=false;
+let totalBuildings=0,roadsLoaded=false,roadGeojson=null;
 function showToast(msg){const t=document.getElementById('live-toast');if(!t)return;if(msg){t.textContent=msg;t.style.display='block';}else t.style.display='none';}
 function isImage(f){return f.type.startsWith('image/')||/\.(jpe?g|png|webp)$/i.test(f.name);}
 function isGeoJSON(f){return f.type==='application/json'||/\.(geojson|json)$/i.test(f.name);}
@@ -2050,7 +2996,7 @@ function buildLayerBar(){
   const inactiveStyle=`background:transparent;color:#5a4830;`;
 
   // Default active layer: 1906 if present, else 1880, else combined
-  let activeLayer = has1906?'1906': has1880?'1880':'combined';
+  activeLayer = has1906?'1906': has1880?'1880':'combined';
 
   function applyVisibility(){
     for(const lg of layerGroups){
@@ -2063,6 +3009,8 @@ function buildLayerBar(){
       if(!lg.group.visible)continue;
       lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
     }
+    // Rebuild roads for active layer — segment filtering uses active-layer centroids
+    if(roadGeojson) buildRoads(roadGeojson).catch(e=>console.error('Road rebuild error:',e));
   }
   applyVisibility();  // always run — hides non-active layers even if bar is suppressed
 
@@ -2099,7 +3047,7 @@ function toggleWinter(){
   if(btn)btn.textContent=winterMode?'☀ Summer':'❄ Winter';
 
   // Ground
-  if(groundMatRef) groundMatRef.color.setHex(winterMode?0xEEEEF8:0x2D4A1A);
+  if(groundMatRef) groundMatRef.color.setHex(winterMode?0xF5F6FA:0x2D4A1A);
 
   // River: frozen ice — bluer than snow, glossy like ice
   if(waterMatRef){
@@ -2121,7 +3069,33 @@ function toggleWinter(){
   if(slider) setTimeOfDay(parseFloat(slider.value));
 
   // Roads
-  if(roadMatRef) roadMatRef.color.setHex(winterMode?0xE4E4F0:0x8B7450);
+  // Road vertex colour swap: summer=dry-edge/wet-centre, winter=snow-edge/mud-centre
+  // MeshBasicMaterial so lighting doesn't affect the colours.
+  if(roadColBuf){
+    const arr=roadColBuf.array;
+    // Lateral fractions stored implicitly — recompute from colour value:
+    // Summer dry (edge) target: 0x252322, summer wet (centre): 0x121110
+    // Winter snow (edge): 0xE8EAF0, winter mud (centre): 0x181614
+    // We can't recover t from the stored colour, so re-derive from relative brightness:
+    // Instead just rebuild: bright=snow, dark=mud based on stored R channel brightness
+    for(let i=0;i<arr.length;i+=3){
+      const r=arr[i], g=arr[i+1], b=arr[i+2];
+      // f=0 means centre (wet/dark), f=1 means edge (dry/bright)
+      // Use ratio of current value to dry-edge value as f proxy
+      const f=Math.min(r/0.072,1);
+      if(winterMode){
+        arr[i]  =(0xF5*f+0x20*(1-f))/255;
+        arr[i+1]=(0xF6*f+0x1C*(1-f))/255;
+        arr[i+2]=(0xFA*f+0x18*(1-f))/255;
+      } else {
+        arr[i]  = 0.072*f + 0.021*(1-f);
+        arr[i+1]= 0.065*f + 0.018*(1-f);
+        arr[i+2]= 0.058*f + 0.016*(1-f);
+      }
+    }
+    roadColBuf.needsUpdate=true;
+    roadMatRef.color.setHex(0xFFFFFF);  // no tint — vertex colours are exact
+  }
 
   // Cart tracks (only visible in winter)
   if(cartTrackMesh) cartTrackMesh.visible=winterMode;
@@ -2152,7 +3126,9 @@ function sniffGeoJSON(gj){
     if('natural'in p&&(p.natural==='water'||p.natural==='wetland')) return 'water';
     if('waterway'in p) return 'water';
     if('segment_id'in p) return 'road';
+    if(p.type==='railway') return 'rail';  // checked before 'material' — rail features also carry material:'blue'
     if('material'in p&&['brick','wood','iron','stone','blue','concrete','unknown','log'].includes(p.material)) return 'building';
+    if(p.type==='lumber') return 'building';
   }
   return null;
 }
@@ -2169,6 +3145,7 @@ const BUMP_REPEAT = {
   iron:     [2,    2    ],
   concrete: [1,    1    ],
   unknown:  [2,    2    ],
+  lumber:   [0.3,  0.66],   // ~3m wide × ~1.5m tall per tile
 };
 
 // Convert greyscale heightmap → normal map via Sobel filter.
@@ -2236,9 +3213,13 @@ async function applyWallBump(imageFile, matKey){
     const[ru,rv]=BUMP_REPEAT[matKey]??[2,2];
     tex.repeat.set(ru,rv);
     const mat=wallMaterials[matKey];
-    if(mat){ mat.bumpMap=tex; mat.bumpScale=0.5; mat.needsUpdate=true; }
-    console.log(`Wall bump applied: ${imageFile.name} → ${matKey} (repeat ${ru}x${rv}/m)`);
-  }catch(e){ console.warn('Wall bump load failed:',e); }
+    if(mat){
+      mat.bumpMap=tex; mat.bumpScale=matKey==='lumber'?1.5:0.5; mat.needsUpdate=true;
+      console.log(`🧱 Wall bump applied: ${imageFile.name} → ${matKey} (repeat ${ru}×${rv}/m, ${tex.image.width}×${tex.image.height}px)`);
+    }else{
+      console.warn(`🧱 Wall bump loaded but wallMaterials['${matKey}'] not found — no ${matKey} buildings in scene? Known keys:`, Object.keys(wallMaterials));
+    }
+  }catch(e){ console.warn(`🧱 Wall bump load failed for ${imageFile.name}:`,e); }
 }
 
 async function applyFacadeBump(imageFile){
@@ -2272,15 +3253,14 @@ function isBumpFile(f){
 // Called after a window mask is drag-dropped in. Up ≠ N — all geometry in world XZ.
 function rebuildGlassMesh(layerEntry){
   const{group,geojson}=layerEntry;
-  if(!group||!geojson) return;
+  if(!group||!geojson){console.warn('rebuildGlassMesh: missing group or geojson',layerEntry?.year);return;}
 
-  // Dispose and remove the existing glass mesh from this group
+  // Collect first, then remove — mutating during traverse is unreliable
+  const toRemove=[];
   group.traverse(child=>{
-    if(child.isMesh&&child.material===glassMat){
-      child.geometry.dispose();
-      group.remove(child);
-    }
+    if(child.isMesh&&child.material===glassMat) toRemove.push(child);
   });
+  for(const child of toRemove){child.geometry.dispose();group.remove(child);}
 
   // Re-collect glass verts using same logic as buildCity
   const glassVerts=[];
@@ -2300,7 +3280,7 @@ function rebuildGlassMesh(layerEntry){
       const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
                    ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
-      const noWindows=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls')||nm.includes('elevator');
+      const noWindows=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls')||nm.includes('elevator')||props.type==='lumber';
       if(!isPlatform&&!isChurch&&!isBridge&&!noWindows&&floors>0.5&&areaOk){
         const outerCoords=outer.slice(0,-1);
         const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
@@ -2488,7 +3468,8 @@ async function liveLoad(fileList){
     const kind=sniffGeoJSON(gj);
     if(kind==='water'){await buildWater(gj);}
     else if(kind==='building'){const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
-    else if(kind==='road'){await buildRoads(gj);roadsLoaded=true;}
+    else if(kind==='road'){roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true;}
+    else if(kind==='rail'){railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true;}
     else console.warn(`Unrecognised GeoJSON: ${f.name} — no matching properties found in first 10 features`);
     updateStatBar();
   }
@@ -2501,7 +3482,7 @@ async function loadFiles(fileList){
   document.getElementById('loading').style.display='flex';
   const imageFiles=[],geoFiles=[];
   for(const f of fileList){(isImage(f)?imageFiles:geoFiles).push(f);}
-  let buildingGJ=null,roadGJ=null,waterGJ=null;
+  let buildingGJ=null,roadGJ=null,waterGJ=null,railGJ=null;
   for(const f of geoFiles){
     setProgress(2,`Reading ${f.name}…`);await tick();
     let gj;
@@ -2511,11 +3492,13 @@ async function loadFiles(fileList){
     if(kind==='water')waterGJ=gj;
     else if(kind==='building')buildingGJ=gj;
     else if(kind==='road')roadGJ=gj;
+    else if(kind==='rail')railGJ=gj;
     else console.warn(`Unrecognised GeoJSON: ${f.name}`);
   }
   let n=0;
   if(buildingGJ)n=await buildCity(buildingGJ);
-  if(roadGJ)await buildRoads(roadGJ);
+  if(roadGJ){roadGeojson=roadGJ;await buildRoads(roadGJ);initStreetcars(roadGJ);initCarts(roadGJ);}
+  if(railGJ){railGeojson=railGJ;buildRailTracks(railGJ);initTrains(railGJ);railsLoaded=true;}
   if(waterGJ)await buildWater(waterGJ);
   totalBuildings+=n;if(roadGJ)roadsLoaded=true;
   buildLayerBar();
@@ -2598,7 +3581,8 @@ renderer.render(scene,camera);
     const kind=sniffGeoJSON(gj);
     if(kind==='water')        await buildWater(gj);
     else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n; }
-    else if(kind==='road')   { await buildRoads(gj);roadsLoaded=true; }
+    else if(kind==='road')   { roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
+    else if(kind==='rail')   { railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
 
   setProgress(100,'Done.');await tick();
@@ -2641,6 +3625,21 @@ renderer.render(scene,camera);
       }
     }
   }catch(e){/* no manifest — silent */}
+
+  // ── Auto-load bump maps from ./data/ ─────────────────────────────
+  // Silently skips any that are absent.  Keyed by material name stem.
+  const AUTOLOAD_BUMPS = ['brick','wood','stone','log','iron','concrete','lumber'];
+  for(const stem of AUTOLOAD_BUMPS){
+    const burl=`./data/bump_${stem}.png`;
+    try{
+      const bres=await fetch(burl+'?v='+Date.now());
+      if(!bres.ok){ console.log(`🧱 Bump autoload: ${burl} → ${bres.status} (skipped)`); continue; }
+      const blob=await bres.blob();
+      const file=new File([blob],`bump_${stem}.png`,{type:'image/png'});
+      console.log(`🧱 Bump autoload: ${burl} → fetched (${(blob.size/1024).toFixed(1)}KB), applying…`);
+      await applyWallBump(file, stem);
+    }catch(e){ console.warn(`🧱 Bump autoload error for ${burl}:`,e); }
+  }
 })();
 </script>
 </body>
