@@ -174,6 +174,7 @@ const isMobile=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { CONFIG }          from './config.js';
 
 // ═══════════════════════════════════════════════════════════════════════
 // COORDINATE SYSTEM — Up ≠ N
@@ -199,29 +200,17 @@ function project(lon, lat) {
   return [(lon - C_LON) * M_PER_LON, (lat - C_LAT) * M_PER_LAT];
 }
 
-const MATS = {
-  brick:            { color: 0xC0604A, label: 'Brick',              shininess: 20 },
-  brick_veneer:     { color: 0xC07858, label: 'Brick Veneer',        shininess: 18 },
-  wood:             { color: 0xCFA840, label: 'Wood / Frame',        shininess: 6  },
-  wood_industrial:  { color: 0x687888, label: 'Wood / Industrial',   shininess: 8  },
-  iron:             { color: 0x687888, label: 'Iron / Metal',        shininess: 45 },
-  stone:            { color: 0xE8DFC8, label: 'Stone',               shininess: 55 },
-  blue:             { color: 0x3A6898, label: 'Railway Siding',      shininess: 35 },
-  concrete:         { color: 0x989890, label: 'Concrete',            shininess: 18 },
-  unknown:          { color: 0x808078, label: 'Unknown',             shininess: 5  },
-  log:              { color: 0x807040, label: 'Log',                 shininess: 4  },
-  lumber:           { color: 0xC0A040, label: 'Stacked Lumber',      shininess: 6  },
-};
+const MATS = CONFIG.materials;
 const PEAKED_MATS = new Set(['wood','log','concrete','unknown','iron','wood_industrial']);
-const FLOOR_H    = 4.2;   // Victorian commercial avg: ~5m ground floor, ~4m upper
-const PLATFORM_H = 0.6;
-const MIN_H      = 2.0;
-const EYE_H      = 1.75;
-const ROAD_W = { BLVD:18,HWY:16,AVE:12,ST:10,RD:10,DR:10,CRES:9,WAY:9,ROW:8,LANE:6,PL:9,BAY:9,PATH:5,TRAIL:5 };
+const FLOOR_H    = CONFIG.building.floorHeight;
+const PLATFORM_H = CONFIG.building.platformHeight;
+const MIN_H      = CONFIG.building.minHeight;
+const EYE_H      = CONFIG.building.eyeHeight;
+const ROAD_W = CONFIG.roadWidths;
 
 // ── Renderer ───────────────────────────────────────────────────────
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, CONFIG.camera.pixelRatioCap));
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
@@ -229,29 +218,29 @@ document.body.appendChild(renderer.domElement);
 
 // ── Scene ──────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8AB8D0);
-scene.fog = new THREE.FogExp2(0x8AB8D0, 0.00032);
+scene.background = new THREE.Color(CONFIG.scene.backgroundColor);
+scene.fog = new THREE.FogExp2(CONFIG.scene.fog.color, CONFIG.scene.fog.density);
 
 // ── Camera ─────────────────────────────────────────────────────────
-const camera = new THREE.PerspectiveCamera(68, innerWidth/innerHeight, 0.5, 5000);
-camera.position.set(600, 450, 900);
-camera.lookAt(0, 0, 0);
+const camera = new THREE.PerspectiveCamera(CONFIG.camera.fov, innerWidth/innerHeight, CONFIG.camera.near, CONFIG.camera.far);
+camera.position.set(CONFIG.start.cameraPosition.x, CONFIG.start.cameraPosition.y, CONFIG.start.cameraPosition.z);
+camera.lookAt(CONFIG.start.cameraLookAt.x, CONFIG.start.cameraLookAt.y, CONFIG.start.cameraLookAt.z);
 
 // ── Season state (declared here — used before buildingMeshes block) ─
-let winterMode=false;
+let winterMode=CONFIG.start.winterMode;
 const seasonalMats=[];   // {mat3, summerCol, winterCol}
 let groundMatRef=null, roadMatRef=null, cartTrackMesh=null, railMesh=null, roadColBuf=null;
 const SNOW_SKIP=new Set(['blue']); // railways/sidings only — no snow accumulation
 
 // ── Lighting ───────────────────────────────────────────────────────
-const sun = new THREE.DirectionalLight(0xFFF4DC, 1.3);
+const sun = new THREE.DirectionalLight(CONFIG.lighting.sun.color, CONFIG.lighting.sun.intensity);
 sun.castShadow = true;
-sun.shadow.mapSize.width  = 2048;
-sun.shadow.mapSize.height = 2048;
-sun.shadow.camera.near = 10; sun.shadow.camera.far  = 2200;
-sun.shadow.camera.left = -900; sun.shadow.camera.right  = 900;
-sun.shadow.camera.top  =  900; sun.shadow.camera.bottom = -900;
-sun.shadow.bias = -0.0003;
+sun.shadow.mapSize.width  = CONFIG.lighting.sun.shadowMapSize;
+sun.shadow.mapSize.height = CONFIG.lighting.sun.shadowMapSize;
+sun.shadow.camera.near = CONFIG.lighting.sun.shadowNear; sun.shadow.camera.far  = CONFIG.lighting.sun.shadowFar;
+sun.shadow.camera.left = CONFIG.lighting.sun.shadowBounds.left; sun.shadow.camera.right  = CONFIG.lighting.sun.shadowBounds.right;
+sun.shadow.camera.top  = CONFIG.lighting.sun.shadowBounds.top; sun.shadow.camera.bottom = CONFIG.lighting.sun.shadowBounds.bottom;
+sun.shadow.bias = CONFIG.lighting.sun.shadowBias;
 scene.add(sun);
 
 // ── Time of day ────────────────────────────────────────────────────
@@ -259,18 +248,7 @@ scene.add(sun);
 // Sun arc: Up ≠ N. East=+X, south=−Z, up=+Y.
 // Sunrise: +X; noon: above, biased −Z; sunset: −X.
 const TOD_START_H = 4, TOD_RANGE_H = 18;
-const SKY_KEYS = [
-  [0.00,0x0A0510,0x0A0510,0xFF6020,0.00,0.04],
-  [0.10,0xFF7030,0xE85010,0xFF9040,0.50,0.08],
-  [0.18,0xF0A060,0xD08040,0xFFD080,1.00,0.14],
-  [0.28,0x88C0E8,0x88C0E8,0xFFF0D0,1.35,0.18],
-  [0.42,0x7AB8E0,0x7AB8E0,0xFFF4DC,1.45,0.20],
-  [0.52,0x6AAED8,0x6AAED8,0xFFFAF0,1.50,0.22],
-  [0.70,0x88B0D8,0x88B0D8,0xFFF0C0,1.30,0.18],
-  [0.82,0xF08030,0xD06020,0xFF8030,0.90,0.12],
-  [0.90,0xC04020,0x902010,0xFF5010,0.40,0.06],
-  [1.00,0x080310,0x080310,0xFF3000,0.00,0.03],
-];
+const SKY_KEYS = CONFIG.skyKeyframes;
 function lerpHex(a,b,t){
   const ar=(a>>16)&0xff,ag=(a>>8)&0xff,ab=a&0xff;
   const br=(b>>16)&0xff,bg=(b>>8)&0xff,bb=b&0xff;
@@ -282,9 +260,9 @@ function sampleSky(t){
   const f=lo[0]===hi[0]?0:(t-lo[0])/(hi[0]-lo[0]);
   return{sky:lerpHex(lo[1],hi[1],f),fog:lerpHex(lo[2],hi[2],f),sunCol:lerpHex(lo[3],hi[3],f),sunInt:lo[4]+(hi[4]-lo[4])*f,ambInt:lo[5]+(hi[5]-lo[5])*f};
 }
-const hemiLight = new THREE.HemisphereLight(0x88C0E8,0x3A5A20,0.55);
+const hemiLight = new THREE.HemisphereLight(CONFIG.lighting.hemisphere.skyColor,CONFIG.lighting.hemisphere.groundColor,CONFIG.lighting.hemisphere.intensity);
 scene.add(hemiLight);
-const ambLight = new THREE.AmbientLight(0xffffff,0.12);
+const ambLight = new THREE.AmbientLight(CONFIG.lighting.ambient.color,CONFIG.lighting.ambient.intensity);
 scene.add(ambLight);
 function setTimeOfDay(t){
   // Physically correct solar position for Winnipeg 49.895°N — Up ≠ N (X=east,Y=up,Z=south)
@@ -321,26 +299,111 @@ function setTimeOfDay(t){
   if(lbl)lbl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
   // Oil-lamp night glow on windows — warm amber when sun below horizon
   const nightness = Math.max(0, Math.min(1, 1 - sUp * 10));
-  glassMat.emissive.setRGB(0.47 * nightness, 0.19 * nightness, 0.02 * nightness);
+  glassMat.emissive.setRGB(CONFIG.glass.nightGlowColor.r * nightness, CONFIG.glass.nightGlowColor.g * nightness, CONFIG.glass.nightGlowColor.b * nightness);
+  // Chimney smoke TOD multiplier — time-of-day × season
+  const _todHour=TOD_START_H+t*TOD_RANGE_H;
+  const _todCurve=CONFIG.chimneys.todCurve;
+  let _lo=_todCurve[0],_hi=_todCurve[_todCurve.length-1];
+  for(let _i=0;_i<_todCurve.length-1;_i++){
+    if(_todHour>=_todCurve[_i][0]&&_todHour<=_todCurve[_i+1][0]){_lo=_todCurve[_i];_hi=_todCurve[_i+1];break;}
+  }
+  const _tf=_hi[0]===_lo[0]?0:(_todHour-_lo[0])/(_hi[0]-_lo[0]);
+  const _todBase=_lo[1]+(_hi[1]-_lo[1])*_tf;
+  const _seasonM=winterMode?CONFIG.chimneys.winterMultiplier:CONFIG.chimneys.summerMultiplier;
+  chimneyTodMult=_todBase*_seasonM;
 }
-// ── Ground ─────────────────────────────────────────────────────────
-const groundMat=new THREE.MeshLambertMaterial({color:0x2D4A1A});
+// ── Ground / Terrain ───────────────────────────────────────────────
+// Winnipeg sits on the floor of glacial Lake Agassiz — famously flat, but not
+// perfectly so.  A subdivided mesh with gentle multi-frequency noise gives
+// subtle prairie undulation.  After water GeoJSON loads, buildChannelTerrain()
+// depresses vertices near river paths so the flood plane sits visibly inside
+// a proper channel.  Up ≠ N: X=east, Y=up, Z=south.
+const groundMat=new THREE.MeshLambertMaterial({color:CONFIG.scene.ground.summerColor});
 groundMatRef=groundMat;
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(12000,12000),groundMat);
-ground.rotation.x=-Math.PI/2; ground.position.y=-0.05; ground.receiveShadow=true;
-scene.add(ground);
-window.ground = ground;
-const grid=new THREE.GridHelper(12000,1200,0x3A5A22,0x324A1C);
+const _tSegs = CONFIG.terrain?.segments ?? 300;
+const _tGeo  = new THREE.PlaneGeometry(12000, 12000, _tSegs, _tSegs);
+_tGeo.rotateX(-Math.PI / 2);           // vertices now in world XZ; Y is height
+const _tPos  = _tGeo.attributes.position;
+const _tAmp  = CONFIG.terrain?.noiseAmplitude ?? 0.55;
+const _tBase = CONFIG.terrain?.noiseBaseY     ?? 0.0;
+for(let _i = 0; _i < _tPos.count; _i++){
+  const _tx = _tPos.getX(_i), _tz = _tPos.getZ(_i);
+  // Six diagonal wave components — no axis-aligned terms, so no directional
+  // gradient artefact.  The product term (component 2) creates isolated basins
+  // that flood independently rather than a single advancing front line.
+  // All wavelengths are in the 500m–9km range, appropriate for Lake Agassiz terrain.
+  const _n =
+    Math.sin(_tx * 0.000107 + _tz * 0.000089 + 0.73) * 0.30 +  // ~11 km diagonal
+    Math.sin(_tx * 0.000213 + 0.85) * Math.sin(_tz * 0.000191 + 2.14) * 0.40 + // basins
+    Math.sin(_tx * 0.000314 + _tz * 0.000267 + 3.82) * 0.30 +  // ~4 km diagonal
+    Math.sin(_tx * 0.000528 - _tz * 0.000441 + 1.57) * 0.15 +  // ~2.5 km
+    Math.sin(_tx * 0.000847 + _tz * 0.000706 + 0.94) * 0.10 +  // ~1.5 km
+    Math.sin(_tx * 0.001210 - _tz * 0.001050 + 2.61) * 0.05;   // ~1 km
+  _tPos.setY(_i, _tBase + _n * _tAmp);
+}
+_tGeo.computeVertexNormals();
+const terrainMesh = new THREE.Mesh(_tGeo, groundMat);
+terrainMesh.receiveShadow = true;
+scene.add(terrainMesh);
+window.terrainMesh = terrainMesh;
+window.ground = terrainMesh; // backward compat
+
+// ── Real DEM loader ─────────────────────────────────────────────────
+// Fetches dem.json + dem.bin (produced by pfviewer/tools/dem_from_las.py).
+// Replaces Perlin noise Y values with LiDAR-derived ground elevations.
+// Silently falls back to noise if files are absent.
+async function applyDEM(){
+  try{
+    const metaRes = await fetch('./data/dem.json?v='+Date.now());
+    if(!metaRes.ok) return;  // no DEM yet — keep Perlin noise
+    const meta    = await metaRes.json();
+    const binRes  = await fetch('./data/dem.bin?v='+Date.now());
+    if(!binRes.ok) return;
+    const buf     = await binRes.arrayBuffer();
+    const heights = new Float32Array(buf);  // index = Three.js vertex index (iz*VERTS+ix)
+
+    const tPos = terrainMesh.geometry.attributes.position;
+    const N    = tPos.count;  // should be VERTS*VERTS = 90601
+    if(heights.length !== N){
+      console.warn(`DEM size mismatch: ${heights.length} vs ${N} vertices`);
+      return;
+    }
+    for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
+    tPos.needsUpdate = true;
+    terrainMesh.geometry.computeVertexNormals();
+
+    // DEM is now active — channel terrain override must not run
+    _demLoaded = true;
+    _terrainBaseY = null;
+    console.log(`🗺 DEM applied: ${meta.verts}×${meta.verts} grid, ref ${meta.refElev.toFixed(1)}m ASL`);
+    // Rebuild roads so they sample real terrain heights instead of Perlin noise
+    if(window.roadGeojson) buildRoads(window.roadGeojson).catch(e=>console.warn('Road rebuild after DEM:',e));
+    if(window.railGeojson) buildRailTracks(window.railGeojson);
+  }catch(e){ console.warn('DEM load failed (using Perlin noise):', e); }
+}
+const grid=new THREE.GridHelper(12000,1200,CONFIG.scene.grid.colorCenterLine,CONFIG.scene.grid.colorGrid);
 grid.position.y=0.01;grid.material.opacity=0.18;grid.material.transparent=true;
 // grid removed from scene — kept as variable so winter toggle doesn't throw
 // scene.add(grid);
 window.grid = grid;
 
+// ── Terrain height sampler ──────────────────────────────────────────
+// Returns world Y at any XZ position by nearest-cell lookup on the terrain mesh.
+// Used by buildRoads (and anything else that must sit on the ground).
+function sampleTerrainY(wx, wz){
+  const segs  = CONFIG.terrain?.segments ?? 300;
+  const verts = segs + 1;
+  const cell  = 12000 / segs;
+  const ix = Math.max(0, Math.min(verts - 1, Math.round((wx + 6000) / cell)));
+  const iz = Math.max(0, Math.min(verts - 1, Math.round((wz + 6000) / cell)));
+  return terrainMesh.geometry.attributes.position.getY(iz * verts + ix);
+}
+
 // ── Orbit controls ─────────────────────────────────────────────────
 const orbit=new OrbitControls(camera,renderer.domElement);
-orbit.enableDamping=true;orbit.dampingFactor=0.07;
+orbit.enableDamping=true;orbit.dampingFactor=CONFIG.orbitControls.dampingFactor;
 orbit.enableZoom=false;
-orbit.maxPolarAngle=Math.PI*0.98;orbit.minDistance=2;orbit.maxDistance=3000;
+orbit.maxPolarAngle=Math.PI*CONFIG.orbitControls.maxPolarAngle;orbit.minDistance=CONFIG.orbitControls.minDistance;orbit.maxDistance=CONFIG.orbitControls.maxDistance;
 orbit.target.set(0,0,0);orbit.update();
 
 renderer.domElement.addEventListener('wheel',e=>{
@@ -361,7 +424,7 @@ renderer.domElement.addEventListener('wheel',e=>{
   }else{
     camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
   }
-  camera.position.y=Math.max(1.0, camera.position.y);  // never go underground
+  camera.position.y=Math.max(CONFIG.fpsControls.minCameraY, camera.position.y);  // never go underground
   orbit.update();
 },{passive:false});
 
@@ -377,6 +440,21 @@ const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
 const wallMaterials  = {};   // matKey → MeshPhongMaterial
 const wallMeshes     = {};   // matKey → THREE.Mesh (for DecalGeometry projection)
+
+// ── Chimney smoke state ────────────────────────────────────────────
+// chimneyEmitters: populated by buildCity for every chimney stack placed.
+//   { wx,wy,wz, type, rate, timer, year }
+// chimneyPool: shared sprite pool capped at CONFIG.chimneys.smokePoolSize.
+//   Individual puffs are drawn from this pool regardless of chimney count,
+//   keeping GPU sprite count bounded regardless of city size.
+// cityHazeSlots: large drift sprites shown only at far zoom.
+// chimneyTodMult: TOD × season multiplier, updated by setTimeOfDay().
+const chimneyEmitters = [];
+let   chimneyPool     = [];
+let   chimneyPoolNext = 0;
+let   chimneyTodMult  = 1.0;
+let   cityHazeGroup   = null;
+let   cityHazeSlots   = [];
 const facadeMeshes = new Map();
 window.facadeMeshes = facadeMeshes;
 // Start position in world coords — computed once after project() is available
@@ -481,12 +559,7 @@ function roofColor(hex){
 // Place these files in ./data/ alongside the HTML on any web server.
 // Files that 404 are silently skipped — drop zone remains available.
 const AUTOLOAD = [
-  './data/mcphillips_1880.geojson',
-  './data/goad_1906.geojson',
-  './data/combined.geojson',
-  './data/wpg_rivers.geojson',
-  './data/wpg_roads.geojson',
-  './data/wpg_rails_1906.geojson',
+  ...CONFIG.dataFiles.autoload,
 ];
 const layerGroups = [];   // [{year, group, label}]
 // Road draw radius — updated when building layers load.
@@ -512,8 +585,8 @@ function detectYear(geojson){
   return `Layer ${layerGroups.length+1}`;
 }
 
-const PARAPET_W = 0.38;  // parapet wall thickness (metres)
-const PARAPET_H = 0.50;  // parapet height above roof
+const PARAPET_W = CONFIG.building.parapet.width;
+const PARAPET_H = CONFIG.building.parapet.height;
 
 // Inset a shapeXY ring toward its centroid by `dist` metres.
 // Centroid-based inset: artifact-free for convex/near-convex Winnipeg lots.
@@ -573,25 +646,11 @@ function simpleHash(str){
 
 // Winnipeg 1906 brick: predominantly red-brown Red River clay,
 // notable proportion of buff/yellow imported brick, some orange-red.
-const BRICK_PALETTES=[
-  [0x9A3020,0xC05838],  // dark red (35%)
-  [0xB84030,0xCC5840],  // mid red (25%)
-  [0xC86040,0xD87050],  // orange-red (10%)
-  [0xC8A030,0xD8B850],  // yellow/buff brick (20%)
-  [0xD4C070,0xE0CF90],  // pale limestone-yellow (10%)
-];
-const BRICK_WEIGHTS=[35,60,70,90,100]; // cumulative %
+const BRICK_PALETTES=CONFIG.palettes.brick.pairs;
+const BRICK_WEIGHTS=CONFIG.palettes.brick.weights; // cumulative %
 
-const WOOD_COMM_PALETTES=[
-  [0xC49A30,0xD4AA40],  // ochre (most common Victorian exterior)
-  [0x6A7A50,0x7A8A60],  // sage green
-  [0xCDC0A0,0xDDD0B0],  // cream/buff
-  [0x8B3020,0xA04030],  // barn red
-  [0x3A5A30,0x4A6A40],  // dark green
-  [0x8090A0,0x909AB0],  // French grey (later fashion)
-  [0xA89070,0xBEA888],  // raw/weathered wood (small buildings)
-];
-const WOOD_COMM_WEIGHTS=[20,35,50,60,72,82,100];
+const WOOD_COMM_PALETTES=CONFIG.palettes.woodComm.pairs;
+const WOOD_COMM_WEIGHTS=CONFIG.palettes.woodComm.weights;
 
 function buildingColour(mat,uid,floors,areaSqM){
   const h=simpleHash(uid||String(Math.random()));
@@ -617,28 +676,28 @@ function buildingColour(mat,uid,floors,areaSqM){
   }
   if(mat==='iron'||mat==='wood_industrial'){
     // Corrugated iron — weathered grey-silver to rust-brown, some bright galvanised
-    const ironPals=[[0x707870,0x909890],[0x806858,0x907060],[0xA07050,0x985840],[0xD0D4D0,0xE0E4E0]];
-    const ironW=[40,65,85,100];
+    const ironPals=CONFIG.palettes.ironIndustrial.pairs;
+    const ironW=CONFIG.palettes.ironIndustrial.weights;
     let idx=0;for(let i=0;i<ironW.length;i++)if(pct<ironW[i]){idx=i;break;}
     return lerpHex(ironPals[idx][0],ironPals[idx][1],h01);
   }
   if(mat==='stone'){
     // Tyndall limestone — cream to buff, slight warm variation
-    return lerpHex(0xDDD0B0,0xF0E8D0,h01);
+    return lerpHex(CONFIG.palettes.stone.min,CONFIG.palettes.stone.max,h01);
   }
-  if(mat==='log'){return lerpHex(0x80603A,0x987858,h01);}
+  if(mat==='log'){return lerpHex(CONFIG.palettes.log.min,CONFIG.palettes.log.max,h01);}
   if(mat==='lumber'){
     // Fresh-cut warm gold → weathered grey-tan.  Never fully grey — boom-years stock turns over fast.
     // uid hash gives each yard a stable weathering level; h01 adds slight per-feature tint variation.
     const weather=pct/100;  // 0=fresh, 1=most weathered
-    const fresh  =0xC8A840; // warm gold, freshly milled
-    const aged   =0xA09070; // desaturated tan, several seasons out
+    const fresh  =CONFIG.palettes.lumber.fresh;
+    const aged   =CONFIG.palettes.lumber.aged;
     return lerpHex(fresh,aged, weather*0.65 + h01*0.08);
   }
-  if(mat==='concrete'){return lerpHex(0x888880,0xA0A098,h01);}
-  if(mat==='unknown'){return lerpHex(0x787068,0x908880,h01);}
+  if(mat==='concrete'){return lerpHex(CONFIG.palettes.concrete.min,CONFIG.palettes.concrete.max,h01);}
+  if(mat==='unknown'){return lerpHex(CONFIG.palettes.unknown.min,CONFIG.palettes.unknown.max,h01);}
   if(mat==='blue'){return MATS.blue.color;}  // railways — keep consistent
-  return MATS[mat]?.color??0x808080;
+  return MATS[mat]?.color??CONFIG.materials.unknown.color;
 }
 
 function applyVertexColour(geom, hexCol){
@@ -655,22 +714,128 @@ function applyVertexColour(geom, hexCol){
 // ── Procedural windows ─────────────────────────────────────────────
 // Glass quads accumulated per buildCity call, merged into one mesh.
 // Up ≠ N: all placement in world XZ (X=east, Z=south).
-const WIN_W      = 1.00;   // standard window width (m)
-const WIN_H      = 1.75;   // standard window height (m)
-const WIN_SILL   = 0.90;   // sill height above floor (m)
-const WIN_GAP    = 0.90;   // gap between windows
-const WIN_MARGIN = 0.70;   // margin from wall ends
-const WIN_INSET  = 0.06;   // glass set back from wall face (m)
-const WIN_GF_W   = 1.50;   // ground-floor commercial width
-const WIN_GF_H_F = 0.78;   // ground-floor height as fraction of FLOOR_H
+const WIN_W      = CONFIG.windows.width;
+const WIN_H      = CONFIG.windows.height;
+const WIN_SILL   = CONFIG.windows.sillHeight;
+const WIN_GAP    = CONFIG.windows.gap;
+const WIN_MARGIN = CONFIG.windows.margin;
+const WIN_INSET  = CONFIG.windows.inset;
+const WIN_GF_W   = CONFIG.windows.groundFloorWidth;
+const WIN_GF_H_F = CONFIG.windows.groundFloorHeightFrac;
+
+// How many *complete* floors of flush-wall windows a building should get.
+// Using floors directly (e.g. via Math.round) caused a half-storey (floors
+// like 1.5/2.5/3.5) to get a full extra row of windows that ran taller than
+// the actual wall (height = floors*FLOOR_H), poking past the eave line into
+// where the peaked roof slopes away — i.e. the "floating window" look.
+// Only fully-tall floors get ordinary windows; a near-complete fraction
+// (>=0.9) is treated as a full floor, otherwise the remainder is left for
+// buildDormer() to handle (or left blank for non-peaked-roof materials).
+function floorsForWindows(floors){
+  let full=Math.floor(floors+1e-6);
+  if(floors-full>=CONFIG.windows.halfFloorRoundUpThreshold) full+=1;
+  return full;
+}
+
+// ── Dormers ──────────────────────────────────────────────────────────
+// A half-storey (e.g. floors=1.5/2.5/3.5…) leaves a short band of wall
+// above the last full floor with no flush windows (see floorsForWindows).
+// For low-rise peaked-roof buildings we model that half storey as a small
+// number of real dormers — tiny gabled boxes sitting on the eave line,
+// each with its own window — rather than flush windows that would overrun
+// the wall and appear to float in front of the receding roof slope.
+const DORMER_W      = CONFIG.dormers.width;
+const DORMER_DEPTH  = CONFIG.dormers.depth;
+const DORMER_WALL_H = CONFIG.dormers.wallHeight;
+const DORMER_ROOF_H = CONFIG.dormers.roofHeight;
+const DORMER_EMBED  = CONFIG.dormers.embed;
+
+// Builds one dormer at world point (cx,cz) on a wall edge with direction
+// (ex,ez) and outward normal (nx,nz), sitting on top of the wall at eaveY.
+// Unlike the main building roof, a dormer's own ridge must run *across*
+// the wall (along the outward normal) rather than along it — that's the
+// up-slope direction of the main roof face it punctures, and what makes it
+// read as a real dormer rather than a box with a roof facing the wrong way.
+// Pushes its window glass into glassVerts and returns {wallGeom, gableGeom,
+// roofGeom} (any may be null if construction failed) for the caller to merge in.
+function buildDormer(glassVerts, cx,cz, ex,ez, nx,nz, eaveY, bldgCol){
+  const hw=DORMER_W*0.5, dHalf=DORMER_DEPTH*0.5;
+  const acrossCentre=dHalf-DORMER_EMBED;  // mostly proud of the wall, slightly embedded
+  // Footprint corners in order: back-left, back-right, front-right, front-left
+  // ("front" = the outward, street-facing side where the window goes).
+  const corners=[[-hw,acrossCentre-dHalf],[hw,acrossCentre-dHalf],[hw,acrossCentre+dHalf],[-hw,acrossCentre+dHalf]]
+    .map(([along,across])=>[cx+ex*along+nx*across, cz+ez*along+nz*across]);
+
+  let wallGeom=null;
+  try{
+    const shape=new THREE.Shape();
+    shape.moveTo(corners[0][0], -corners[0][1]);
+    for(let k=1;k<corners.length;k++) shape.lineTo(corners[k][0], -corners[k][1]);
+    wallGeom=new THREE.ExtrudeGeometry(shape,{depth:DORMER_WALL_H,bevelEnabled:false});
+    wallGeom.rotateX(-Math.PI/2);
+    wallGeom.translate(0,eaveY,0);
+    applyVertexColour(wallGeom,bldgCol);
+  }catch(e){wallGeom=null;}
+
+  // Tiny gable roof, ridge running front-to-back (along the normal axis),
+  // so it sheds down-slope same as the main roof face it sits on. The ridge
+  // ends sit directly above the front/back footprint midpoints.
+  const wallTopY=eaveY+DORMER_WALL_H;
+  const ridgeY=wallTopY+DORMER_ROOF_H;
+  const bl={x:corners[0][0],y:wallTopY,z:corners[0][1]};
+  const br={x:corners[1][0],y:wallTopY,z:corners[1][1]};
+  const fr={x:corners[2][0],y:wallTopY,z:corners[2][1]};
+  const fl={x:corners[3][0],y:wallTopY,z:corners[3][1]};
+  const rB={x:(bl.x+br.x)/2,y:ridgeY,z:(bl.z+br.z)/2};
+  const rF={x:(fl.x+fr.x)/2,y:ridgeY,z:(fl.z+fr.z)/2};
+  const rPos=[];
+  const rTri=(a,b,c)=>rPos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  rTri(bl,fl,rF); rTri(bl,rF,rB);   // left slope
+  rTri(br,rB,rF); rTri(br,rF,fr);  // right slope
+  const roofGeom=new THREE.BufferGeometry();
+  roofGeom.setAttribute('position',new THREE.Float32BufferAttribute(rPos,3));
+  roofGeom.computeVertexNormals();
+
+  // Gable-end triangles (front + back) close off the roof — clad in wall
+  // colour, like real dormer cheeks/pediments, not roofing material.
+  const gPos=[];
+  const gTri=(a,b,c)=>gPos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  gTri(fl,fr,rF);  // front gable (outward-facing)
+  gTri(bl,rB,br);  // back gable
+  const gableGeom=new THREE.BufferGeometry();
+  gableGeom.setAttribute('position',new THREE.Float32BufferAttribute(gPos,3));
+  // Dummy UVs — required so this geometry's attribute set matches the
+  // ExtrudeGeometry-built walls it gets merged with (mergeGeometries()
+  // requires identical attributes across all input geometries).
+  gableGeom.setAttribute('uv',new THREE.Float32BufferAttribute(new Float32Array(gPos.length/3*2),2));
+  gableGeom.computeVertexNormals();
+  applyVertexColour(gableGeom,bldgCol);
+
+  // Single small window centred on the outward-facing front wall (corners[3]→corners[2])
+  const flx=corners[3][0],flz=corners[3][1], frx=corners[2][0],frz=corners[2][1];
+  const winW=CONFIG.dormers.windowWidth, winH=CONFIG.dormers.windowHeight, winSill=CONFIG.dormers.windowSill;
+  const winBaseY=eaveY+winSill, winTopY=winBaseY+winH;
+  const hwWin=Math.min(winW*0.5, hw-0.15);
+  const cxF=(flx+frx)*0.5, czF=(flz+frz)*0.5;
+  const inx=nx*WIN_INSET, inz=nz*WIN_INSET;
+  const blx=cxF-ex*hwWin+inx, blz=czF-ez*hwWin+inz;
+  const brx=cxF+ex*hwWin+inx, brz=czF+ez*hwWin+inz;
+  if(hwWin>0.15){
+    glassVerts.push(
+      blx,winBaseY,blz,  brx,winBaseY,brz,  brx,winTopY,brz,
+      blx,winBaseY,blz,  brx,winTopY,brz,   blx,winTopY,blz
+    );
+  }
+  return {wallGeom, gableGeom, roofGeom};
+}
 
 const glassMat=new THREE.MeshPhongMaterial({
-  color:0x1A2530, shininess:90, specular:0x4868A0,
-  transparent:true, opacity:0.72,
+  color:CONFIG.glass.color, shininess:CONFIG.glass.shininess, specular:CONFIG.glass.specular,
+  transparent:true, opacity:CONFIG.glass.opacity,
   side:THREE.DoubleSide,
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
-setTimeOfDay(0.42); // initial sky/lighting — must be after glassMat
+setTimeOfDay(CONFIG.start.timeOfDay); // initial sky/lighting — must be after glassMat
 
 // Place glass quads derived from a window mask on a single wall edge.
 // maskWindows: [{u0,u1,v0,v1}] in [0,1] UV space (u=horizontal, v=vertical 0=bottom).
@@ -773,6 +938,8 @@ async function buildCity(geojson){
   const year=detectYear(geojson);
   const group=new THREE.Group();
   group.name=year;
+  group.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
+  group.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   scene.add(group);
   layerGroups.push({year,group,geojson});
   const yearRadius = year==='1880' ? 1000 : 3000;
@@ -793,12 +960,17 @@ async function buildCity(geojson){
   const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[];
   const lumberWallGeos=[];  // separate accumulator → own mesh → wallMaterials['lumber']
   const lumberLog=[];  // [{name, floors}] for end-of-load console summary
+  const chimneyStackGeos=[];  // CylinderGeometry stacks merged → one chimney mesh per layer
 
   for(let i=0;i<total;i++){
     const feat=features[i],props=feat.properties;
     const mat=MATS[props.material]?props.material:'unknown';
     const floors=props.floors??1,isPlatform=floors<=0.2;
     const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+    // Half-storey detection (e.g. floors=1.5/2.5/3.5…) — see floorsForWindows().
+    const fullFloorsForDormers=floorsForWindows(floors);
+    const halfFloorFrac=floors-Math.floor(floors+1e-6);
+    const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
 
     // Index for facade matching — by normalised name and by id
     const entry={feat,props,height};
@@ -989,7 +1161,39 @@ async function buildCity(geojson){
             // Place mask-derived windows on this face instead of procedural ones
             placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
           } else {
-            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
+            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow);
+          }
+        }
+
+        // Half-storey dormers: low-rise peaked-roof buildings get a few small
+        // dormers on the front (primary) edge in place of the flush windows
+        // that floorsForWindows() deliberately omitted for the top half-floor.
+        // Limiting to the primary edge keeps this cheap (one set of dormers
+        // per qualifying building, not per wall edge) and matches how real
+        // half-storeys are dormered — mainly on the street-facing roof slope.
+        // Only applies if the primary edge is actually an *eave* (parallel to
+        // the main ridge — a sloped roof face). If it's a gable end instead
+        // (perpendicular to the ridge — already a vertical triangular wall),
+        // there's no slope to punch through, so no dormer is added there.
+        const ridgeEdge=wEdges.reduce((a,b)=>b.len>a.len?b:a);
+        const ridgeAx=(ridgeEdge.bx-ridgeEdge.ax)/ridgeEdge.len, ridgeAz=(ridgeEdge.bz-ridgeEdge.az)/ridgeEdge.len;
+        const pe0=wEdges[primaryIdx];
+        const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
+        const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
+        if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&PEAKED_MATS.has(mat)&&floors>CONFIG.dormers.minFloorsForDormer&&floors<=CONFIG.dormers.maxFloorsForDormer&&areaOk){
+          const pe=wEdges[primaryIdx];
+          const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
+          const usableP=primaryLen-1.6;  // margin from corners
+          if(usableP>DORMER_W){
+            const dormerCount=Math.max(1,Math.min(CONFIG.dormers.maxPerBuilding,Math.round(primaryLen/CONFIG.dormers.spacingMetres)));
+            for(let d=0;d<dormerCount;d++){
+              const t=((d+0.5)/dormerCount)*primaryLen;
+              const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
+              const{wallGeom,gableGeom,roofGeom}=buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,bldgCol);
+              if(wallGeom) wallGeos[mat].push(wallGeom);
+              if(gableGeom) wallGeos[mat].push(gableGeom);
+              if(roofGeom) roofGeos[mat].push(roofGeom);
+            }
           }
         }
       }
@@ -1015,9 +1219,9 @@ async function buildCity(geojson){
       const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&!isLumberYard&&height>MIN_H+0.5;
       if(hasParapet){
         // Stone parapets are more substantial than brick
-        const pW = mat==='stone' ? 0.55 : PARAPET_W;   // thickness
-        const pH = mat==='stone' ? 0.80 : PARAPET_H;   // height above roof
-        const capCol = mat==='stone' ? 0x505050 : 0x38342E;  // stone gets dark grey gravel cap
+        const pW = mat==='stone' ? CONFIG.building.parapet.stoneWidth : PARAPET_W;   // thickness
+        const pH = mat==='stone' ? CONFIG.building.parapet.stoneHeight : PARAPET_H;   // height above roof
+        const capCol = mat==='stone' ? CONFIG.building.roofCap.stoneColor : CONFIG.building.roofCap.tarPaperColor;  // stone gets dark grey gravel cap
 
         // Collect outer ring in shapeXY
         const outerPts=[];
@@ -1066,6 +1270,58 @@ async function buildCity(geojson){
           }catch(e){/* skip degenerate */}
         }
       }
+
+      // ── Chimney stacks ───────────────────────────────────────────
+      // Placed on every non-platform, non-lumber, non-railway building
+      // that has a chimney definition in CONFIG.chimneys.materials.
+      // Up≠N: chimneys sit at world (mcx, height, mcz) + seeded offset.
+      {
+        const CHIM=CONFIG.chimneys;
+        const chimDef=CHIM.materials[mat];
+        if(chimDef&&!isPlatform&&!isLumberYard&&!isBridge&&!isWall&&mat!=='blue'&&floors>=CHIM.minFloors){
+          const uid=props.uid||String(props.id||i);
+          const h0=simpleHash(uid);
+          // Volume proxy drives chimney count: large/tall buildings get more stacks
+          const volProxy=Math.min(10,(floors||1)*Math.sqrt(props.area_m2||100)*0.05);
+          const rawCount=chimDef.count[0]+Math.round((chimDef.count[1]-chimDef.count[0])*Math.min(1,volProxy/5));
+          const count=Math.max(1,rawCount);
+          // Chimney height scales slightly with floors
+          const floorScale=Math.min(1,0.55+floors*0.15);
+          const chimH=chimDef.height[0]+(chimDef.height[1]-chimDef.height[0])*floorScale;
+          const chimRB=chimDef.radius[0];
+          const chimRT=chimDef.radius[1]*0.7;  // slightly narrower at top (period-correct taper)
+          const spread=Math.sqrt(props.area_m2||100)*CHIM.placementRadius;
+          // Smoke emission rate from config; scalar set at pool time
+          const sType=chimDef.type;
+          const sCfg=CHIM.smoke[sType];
+          const baseRate=sCfg.rateBase[0]+(sCfg.rateBase[1]-sCfg.rateBase[0])*((h0&0xff)/255);
+
+          for(let ci=0;ci<count;ci++){
+            const hc=simpleHash(uid+'c'+ci);
+            const ang=(hc/0xFFFFFFFF)*Math.PI*2;
+            const r=spread*((hc&0xffff)/0xffff);
+            const offX=Math.cos(ang)*r;
+            const offZ=Math.sin(ang)*r;
+            const cx3=mcx+offX, cz3=mcz+offZ;
+
+            // Shaft geometry — 8-sided cylinder for performance
+            const cGeom=new THREE.CylinderGeometry(chimRT,chimRB,chimH,8,1);
+            cGeom.translate(cx3,height+chimH*0.5,cz3);
+            applyVertexColour(cGeom,chimDef.color);
+            chimneyStackGeos.push(cGeom);
+
+            // Emit position: top of this stack (apply same registration offset as the building group)
+            const topY=height+chimH;
+            chimneyEmitters.push({
+              wx:cx3+(CONFIG.scene?.buildingOffsetX??0), wy:topY, wz:cz3+(CONFIG.scene?.buildingOffsetZ??0),
+              type:sType,
+              rate:baseRate*(0.85+((hc>>8&0xff)/255)*0.30),
+              timer:Math.random()*baseRate,  // stagger first emit
+              year,
+            });
+          }
+        }
+      }
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
@@ -1107,9 +1363,9 @@ async function buildCity(geojson){
     const isIronFence=fMatRaw==='iron'||fMatRaw==='wood_industrial';
 
     if(isWoodFence){
-      const picketW=0.12, spacing=0.22;
+      const picketW=CONFIG.fences.picket.width, spacing=CONFIG.fences.picket.spacing;
       const n=Math.max(1,Math.floor(segLen/spacing));
-      const col=0xEEEEE0;
+      const col=CONFIG.fences.picket.color;
       for(let i=0;i<=n;i++){
         const along=(i/n - 0.5)*segLen;
         box(picketW,fHeight,picketW, along,0,0,col);
@@ -1119,7 +1375,7 @@ async function buildCity(geojson){
 
     }else if(isIronFence){
       const rails=Math.max(2,Math.round(fHeight/0.5));
-      const postCol=0x554433,railCol=0x665544;
+      const postCol=CONFIG.fences.iron.postColor,railCol=CONFIG.fences.iron.railColor;
       box(0.12,fHeight,0.12,  segLen*0.5-0.08, 0,0,postCol);
       box(0.12,fHeight,0.12, -segLen*0.5+0.08, 0,0,postCol);
       for(let r=0;r<rails;r++){
@@ -1129,10 +1385,10 @@ async function buildCity(geojson){
 
     }else if(fMat==='log'){
       // Split-rail: X-crossed posts every ~2m, rails through notches
-      const postCol=0x7A5C3A, railCol=0x8A6845;
-      const postSpacing=2.0;
+      const postCol=CONFIG.fences.log.postColor, railCol=CONFIG.fences.log.railColor;
+      const postSpacing=CONFIG.fences.log.postSpacing;
       const nPosts=Math.max(2,Math.round(segLen/postSpacing)+1);
-      const leanAng=0.30; // ~17° lean
+      const leanAng=CONFIG.fences.log.leanRadians;
 
       for(let p=0;p<nPosts;p++){
         const along=(p/(nPosts-1) - 0.5)*segLen;
@@ -1195,7 +1451,7 @@ async function buildCity(geojson){
     if(fMerged){
       fMerged.computeVertexNormals();
       const fMesh=new THREE.Mesh(fMerged,new THREE.MeshPhongMaterial({
-        vertexColors:true,shininess:30,specular:0x111111
+        vertexColors:true,shininess:30,specular:CONFIG.building.fenceSpecular
       }));
       group.add(fMesh);
       console.log(`Fences: ${fenceGeos.length} geos`);
@@ -1213,10 +1469,11 @@ async function buildCity(geojson){
     if(wallGeos[mat].length===0)continue;
     const wMerged=mergeGeometries(wallGeos[mat],false);
     for(const g of wallGeos[mat])g.dispose();
+    if(!wMerged){console.warn(`Wall merge failed for material "${mat}" — skipping mesh (mismatched geometry attributes).`);continue;}
     const wMat=new THREE.MeshPhongMaterial({
       vertexColors:true,              // per-building colour baked in at merge time
       shininess:MATS[mat].shininess,
-      specular:mat==='iron'?0x303838:0x1a1a1a,  // iron gets slight metallic specular
+      specular:mat==='iron'?CONFIG.building.wallSpecular.iron:CONFIG.building.wallSpecular.default,  // iron gets slight metallic specular
     });
     wallMaterials[mat]=wMat;
     const wMesh=new THREE.Mesh(wMerged,wMat);
@@ -1233,9 +1490,10 @@ async function buildCity(geojson){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
       const rMerged=mergeGeometries(roofGeos[mat],false);
       for(const g of roofGeos[mat])g.dispose();
+      if(!rMerged){console.warn(`Roof merge failed for material "${mat}" — skipping mesh (mismatched geometry attributes).`);continue;}
       const summerCol=roofColor(MATS[mat].color);
-      const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:0x080808,side:THREE.DoubleSide});
-      if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:0xF5F6FA});
+      const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:CONFIG.building.roofSpecular,side:THREE.DoubleSide});
+      if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
       const rMesh=new THREE.Mesh(rMerged,rMat);
       rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
     }
@@ -1245,7 +1503,7 @@ async function buildCity(geojson){
     const lMerged=mergeGeometries(lumberWallGeos,false);
     for(const g of lumberWallGeos)g.dispose();
     const lMat=new THREE.MeshPhongMaterial({
-      vertexColors:true, shininess:MATS.lumber.shininess, specular:0x111111,
+      vertexColors:true, shininess:MATS.lumber.shininess, specular:CONFIG.building.fenceSpecular,
     });
     wallMaterials['lumber']=lMat;
     const lMesh=new THREE.Mesh(lMerged,lMat);
@@ -1259,7 +1517,7 @@ async function buildCity(geojson){
     const pMerged=mergeGeometries(parapetGeos,false);
     for(const g of parapetGeos)g.dispose();
     const pMesh=new THREE.Mesh(pMerged,new THREE.MeshPhongMaterial({
-      vertexColors:true,shininess:MATS.brick.shininess,specular:0x1a1a1a,
+      vertexColors:true,shininess:MATS.brick.shininess,specular:CONFIG.building.parapetSpecular.brick,
       side:THREE.DoubleSide,
     }));    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
   }
@@ -1268,7 +1526,7 @@ async function buildCity(geojson){
     const spMerged=mergeGeometries(stoneParapetGeos,false);
     for(const g of stoneParapetGeos)g.dispose();
     const spMesh=new THREE.Mesh(spMerged,new THREE.MeshPhongMaterial({
-      vertexColors:true,shininess:MATS.stone.shininess,specular:0xC8B890,
+      vertexColors:true,shininess:MATS.stone.shininess,specular:CONFIG.building.parapetSpecular.stone,
       side:THREE.DoubleSide,
     }));    spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
   }
@@ -1278,10 +1536,23 @@ async function buildCity(geojson){
     setProgress(74,'Merging roof caps…');await tick();
     const cMerged=mergeGeometries(roofCapGeos,false);
     for(const g of roofCapGeos)g.dispose();
-    const cMat=new THREE.MeshLambertMaterial({color:0x38342E,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
-    seasonalMats.push({mat3:cMat,summerCol:0x38342E,winterCol:0xF5F6FA});
+    const cMat=new THREE.MeshLambertMaterial({color:CONFIG.building.roofCap.tarPaperColor,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+    seasonalMats.push({mat3:cMat,summerCol:CONFIG.building.roofCap.tarPaperColor,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
     const cMesh=new THREE.Mesh(cMerged,cMat);
     cMesh.receiveShadow=true;group.add(cMesh);
+  }
+
+  // ── Chimney stacks mesh ───────────────────────────────────────────
+  if(chimneyStackGeos.length>0){
+    setProgress(75,'Merging chimneys…');await tick();
+    const cMerged=mergeGeometries(chimneyStackGeos,false);
+    for(const g of chimneyStackGeos)g.dispose();
+    const cMesh=new THREE.Mesh(cMerged,new THREE.MeshPhongMaterial({
+      vertexColors:true, shininess:8, specular:0x111111,
+    }));
+    cMesh.castShadow=true; cMesh.receiveShadow=true;
+    group.add(cMesh);
+    console.log(`Chimneys: ${chimneyStackGeos.length} stacks, ${chimneyEmitters.filter(e=>e.year===year).length} emitters`);
   }
 
   // ── Glass window mesh ──────────────────────────────────────────────
@@ -1384,7 +1655,11 @@ async function buildRoads(geojson){
         // Per-segment building proximity check (Up ≠ N: midpoint in world XZ)
         const mx=(x1+x2)/2, mz=(z1+z2)/2;
         if(!isSegmentVisible(stName,mx,mz))continue;
-        const pxu=(-dz/len),pzu=(dx/len),y=0.18;
+        const pxu=(-dz/len),pzu=(dx/len);
+        // Lift road slightly above terrain at both endpoints; use mean so the
+        // quad sits flush rather than twisting on sloped ground.
+        const ROAD_LIFT = 0.18;
+        const y = (sampleTerrainY(x1,z1) + sampleTerrainY(x2,z2)) * 0.5 + ROAD_LIFT;
         // 3 lateral strips: outer-dry → inner-dry → centre-wet
         // Lateral offsets as fractions of half-width: ±1=edge, ±0.35=inner, 0=centre
         const strips=[
@@ -1427,6 +1702,8 @@ async function buildRoads(geojson){
   roadMatRef=new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   roadMatRef.receiveShadow=true;
   const roadMesh=new THREE.Mesh(geom,roadMatRef);
+  roadMesh.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
+  roadMesh.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   roadMesh.receiveShadow=true;scene.add(roadMesh);
 
   // Cart tracks — two narrow ruts per segment, visible in winter only
@@ -1444,7 +1721,8 @@ async function buildRoads(geojson){
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
         if(!isSegmentVisible(stName,(x1+x2)/2,(z1+z2)/2))continue;
-        const px=(-dz/len),pz=(dx/len),y=0.20;
+        const px=(-dz/len),pz=(dx/len);
+        const y=(sampleTerrainY(x1,z1)+sampleTerrainY(x2,z2))*0.5+0.20;
         // Two ruts (left and right of centre)
         for(const sign of[-1,1]){
           const ox=px*sign*TG,oz=pz*sign*TG;
@@ -1462,8 +1740,10 @@ async function buildRoads(geojson){
     tGeom.setAttribute('position',new THREE.Float32BufferAttribute(trackPos,3));
     tGeom.computeVertexNormals();
     cartTrackMesh=new THREE.Mesh(tGeom,new THREE.MeshLambertMaterial({
-      color:0x6A5A4A,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3
+      color:CONFIG.carts.colors.wagonRut,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3
     }));
+    cartTrackMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
+    cartTrackMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     cartTrackMesh.visible=false;   // hidden in summer
     cartTrackMesh.receiveShadow=true;
     scene.add(cartTrackMesh);
@@ -1475,9 +1755,9 @@ async function buildRoads(geojson){
   // Two lanes of traffic share centreline; each direction offset by STREETCAR_LANE.
   // Rails run along the centreline of each lane (one pair per direction).
   const railPos=[];
-  const RAIL_W=0.12;       // rail head width (m)
-  const RAIL_H=0.22;       // rail Y above road surface
-  const RAIL_GAUGE=0.7175; // half-gauge from track centreline
+  const RAIL_W=CONFIG.rail.railHeadWidth;
+  const RAIL_H=CONFIG.rail.railHeight;
+  const RAIL_GAUGE=CONFIG.rail.gaugeHalfWidth;
   const RAIL_LANE=STREETCAR_LANE; // match streetcar lane offset
   for(const feat of geojson.features){
     const stName=feat.properties.st_name||'';
@@ -1492,7 +1772,7 @@ async function buildRoads(geojson){
         if(len<0.1)continue;
         // Perpendicular unit vector (Up ≠ N: XZ only)
         const px=-dz/len, pz=dx/len;
-        const y=0.18+RAIL_H;
+        const y=(sampleTerrainY(x1,z1)+sampleTerrainY(x2,z2))*0.5+0.18+RAIL_H;
         // Two track lanes (one per direction), each with two rails
         for(const laneSign of[-1,1]){          // -1=one dir, +1=other
           const lx=px*RAIL_LANE*laneSign;
@@ -1516,163 +1796,304 @@ async function buildRoads(geojson){
     rGeom.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     rGeom.computeVertexNormals();
     railMesh=new THREE.Mesh(rGeom,new THREE.MeshPhongMaterial({
-      color:0x222222,shininess:40,specular:0x333333,
+      color:CONFIG.rail.streetcarRailColor,shininess:40,specular:CONFIG.rail.streetcarRailSpecular,
       polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4
     }));
+    railMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
+    railMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     railMesh.receiveShadow=true;
     scene.add(railMesh);
     console.log(`Rails: ${railPos.length/18} segments`);
   }
 }
 
-// ── Water (rivers, creeks) ─────────────────────────────────────────
-// Up ≠ N: polygons/ribbons projected to world XZ.
-// Water sits at WATER_BASE (just above ground) distinguished by colour + specularity.
-// polygonOffset ensures it always wins depth test against ground plane.
-// Flood slider raises waterMesh.position.y from 0 toward street/above-street level.
-// (Proper channel depression requires terrain relief — flat scene uses colour only.)
+// ── Water / Terrain channel ────────────────────────────────────────
+// Architecture overview:
+//   • terrainMesh (built at startup) provides gentle prairie undulation.
+// ── Water / channel system ──────────────────────────────────────────────────
+//
+// Architecture (Up ≠ N: worldX=east, worldZ=south, worldY=up):
+//   • wpg_rivers.geojson Polygon features → vertical channel walls extruded
+//     straight down from bank level (y=0) to channelDepth.  Terrain inside
+//     each river polygon is hard-cut to -channelDepth via point-in-polygon.
+//   • Small creeks / Brown's Creek (LineString from building files) → flat
+//     coloured ribbon at y≈0.05, drawn on the map surface only.  No channel.
+//   • Flood plane: large flat PlaneGeometry starting at WATER_BASE (<0).
+//     Only visible inside channels (terrain above it blocks it elsewhere).
+//     Slider raises it; above y=0 it floods the prairie.
+//     depthWrite:false so opaque terrain occludes it via depth buffer.
 
-const WATER_BASE = 1.5;   // well above ground — 0.15m was lost to z-buffer imprecision at aerial height
-const RIVER_W    = 120;    // LineString river ribbon half-width (m) — Red River
-const CREEK_W    = 8;
-let waterMesh    = null;
-let waterMatRef  = null;
+const WATER_BASE = CONFIG.water.baseY;   // −3.0: flood plane Y at slider=0
+
+// World-space polygon rings for PiP terrain depression (accumulated across calls).
+let _riverPolygons = [];
+let _terrainBaseY  = null;
+let _demLoaded     = false; // true once real LiDAR DEM applied — disables PiP terrain override
+
+// Mesh handles
+let channelMesh   = null;   // opaque ground-coloured channel walls
+let channelMatRef = null;
+let creekMesh     = null;   // flat water-coloured creek ribbons
+let creekMatRef   = null;
+let waterMesh     = null;   // flood plane
+let waterMatRef   = null;
+
+// Accumulated vertex arrays (rebuilt into meshes on every buildWater call).
+let _wallPos  = [];   // [x,y,z, …] channel wall quads
+let _creekPos = [];   // [x,y,z, …] flat creek ribbons
+
+// ── Point-in-polygon (ray-casting, world XZ) ────────────────────────────────
+// Up ≠ N: px=worldX (east), pz=worldZ (south).
+function pointInPolygon(px, pz, ring){
+  let inside = false;
+  const n = ring.length;
+  for(let i = 0, j = n - 1; i < n; j = i++){
+    const xi = ring[i].x, zi = ring[i].z;
+    const xj = ring[j].x, zj = ring[j].z;
+    if(((zi > pz) !== (zj > pz)) && (px < (xj - xi) * (pz - zi) / (zj - zi) + xi))
+      inside = !inside;
+  }
+  return inside;
+}
+
+
+// ── Terrain depression ───────────────────────────────────────────────────────
+// Hard-cuts terrain vertices inside any river polygon to -channelDepth.
+// The channel walls (y=WALL_TOP → y=-channelDepth) cover the boundary transition
+// so no messy sloped triangles are visible at the bank edge.
+// Called after every buildWater() so repeated file-drops re-apply cleanly.
+function applyChannelTerrain(){
+  if(!window.terrainMesh || _riverPolygons.length === 0) return;
+  if(_demLoaded) return;  // real DEM handles terrain — don't override with flat PiP
+  const DEPTH = CONFIG.terrain?.channelDepth ?? 5.5;
+  const tPos  = terrainMesh.geometry.attributes.position;
+  const N     = tPos.count;
+
+  // Snapshot noise-only heights on first call; reset to them on subsequent calls.
+  if(!_terrainBaseY){
+    _terrainBaseY = new Float32Array(N);
+    for(let i = 0; i < N; i++) _terrainBaseY[i] = tPos.getY(i);
+  } else {
+    for(let i = 0; i < N; i++) tPos.setY(i, _terrainBaseY[i]);
+  }
+
+  // Bounding-box early rejection per polygon.
+  const bboxes = _riverPolygons.map(ring => {
+    let mnX=Infinity,mxX=-Infinity,mnZ=Infinity,mxZ=-Infinity;
+    for(const p of ring){
+      if(p.x<mnX)mnX=p.x; if(p.x>mxX)mxX=p.x;
+      if(p.z<mnZ)mnZ=p.z; if(p.z>mxZ)mxZ=p.z;
+    }
+    return {mnX,mxX,mnZ,mxZ};
+  });
+
+  for(let i = 0; i < N; i++){
+    const tx = tPos.getX(i), tz = tPos.getZ(i);
+    for(let pi = 0; pi < _riverPolygons.length; pi++){
+      const bb = bboxes[pi];
+      if(tx < bb.mnX || tx > bb.mxX || tz < bb.mnZ || tz > bb.mxZ) continue;
+      if(pointInPolygon(tx, tz, _riverPolygons[pi])){
+        tPos.setY(i, 0.0);   // flatten to bank level — no deep depression, no boundary slope artifacts
+        break;
+      }
+    }
+  }
+
+  tPos.needsUpdate = true;
+  terrainMesh.geometry.computeVertexNormals();
+  console.log(`🌊 Channel terrain: ${_riverPolygons.length} polygons, ${N} terrain verts processed`);
+}
+
+const RIVER_W    = CONFIG.water.riverHalfWidth;
+const CREEK_W    = CONFIG.water.creekHalfWidth;
 
 async function buildWater(geojson){
   setProgress(90,'Building water…');await tick();
-  const MAX_R2 = 5500*5500;
-  const pos = [];
+  const MAX_R2    = 5500 * 5500;
+  const waterOffZ = CONFIG.water.offsetZ ?? 0;
+  const DEPTH     = CONFIG.terrain?.channelDepth ?? 5.5;
 
-  // ── Polygon water bodies ─────────────────────────────────────────
+  const wallPos  = [];   // channel wall verts for this call
+  const creekPos = [];   // flat creek ribbon verts for this call
+  const newRings = [];   // world-space polygon rings added this call (offset applied below)
+
+  // ── Polygon rivers → channel walls + PiP rings ───────────────────────────
+  // Up ≠ N: worldX=east, worldZ=south = −shapeY.
   for(const feat of geojson.features){
-    const gt=feat.geometry.type;
-    if(gt!=='Polygon'&&gt!=='MultiPolygon') continue;
-    const polys=gt==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
+    const gt = feat.geometry.type;
+    if(gt !== 'Polygon' && gt !== 'MultiPolygon') continue;
+    const polys = gt === 'MultiPolygon' ? feat.geometry.coordinates : [feat.geometry.coordinates];
 
     for(const rings of polys){
-      const outer=rings[0];
-      if(!outer||outer.length<4) continue;
-      const pts=outer.slice(0,-1);
+      const outer = rings[0];
+      if(!outer || outer.length < 4) continue;
+      const pts = outer.slice(0, -1);  // drop closing duplicate
 
-      // Project to world XZ first so we can check real-world extents.
-      // Two guards needed:
-      //   1. Centroid distance — rejects OSM relation members with centroids hundreds of km out
-      //   2. Polygon extent   — rejects river polygons spanning >6km (earcut degenerates on these)
-      const wpts=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];});
-      let cx=0,cz=0;
-      for(const[x,z]of wpts){cx+=x;cz+=z;}
-      cx/=wpts.length;cz/=wpts.length;
-      if(cx*cx+cz*cz>8000*8000)continue;  // centroid > 8km from scene centre
+      // Project to world XZ.
+      const wpts = pts.map(([lon, lat]) => {
+        const [sx, sy] = project(lon, lat);
+        return {x: sx, z: -sy};
+      });
 
+      // Centroid-distance guard (reject features hundreds of km out).
+      let cx = 0, cz = 0;
+      for(const p of wpts){ cx += p.x; cz += p.z; }
+      cx /= wpts.length;  cz /= wpts.length;
+      if(cx * cx + cz * cz > 8000 * 8000) continue;
+
+      // Extent guard.
       let mnX=Infinity,mxX=-Infinity,mnZ=Infinity,mxZ=-Infinity;
-      for(const[x,z]of wpts){mnX=Math.min(mnX,x);mxX=Math.max(mxX,x);mnZ=Math.min(mnZ,z);mxZ=Math.max(mxZ,z);}
-      if(mxX-mnX>25000||mxZ-mnZ>25000)continue;  // reject truly global polygons only
-      if(pts.length>1200)continue;  // earcut limit — above this triangulation degenerates
-
-      // Triangulate directly in world XZ using THREE.ShapeUtils (earcut wrapper).
-      // Up ≠ N: worldX=shapeX, worldZ=−shapeY. Vertices placed straight into world XZ,
-      // bypassing ShapeGeometry+rotateX which introduced winding ambiguity.
-      const wxVerts=pts.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return new THREE.Vector2(sx,-sy);});
-      const wxHoles=[];
-      for(let h=1;h<rings.length;h++){
-        const hp=rings[h].slice(0,-1);
-        wxHoles.push(hp.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return new THREE.Vector2(sx,-sy);}));
+      for(const p of wpts){
+        if(p.x<mnX)mnX=p.x; if(p.x>mxX)mxX=p.x;
+        if(p.z<mnZ)mnZ=p.z; if(p.z>mxZ)mxZ=p.z;
       }
-      try{
-        const faces=THREE.ShapeUtils.triangulateShape(wxVerts,wxHoles);
-        for(const[a,b,c]of faces){
-          pos.push(wxVerts[a].x,0,wxVerts[a].y);
-          pos.push(wxVerts[b].x,0,wxVerts[b].y);
-          pos.push(wxVerts[c].x,0,wxVerts[c].y);
-        }
-        console.log(`Water poly: ${faces.length} tris, ${pts.length} verts`);
-      }catch(e){console.warn('Water triangulation failed:',e.message);}
+      if(mxX - mnX > 25000 || mxZ - mnZ > 25000) continue;
+
+      // Store ring for PiP terrain depression.
+      newRings.push(wpts);
+
+      // Channel walls and river cap removed — real LiDAR terrain shows the valley naturally.
     }
   }
-  console.log(`buildWater: ${pos.length/3} verts from polygons before ribbons`);
 
-  // ── LineString rivers/creeks → ribbons ───────────────────────────
+  // ── LineString creeks → flat coloured ribbons ────────────────────────────
+  // No channel treatment for linestrings — just draw them on the map surface.
   for(const feat of geojson.features){
-    const gt=feat.geometry.type;
-    if(gt!=='LineString'&&gt!=='MultiLineString') continue;
-    const lines=gt==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
-    const name=(feat.properties.name||'').toLowerCase();
-    const wway=feat.properties.waterway||'';
-    const ftype=(feat.properties.type||feat.properties['@type']||'').toLowerCase();
-    // Brown's Creek is tagged as fence in McPhillips but is a real creek
-    const isBrownCreek=name.includes("brown's creek")||name.includes("browns creek");
-    const w = isBrownCreek ? 2.5
-            : name.includes('red')              ? 220
-            : name.includes('assiniboine')      ? 85
-            : name.includes('seine')            ? 22
-            : wway==='stream'||name.includes('creek')||name.includes('drain') ? CREEK_W
+    const gt = feat.geometry.type;
+    if(gt !== 'LineString' && gt !== 'MultiLineString') continue;
+    const lines = gt === 'MultiLineString' ? feat.geometry.coordinates : [feat.geometry.coordinates];
+    const name  = (feat.properties.name  || '').toLowerCase();
+    const wway  = feat.properties.waterway || '';
+    const isBrownCreek = name.includes("brown's creek") || name.includes("browns creek");
+    const w = isBrownCreek ? CONFIG.water.widths.brownsCreek
+            : wway === 'stream' || name.includes('creek') || name.includes('drain') ? CREEK_W
             : RIVER_W;
 
     for(const line of lines){
-      for(let i=0;i<line.length-1;i++){
-        const[sx1,sy1]=project(line[i][0],line[i][1]);
-        const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
-        const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
-        if(x1*x1+z1*z1>MAX_R2&&x2*x2+z2*z2>MAX_R2) continue;
-        const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
-        if(len<0.5) continue;
-        const px=(-dz/len)*(w*0.5),pz=(dx/len)*(w*0.5);
-        pos.push(
-          x1+px,0,z1+pz, x2+px,0,z2+pz, x1-px,0,z1-pz,
-          x2+px,0,z2+pz, x2-px,0,z2-pz, x1-px,0,z1-pz
+      for(let i = 0; i < line.length - 1; i++){
+        const [sx1, sy1] = project(line[i][0],   line[i][1]);
+        const [sx2, sy2] = project(line[i+1][0], line[i+1][1]);
+        const x1=sx1, z1=-sy1, x2=sx2, z2=-sy2;
+        if(x1*x1+z1*z1 > MAX_R2 && x2*x2+z2*z2 > MAX_R2) continue;
+        const dx=x2-x1, dz=z2-z1, len=Math.sqrt(dx*dx+dz*dz);
+        if(len < 0.5) continue;
+        const px=(-dz/len)*(w*0.5), pz=(dx/len)*(w*0.5);
+        // Flat ribbon at y=0.05 — sits just above terrain so it's always visible.
+        creekPos.push(
+          x1+px,0.05,z1+pz,  x2+px,0.05,z2+pz,  x1-px,0.05,z1-pz,
+          x2+px,0.05,z2+pz,  x2-px,0.05,z2-pz,  x1-px,0.05,z1-pz
         );
       }
     }
   }
 
-  if(pos.length===0) return;
-  const wGeom=new THREE.BufferGeometry();
-  const posArr=new Float32Array(pos);
-  wGeom.setAttribute('position',new THREE.Float32BufferAttribute(posArr,3));
-  wGeom.computeVertexNormals();
+  if(wallPos.length === 0 && creekPos.length === 0) return;
 
-  if(waterMesh){
-    // Accumulate — merge new geometry with existing water mesh
-    const oldPos=waterMesh.geometry.attributes.position.array;
-    const combined=new Float32Array(oldPos.length+posArr.length);
-    combined.set(oldPos);combined.set(posArr,oldPos.length);
-    const newGeom=new THREE.BufferGeometry();
-    newGeom.setAttribute('position',new THREE.Float32BufferAttribute(combined,3));
-    newGeom.computeVertexNormals();
-    waterMesh.geometry.dispose();
-    wGeom.dispose();
-    waterMesh.geometry=newGeom;
-  }else{
-    waterMatRef=new THREE.MeshPhongMaterial({
-      color:0x7A5230,
-      shininess:18, specular:0x3A2810,
-      transparent:true, opacity:0.90,
-      depthWrite:false,            // prevents z-fighting with ground at any camera height
-      side:THREE.DoubleSide,
-      polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4,
-    });
-    waterMesh=new THREE.Mesh(wGeom,waterMatRef);
-    waterMesh.position.y=WATER_BASE;
-    scene.add(waterMesh);
-    window.waterMesh=waterMesh;
+  // ── Apply registration offset (worldZ shift) ─────────────────────────────
+  if(waterOffZ !== 0){
+    for(let _i = 2; _i < wallPos.length;  _i += 3) wallPos[_i]  += waterOffZ;
+    for(let _i = 2; _i < creekPos.length; _i += 3) creekPos[_i] += waterOffZ;
+    for(const ring of newRings) for(const p of ring) p.z += waterOffZ;
   }
 
-  // Flood slider
-  const fc=document.getElementById('flood-control');
-  if(fc) fc.style.display='flex';
-  const fs=document.getElementById('flood-slider');
-  if(fs) fs.addEventListener('input',()=>{
-    const t=parseFloat(fs.value);
-    waterMesh.position.y=WATER_BASE + t*12.5;   // 12.5m = approx 1826 peak above low water
-    const lbl=document.getElementById('flood-label');
-    if(lbl) lbl.textContent=t<0.01?'Normal':t>0.95?'1826 Peak':`+${(t*12.5).toFixed(1)}m`;
-    waterMatRef.color.setRGB(
-      (0x7A-t*0x20)/255,   // darkens toward muddy flood brown
-      (0x52-t*0x18)/255,
-      (0x30-t*0x10)/255
-    );
-    waterMatRef.opacity=0.90+t*0.08;
-  });
+  // ── Accumulate into globals ───────────────────────────────────────────────
+  for(const v of wallPos)  _wallPos.push(v);
+  for(const v of creekPos) _creekPos.push(v);
+  for(const ring of newRings) _riverPolygons.push(ring);
+
+  // Re-apply terrain depression with the full accumulated polygon set.
+  applyChannelTerrain();
+
+  // ── Rebuild channel wall mesh ─────────────────────────────────────────────
+  if(_wallPos.length > 0){
+    if(channelMesh){ scene.remove(channelMesh); channelMesh.geometry.dispose(); }
+    const wallGeo = new THREE.BufferGeometry();
+    wallGeo.setAttribute('position', new THREE.Float32BufferAttribute(_wallPos, 3));
+    wallGeo.computeVertexNormals();
+    if(!channelMatRef){
+      channelMatRef = new THREE.MeshLambertMaterial({
+        color: CONFIG.scene.ground.summerColor,
+        side:  THREE.DoubleSide,
+      });
+    }
+    channelMesh = new THREE.Mesh(wallGeo, channelMatRef);
+    scene.add(channelMesh);
+    window.channelMesh = channelMesh;
+  }
+
+  // ── Rebuild creek ribbon mesh ─────────────────────────────────────────────
+  if(_creekPos.length > 0){
+    if(creekMesh){ scene.remove(creekMesh); creekMesh.geometry.dispose(); }
+    const creekGeo = new THREE.BufferGeometry();
+    creekGeo.setAttribute('position', new THREE.Float32BufferAttribute(_creekPos, 3));
+    creekGeo.computeVertexNormals();
+    if(!creekMatRef){
+      creekMatRef = new THREE.MeshLambertMaterial({
+        color: CONFIG.water.color,
+        side:  THREE.DoubleSide,          // cap tris may be CW (GeoJSON CCW → worldXZ CW)
+        polygonOffset:      true,         // prevent Z-fighting: cap at y=0 vs terrain at y=0
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits:  -2,
+      });
+    }
+    creekMesh = new THREE.Mesh(creekGeo, creekMatRef);
+    scene.add(creekMesh);
+    window.creekMesh = creekMesh;
+  }
+
+  // ── Flood plane (created once) ────────────────────────────────────────────
+  // Starts at WATER_BASE (below banks).  Only visible inside channels where
+  // terrain has been cut to -channelDepth.  depthWrite:false so opaque terrain
+  // naturally occludes it via the depth buffer without Z-fighting.
+  if(!waterMesh){
+    const _floodGeo = new THREE.PlaneGeometry(14000, 14000);
+    _floodGeo.rotateX(-Math.PI / 2);
+    waterMatRef = new THREE.MeshPhongMaterial({
+      color:       CONFIG.water.color,
+      shininess:   30,
+      specular:    CONFIG.water.specular,
+      transparent: true,
+      opacity:     0.88,
+      depthWrite:  false,
+      side:        THREE.FrontSide,
+    });
+    waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
+    waterMesh.position.y = WATER_BASE;
+    scene.add(waterMesh);
+    window.waterMesh = waterMesh;
+
+    // Flood slider — attach once only.
+    const fc = document.getElementById('flood-control');
+    if(fc) fc.style.display = 'flex';
+    const fs = document.getElementById('flood-slider');
+    if(fs){
+      // Set slider to configured start level
+      const _t0 = Math.max(0, Math.min(1,
+        (CONFIG.water.startY - WATER_BASE) / CONFIG.water.floodMaxRiseMetres));
+      fs.value = _t0;
+      waterMesh.position.y = CONFIG.water.startY;
+    }
+    if(fs) fs.addEventListener('input', () => {
+      const t  = parseFloat(fs.value);
+      const wY = WATER_BASE + t * CONFIG.water.floodMaxRiseMetres;
+      waterMesh.position.y = wY;
+      const lbl = document.getElementById('flood-label');
+      if(lbl){
+        if(t < 0.01)       lbl.textContent = 'Channel';
+        else if(wY < -0.3) lbl.textContent = `${wY.toFixed(1)}m`;
+        else if(t > 0.95)  lbl.textContent = '1826 Peak';
+        else               lbl.textContent = `+${wY.toFixed(1)}m`;
+      }
+      const floodBase = CONFIG.water.color, floodPeak = CONFIG.water.floodPeakColor;
+      waterMatRef.color.setRGB(
+        (((floodBase>>16)&0xff)*(1-t)+((floodPeak>>16)&0xff)*t)/255,
+        (((floodBase>>8 )&0xff)*(1-t)+((floodPeak>>8 )&0xff)*t)/255,
+        (( floodBase     &0xff)*(1-t)+( floodPeak     &0xff)*t)/255
+      );
+      waterMatRef.opacity = 0.88 + t * 0.10;
+      waterMatRef.needsUpdate = true;
+    });
+  }
 }
 // Up ≠ N: facade plane faces along outward edge normal in world XZ.
 // Width axis = polygon edge direction (horizontal XZ).
@@ -1687,7 +2108,7 @@ const minimapWrap=document.getElementById('minimap-wrap');
 const minimapBtn=document.getElementById('minimap-btn');
 let minimapVisible=false;
 let minimapDots=[];
-const MAP_SIZE=200, MAP_RANGE=2500;
+const MAP_SIZE=CONFIG.minimap.canvasSizePx, MAP_RANGE=CONFIG.minimap.worldRangeMetres;
 
 function minimapW2C(wx,wz){
   return[(wx/MAP_RANGE)*0.5*MAP_SIZE+MAP_SIZE/2,(wz/MAP_RANGE)*0.5*MAP_SIZE+MAP_SIZE/2];
@@ -1696,8 +2117,8 @@ function drawMinimap(){
   if(!minimapVisible||!minimapCtx)return;
   const ctx=minimapCtx;
   ctx.clearRect(0,0,MAP_SIZE,MAP_SIZE);
-  ctx.fillStyle='rgba(14,12,10,0.92)';ctx.fillRect(0,0,MAP_SIZE,MAP_SIZE);
-  ctx.strokeStyle='#2a1e0e';ctx.lineWidth=1;ctx.beginPath();
+  ctx.fillStyle=CONFIG.minimap.backgroundColor;ctx.fillRect(0,0,MAP_SIZE,MAP_SIZE);
+  ctx.strokeStyle=CONFIG.minimap.borderColor;ctx.lineWidth=1;ctx.beginPath();
   ctx.arc(MAP_SIZE/2,MAP_SIZE/2,MAP_SIZE*0.45,0,Math.PI*2);ctx.stroke();
   for(const{x,z,col}of minimapDots){
     const[cx,cz]=minimapW2C(x,z);
@@ -1707,8 +2128,8 @@ function drawMinimap(){
   const[camX,camZ]=minimapW2C(camera.position.x,camera.position.z);
   const hdg=fpsMode?yaw:Math.atan2(camera.position.x-orbit.target.x,camera.position.z-orbit.target.z)+Math.PI;
   ctx.save();ctx.translate(camX,camZ);ctx.rotate(hdg);
-  ctx.fillStyle='#FFD080';ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();
-  ctx.strokeStyle='#3a2a10';ctx.lineWidth=0.5;
+  ctx.fillStyle=CONFIG.minimap.headingColor;ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();
+  ctx.strokeStyle=CONFIG.minimap.crosshairColor;ctx.lineWidth=0.5;
   ctx.beginPath();ctx.moveTo(MAP_SIZE/2-6,MAP_SIZE/2);ctx.lineTo(MAP_SIZE/2+6,MAP_SIZE/2);
   ctx.moveTo(MAP_SIZE/2,MAP_SIZE/2-6);ctx.lineTo(MAP_SIZE/2,MAP_SIZE/2+6);ctx.stroke();
 }
@@ -1809,7 +2230,7 @@ async function loadFacade(imageFile){
   }
 
   if(match){
-    const wallCol=MATS[match.props.material??'unknown']?.color??0x808078;
+    const wallCol=MATS[match.props.material??'unknown']?.color??CONFIG.materials.unknown.color;
     const imgAspect=rawCanvas.height/rawCanvas.width;  // height/width ratio of image
     autoPlaceFacade(canvasToTex(processCanvasForFacade(rawCanvas,wallCol)),match,imageFile.name,imgAspect);
     return;
@@ -1830,7 +2251,7 @@ async function loadFacade(imageFile){
 const FACADE_RIDGE_H = FLOOR_H * 0.64;
 
 function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, frontNz){
-  if(hasPara) return wallH + (hasPara==='stone' ? 0.80 : PARAPET_H);
+  if(hasPara) return wallH + (hasPara==='stone' ? CONFIG.building.parapet.stoneHeight : PARAPET_H);
   if(!hasPeak) return wallH;
   // Depth edges run PARALLEL to the front normal (they go away from the street).
   // Do NOT rotate 90° — that would find edges along the front face instead.
@@ -1938,7 +2359,7 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   const sharedMat=new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
-    side:THREE.FrontSide, shininess:8, specular:0x222222,
+    side:THREE.FrontSide, shininess:8, specular:CONFIG.facade.panelSpecular,
   });
   let firstMesh=null;
   for(const e of frontEdges){
@@ -2037,14 +2458,14 @@ async function placeFacadeOnBuilding(info,worldNormal){
   const geoHeight2=facadeHeight(wallH,hasPara,hasPeak,frontLen,verts,bestNx,bestNz);
   const projectedHeight2=hOverride2 ? parseFloat(hOverride2[1]) : imgAspect2 ? Math.min(projSpan2*imgAspect2, geoHeight2*1.15) : null;
   const height=projectedHeight2??geoHeight2;
-  const wallCol=MATS[info.material??'unknown']?.color??0x808078;
+  const wallCol=MATS[info.material??'unknown']?.color??CONFIG.materials.unknown.color;
   const tex=canvasToTex(processCanvasForFacade(facadePending.canvas,wallCol));
   const stemKey=normName(facadePending.filename.replace(/\.[^.]+$/,''));
   const layerGroup2=findLayerGroup(info.feat?.properties);
   const sharedMat=new THREE.MeshPhongMaterial({
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
-    side:THREE.FrontSide, shininess:8, specular:0x222222,
+    side:THREE.FrontSide, shininess:8, specular:CONFIG.facade.panelSpecular,
   });
   let firstMesh=null;
   for(const e of frontEdges){
@@ -2230,9 +2651,9 @@ touchOverlay.addEventListener('touchmove',e=>{
       joyVec.x=nx*(c/JOY_R);joyVec.y=-ny*(c/JOY_R);
       setKnobPos(nx*c,ny*c);
     }else if(t.identifier===lookTouchId){
-      yaw-=(t.clientX-lookLastX)*0.004;
-      pitch-=(t.clientY-lookLastY)*0.004;
-      pitch=Math.max(-1.48,Math.min(1.48,pitch));
+      yaw-=(t.clientX-lookLastX)*CONFIG.fpsControls.touchLookSensitivity;
+      pitch-=(t.clientY-lookLastY)*CONFIG.fpsControls.touchLookSensitivity;
+      pitch=Math.max(-CONFIG.fpsControls.pitchClampRadians,Math.min(CONFIG.fpsControls.pitchClampRadians,pitch));
       lookLastX=t.clientX;lookLastY=t.clientY;
     }
   }
@@ -2258,7 +2679,7 @@ holdBtn(btnUp,v=>{udUp=v;});
 holdBtn(btnDn,v=>{udDown=v;});
 
 // Orbit zoom buttons — hold to continuously dolly
-const DOLLY_IN=0.94,DOLLY_OUT=1/0.94;
+const DOLLY_IN=CONFIG.orbitControls.dollyIn,DOLLY_OUT=1/CONFIG.orbitControls.dollyIn;
 let zoomInterval=null;
 function startZoom(fn){
   fn();
@@ -2294,8 +2715,8 @@ window.addEventListener('keyup',e=>{keys[e.code]=false;sprinting=e.shiftKey;});
 window.addEventListener('blur',()=>{Object.keys(keys).forEach(k=>keys[k]=false);sprinting=false;});
 document.addEventListener('mousemove',e=>{
   if(fpsMode&&document.pointerLockElement===renderer.domElement){
-    yaw-=e.movementX*0.0016;pitch-=e.movementY*0.0016;
-    pitch=Math.max(-1.48,Math.min(1.48,pitch));mouseNDC.set(-9,-9);
+    yaw-=e.movementX*CONFIG.fpsControls.mouseLookSensitivity;pitch-=e.movementY*CONFIG.fpsControls.mouseLookSensitivity;
+    pitch=Math.max(-CONFIG.fpsControls.pitchClampRadians,Math.min(CONFIG.fpsControls.pitchClampRadians,pitch));mouseNDC.set(-9,-9);
   }else if(!fpsMode){
     const r=renderer.domElement.getBoundingClientRect();
     mouseNDC.x=((e.clientX-r.left)/r.width)*2-1;
@@ -2330,34 +2751,131 @@ function initAudio(){
   const sr=audioCtx.sampleRate,buf=audioCtx.createBuffer(1,sr*5,sr),d=buf.getChannelData(0);
   let last=0;for(let i=0;i<d.length;i++){last=(last+0.018*(Math.random()*2-1))/1.018;d[i]=last*4;}
   const noise=audioCtx.createBufferSource();noise.buffer=buf;noise.loop=true;
-  const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=280;lp.Q.value=0.6;
-  const rGain=audioCtx.createGain();rGain.gain.value=0.09;
+  const windCfg=CONFIG.audio.ambient.windNoise;
+  const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=windCfg.lowpassFrequencyHz;lp.Q.value=windCfg.lowpassQ;
+  const rGain=audioCtx.createGain();rGain.gain.value=windCfg.gain;
   noise.connect(lp).connect(rGain).connect(audioCtx.destination);noise.start();
+  const bellCfg=CONFIG.audio.ambient.churchBell;
   function bell(){
     const t=audioCtx.currentTime;
-    [220,330,440,550].forEach((f,idx)=>{
+    bellCfg.toneFrequenciesHz.forEach((f,idx)=>{
       const o=audioCtx.createOscillator(),g=audioCtx.createGain();
       o.frequency.value=f+idx*3;o.type='sine';
-      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(0.04/(idx+1),t+0.03);
-      g.gain.exponentialRampToValueAtTime(0.0001,t+4+idx*0.5);
-      o.connect(g).connect(audioCtx.destination);o.start(t);o.stop(t+5+idx*0.5);
+      g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(bellCfg.gainPerTone/(idx+1),t+0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001,t+bellCfg.decaySeconds+idx*0.5);
+      o.connect(g).connect(audioCtx.destination);o.start(t);o.stop(t+bellCfg.decaySeconds+1+idx*0.5);
     });
-    setTimeout(bell,20000+Math.random()*40000);
+    setTimeout(bell,bellCfg.repeatMinMs+Math.random()*(bellCfg.repeatMaxMs-bellCfg.repeatMinMs));
   }
-  setTimeout(bell,6000+Math.random()*8000);
+  setTimeout(bell,bellCfg.startDelayMinMs+Math.random()*(bellCfg.startDelayMaxMs-bellCfg.startDelayMinMs));
+  const hoofCfg=CONFIG.audio.ambient.hoofbeats;
   function hooves(){
     if(!fpsMode){setTimeout(hooves,3000+Math.random()*5000);return;}
-    const t=audioCtx.currentTime,gap=0.22;
+    const t=audioCtx.currentTime,gap=hoofCfg.stepGapSeconds;
     [0,1,2,3].forEach(i=>{
       const o=audioCtx.createOscillator(),g=audioCtx.createGain();
       o.frequency.value=80+Math.random()*40;o.type='sine';
-      g.gain.setValueAtTime(0,t+i*gap);g.gain.linearRampToValueAtTime(0.15,t+i*gap+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+i*gap+0.18);
-      o.connect(g).connect(audioCtx.destination);o.start(t+i*gap);o.stop(t+i*gap+0.2);
+      g.gain.setValueAtTime(0,t+i*gap);g.gain.linearRampToValueAtTime(hoofCfg.gain,t+i*gap+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+i*gap+hoofCfg.decaySeconds);
+      o.connect(g).connect(audioCtx.destination);o.start(t+i*gap);o.stop(t+i*gap+hoofCfg.decaySeconds+0.02);
     });
-    setTimeout(hooves,8000+Math.random()*15000);
+    setTimeout(hooves,hoofCfg.repeatMinMs+Math.random()*(hoofCfg.repeatMaxMs-hoofCfg.repeatMinMs));
   }
-  setTimeout(hooves,12000);
+  setTimeout(hooves,hoofCfg.startDelayMs);
+  loadTrainAudio();
+}
+
+// ── Locomotive audio ──────────────────────────────────────────────
+// One shared loop buffer (./sounds/locomotive-loop.mp3), played through a small
+// pool of positional panner+gain nodes — reused across whichever moving trains
+// are currently closest to the camera, rather than one source per train (which
+// would be both noisy and wasteful with dozens of trains in the scene).
+let trainLoopBuffer=null;
+const MAX_TRAIN_AUDIO=CONFIG.audio.files.locomotive.maxConcurrent;
+const TRAIN_AUDIO_RANGE=CONFIG.audio.files.locomotive.rangeMetres;
+const trainAudioSlots=[];       // {panner,gain,source,train}
+const TRAIN_AUDIO_GAIN=CONFIG.audio.files.locomotive.gainByKind;
+
+async function loadTrainAudio(){
+  try{
+    const res=await fetch(CONFIG.audio.files.locomotive.path);
+    if(!res.ok){console.warn('🚂 locomotive-loop.mp3 not found in ./sounds/ — train audio disabled');return;}
+    const arr=await res.arrayBuffer();
+    trainLoopBuffer=await audioCtx.decodeAudioData(arr);
+    for(let i=0;i<MAX_TRAIN_AUDIO;i++){
+      const panner=audioCtx.createPanner();
+      panner.panningModel='HRTF';
+      panner.distanceModel='inverse';
+      panner.refDistance=CONFIG.audio.files.locomotive.refDistance;panner.maxDistance=TRAIN_AUDIO_RANGE;panner.rolloffFactor=CONFIG.audio.files.locomotive.rolloffFactor;
+      const gain=audioCtx.createGain();gain.gain.value=0;
+      panner.connect(gain).connect(audioCtx.destination);
+      trainAudioSlots.push({panner,gain,source:null,train:null});
+    }
+    console.log('🚂 Locomotive audio loaded —',MAX_TRAIN_AUDIO,'concurrent slots');
+  }catch(e){console.warn('🚂 locomotive audio load failed:',e.message);}
+}
+
+function tickTrainAudio(dt){
+  if(!audioCtx||audioCtx.state==='suspended') return;
+
+  // Keep the WebAudio listener glued to the camera every frame — without this,
+  // panner distance/HRTF math is computed against a stationary origin listener
+  // and volume would be wrong everywhere except near (0,0,0).
+  const camPos=camera.position;
+  try{
+    if(audioCtx.listener.positionX) audioCtx.listener.positionX.value=camPos.x,audioCtx.listener.positionY.value=camPos.y,audioCtx.listener.positionZ.value=camPos.z;
+    else audioCtx.listener.setPosition(camPos.x,camPos.y,camPos.z);
+    const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+    if(audioCtx.listener.forwardX) audioCtx.listener.forwardX.value=fwd.x,audioCtx.listener.forwardY.value=fwd.y,audioCtx.listener.forwardZ.value=fwd.z;
+    else audioCtx.listener.setOrientation(fwd.x,fwd.y,fwd.z,0,1,0);
+  }catch(e){}
+
+  if(!trainLoopBuffer) return;
+
+  // Closest moving, in-range trains — at most one slot each.
+  const candidates=trainConsists.filter(t=>t.moving).map(t=>{
+    const dx=t.loco.position.x-camPos.x,dy=t.loco.position.y-camPos.y,dz=t.loco.position.z-camPos.z;
+    return {t,d:Math.sqrt(dx*dx+dy*dy+dz*dz)};
+  }).filter(c=>c.d<TRAIN_AUDIO_RANGE).sort((a,b)=>a.d-b.d).slice(0,MAX_TRAIN_AUDIO);
+  const chosen=new Set(candidates.map(c=>c.t));
+
+  // Release slots whose train fell out of range or stopped.
+  for(const slot of trainAudioSlots){
+    if(slot.train&&!chosen.has(slot.train)){
+      const src=slot.source;
+      try{slot.gain.gain.cancelScheduledValues(audioCtx.currentTime);
+          slot.gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+0.3);}catch(e){}
+      slot.train=null;slot.source=null;
+      setTimeout(()=>{try{src.stop();}catch(e){}},350);
+    }
+  }
+
+  // Claim free slots for newly-chosen trains.
+  for(const {t} of candidates){
+    let slot=trainAudioSlots.find(s=>s.train===t);
+    if(!slot) slot=trainAudioSlots.find(s=>s.train===null);
+    if(!slot) continue;
+    if(slot.train!==t){
+      slot.train=t;
+      const src=audioCtx.createBufferSource();
+      src.buffer=trainLoopBuffer;src.loop=true;
+      const offset=(t._audioPhase??(t._audioPhase=Math.random()*trainLoopBuffer.duration));
+      src.connect(slot.panner);
+      try{src.start(0,offset%trainLoopBuffer.duration);}catch(e){src.start();}
+      slot.source=src;
+      slot.gain.gain.cancelScheduledValues(audioCtx.currentTime);
+      slot.gain.gain.setValueAtTime(0,audioCtx.currentTime);
+      slot.gain.gain.linearRampToValueAtTime(TRAIN_AUDIO_GAIN[t.kind]??0.2,audioCtx.currentTime+0.4);
+    }
+  }
+
+  // Follow assigned trains every frame.
+  for(const slot of trainAudioSlots){
+    if(slot.train){
+      const p=slot.train.loco.position;
+      slot.panner.setPosition(p.x,2.5,p.z);
+    }
+  }
 }
 
 // ── Render loop ────────────────────────────────────────────────────
@@ -2365,16 +2883,16 @@ let lastTime=performance.now();
 // ── Streetcar traffic system ────────────────────────────────────────
 // Up ≠ N: all waypoints are world XZ (X=east, Z=south).
 
-const STREETCAR_SPEED = 4.5;   // m/s (~16 km/h)
-const STREETCAR_INTERVAL = 60; // seconds between cars each direction
-const STREETCAR_LANE = 2.5;    // metres offset from centreline (right of travel dir)
+const STREETCAR_SPEED = CONFIG.streetcars.speed;
+const STREETCAR_INTERVAL = CONFIG.streetcars.intervalSeconds;
+const STREETCAR_LANE = CONFIG.streetcars.laneOffset;
 
 const ROUTE_CLIPS = {
-  'Portage': { min: 1,   max: 558 },
-  'Main':    { min: 54,  max: 960 },
+  'Portage': CONFIG.streetcars.routeClips.Portage,
+  'Main':    CONFIG.streetcars.routeClips.Main,
 };
 
-const STREETCAR_MIN_YEAR = 1891;
+const STREETCAR_MIN_YEAR = CONFIG.streetcars.electrificationYear;
 
 function seededRand(seed){ const x=Math.sin(seed+1)*43758.5453123; return x-Math.floor(x); }
 
@@ -2457,22 +2975,22 @@ function ringBell(worldX, worldZ){
 const streetcarMeshes=[];
 
 // ── Streetcar colours (Winnipeg Electric Railway) ───────────────────
-const SC_COL_BODY   = 0xF0A800;  // brighter/more saturated golden yellow
-const SC_COL_SKIRT  = 0x3A1A0A;  // dark maroon/brown lower trapezoid
-const SC_COL_ROOF   = 0x3A2E22;  // dark weathered brown roof
-const SC_COL_WIN    = 0x1A2A35;  // dark tinted glass — near-black interior
-const SC_COL_HEAD   = 0xFFFFCC;  // headlight emissive white
-const SC_COL_TAIL   = 0xDD1100;  // tail light emissive red
+const SC_COL_BODY   = CONFIG.streetcars.colors.body;
+const SC_COL_SKIRT  = CONFIG.streetcars.colors.skirt;
+const SC_COL_ROOF   = CONFIG.streetcars.colors.roof;
+const SC_COL_WIN    = CONFIG.streetcars.colors.window;
+const SC_COL_HEAD   = CONFIG.streetcars.colors.headlight;
+const SC_COL_TAIL   = CONFIG.streetcars.colors.taillight;
 
 // Shared geometries and materials — built once, instanced per car
-const SC_W=2.4, SC_H=2.8, SC_L=12.0;   // main body (above skirt)
-const SC_SKIRT_H=0.75;                  // lower trapezoid height
-const SC_ROOF_H=0.55;                   // clerestory roof height
-const SC_Y_BASE=0.18;                   // road surface Y
+const SC_W=CONFIG.streetcars.dimensions.width, SC_H=CONFIG.streetcars.dimensions.height, SC_L=CONFIG.streetcars.dimensions.length;
+const SC_SKIRT_H=CONFIG.streetcars.dimensions.skirtHeight;
+const SC_ROOF_H=CONFIG.streetcars.dimensions.roofHeight;
+const SC_Y_BASE=CONFIG.streetcars.dimensions.roadOffsetY;
 
 // Body
 const scBodyGeo=new THREE.BoxGeometry(SC_W,SC_H,SC_L);
-const scBodyMat=new THREE.MeshPhongMaterial({color:SC_COL_BODY,shininess:30,specular:0x332200});
+const scBodyMat=new THREE.MeshPhongMaterial({color:SC_COL_BODY,shininess:30,specular:CONFIG.streetcars.colors.bodySpecular});
 // Skirt (slightly wider/taller at bottom for trapezoid feel — just a flat box)
 const scSkirtGeo=new THREE.BoxGeometry(SC_W+0.12,SC_SKIRT_H,SC_L+0.05);
 const scSkirtMat=new THREE.MeshPhongMaterial({color:SC_COL_SKIRT,shininess:10});
@@ -2482,7 +3000,7 @@ const scRoofMat=new THREE.MeshPhongMaterial({color:SC_COL_ROOF,shininess:5});
 // Window strips — long side panels
 const scWinSideGeo=new THREE.BoxGeometry(0.05,SC_H*0.52,SC_L*0.88);
 const scWinFrontGeo=new THREE.BoxGeometry(SC_W*0.62,SC_H*0.42,0.05);
-const scWinMat=new THREE.MeshPhongMaterial({color:SC_COL_WIN,transparent:true,opacity:0.82,shininess:60,specular:0x334455});
+const scWinMat=new THREE.MeshPhongMaterial({color:SC_COL_WIN,transparent:true,opacity:0.82,shininess:60,specular:CONFIG.streetcars.colors.windowSpecular});
 // Headlight disc (front)
 const scHeadGeo=new THREE.CylinderGeometry(0.28,0.28,0.12,12);
 const scHeadMat=new THREE.MeshPhongMaterial({color:SC_COL_HEAD,emissive:SC_COL_HEAD,emissiveIntensity:1.0,shininess:120});
@@ -2545,22 +3063,22 @@ function spawnStreetcars(route, count, dir, routeIdx){
 // Carts are slower, fewer, and only visible pre-STREETCAR_MIN_YEAR.
 // Up ≠ N: all positioning in world XZ.
 
-const CART_SPEED    = 1.2;   // m/s (~4.3 km/h, walking pace)
-const CART_LANE     = 2.0;   // metres from centreline (narrower than streetcar lane)
-const CART_INTERVAL = 90;    // seconds between carts each direction
-const CART_COUNT    = 2;     // carts per direction per route
+const CART_SPEED    = CONFIG.carts.speed;
+const CART_LANE     = CONFIG.carts.laneOffset;
+const CART_INTERVAL = CONFIG.carts.intervalSeconds;
+const CART_COUNT    = CONFIG.carts.countPerDirection;
 
 // Cart geometry — simple box body + smaller box for horse
-const CT_W=1.6, CT_H=1.2, CT_L=3.0;
-const CT_Y_BASE=0.18;
+const CT_W=CONFIG.carts.dimensions.width, CT_H=CONFIG.carts.dimensions.height, CT_L=CONFIG.carts.dimensions.length;
+const CT_Y_BASE=CONFIG.carts.dimensions.roadOffsetY;
 const CT_BODY_Y=CT_Y_BASE+CT_H*0.5+0.3;  // lifted on wheels
 
 const ctBodyGeo =new THREE.BoxGeometry(CT_W, CT_H, CT_L);
-const ctBodyMat =new THREE.MeshPhongMaterial({color:0x8B5E2A,shininess:8});  // warm mid brown
+const ctBodyMat =new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.body,shininess:8});
 const ctHorseGeo=new THREE.BoxGeometry(0.7, 1.2, 2.0);
-const ctHorseMat=new THREE.MeshPhongMaterial({color:0x6B3A1F,shininess:5});  // dark bay
+const ctHorseMat=new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.horse,shininess:5});
 const ctHeadGeo =new THREE.BoxGeometry(0.35, 0.5, 0.65);
-const ctHeadMat =new THREE.MeshPhongMaterial({color:0x6B3A1F,shininess:5});
+const ctHeadMat =new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.horse,shininess:5});
 
 function buildCartGroup(){
   const group=new THREE.Group();
@@ -2595,7 +3113,7 @@ function spawnCarts(route, count, dir, routeIdx){
 // carts at random t values would spawn kilometres outside the visible 1880 area.
 // Up ≠ N: clip is by street address number, not world coordinate.
 const CART_ROUTE_CLIPS = {
-  'Main': { min: 54, max: 260 },  // Fort Garry to roughly McDermot — downtown core
+  'Main': CONFIG.carts.routeClips.Main,  // Fort Garry to roughly McDermot — downtown core
 };
 
 function buildCartRouteWaypoints(roadGJ, stName){
@@ -2654,7 +3172,8 @@ function initCarts(roadGJ){
     const{x,z,yaw,px,pz}=sampleRoute(cart.route,cart.t);
     const ox=x+px*CART_LANE*(cart.dir>0?1:-1);
     const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
-    cart.mesh.position.set(ox,0,oz);
+    const _cOffX=CONFIG.scene?.buildingOffsetX??0, _cOffZ=CONFIG.scene?.buildingOffsetZ??0;
+    cart.mesh.position.set(ox+_cOffX, sampleTerrainY(ox+_cOffX,oz+_cOffZ), oz+_cOffZ);
     cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
     cart.mesh.visible=false;
   }
@@ -2666,6 +3185,7 @@ function tickCarts(dt){
   // They exist in all eras really but we suppress in 1906 for simplicity
   const layerYear=parseInt(activeLayer)||9999;
   const showCarts=layerYear<STREETCAR_MIN_YEAR;
+  const _cOffX=CONFIG.scene?.buildingOffsetX??0, _cOffZ=CONFIG.scene?.buildingOffsetZ??0;
   for(const cart of cartMeshes){
     cart.mesh.visible=showCarts;
     if(!showCarts) continue;
@@ -2676,7 +3196,7 @@ function tickCarts(dt){
     const{x,z,yaw,px,pz}=sampleRoute(cart.route,cart.t);
     const ox=x+px*CART_LANE*(cart.dir>0?1:-1);
     const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
-    cart.mesh.position.set(ox,0,oz);
+    cart.mesh.position.set(ox+_cOffX, sampleTerrainY(ox+_cOffX,oz+_cOffZ), oz+_cOffZ);
     cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
   }
 }
@@ -2710,7 +3230,8 @@ function tickStreetcars(dt){
     const ox=x+px*STREETCAR_LANE*(car.dir>0?1:-1);
     const oz=z+pz*STREETCAR_LANE*(car.dir>0?1:-1);
     // Position the group at road level — internal geometry already offset by SC_Y_BASE
-    car.mesh.position.set(ox,0,oz);
+    const _scOffX=CONFIG.scene?.buildingOffsetX??0, _scOffZ=CONFIG.scene?.buildingOffsetZ??0;
+    car.mesh.position.set(ox+_scOffX, sampleTerrainY(ox+_scOffX,oz+_scOffZ), oz+_scOffZ);
     car.mesh.rotation.y=car.dir>0?yaw:yaw+Math.PI;
     car.bellTimer-=dt;
     if(car.bellTimer<=0){
@@ -2742,13 +3263,13 @@ function tickStreetcars(dt){
 // yard switchers crawl back and forth on short sidings.
 
 let railBedMesh=null, railRailLineMesh=null, railGeojson=null, railsLoaded=false;
-const RAIL_MIN_YEAR=1900; // Goad rail data is ~1906-07 — hidden on the 1880 layer
+const RAIL_MIN_YEAR=CONFIG.rail.minVisibleYear;
 
 const trainConsists=[];
-const TRAIN_SPEED  ={passenger:9.0, freight:6.5, switcher:2.3};   // m/s — stylised, not literal scale
-const TRAIN_DWELL  ={passenger:[6,12], freight:[14,26], switcher:[10,24]}; // seconds paused at each end
-const PASSENGER_ROUTE_COUNT   = 12;   // top-N longest "through" fragments get passenger service
-const FREIGHT_THROUGH_MIN_LEN = 900;  // metres — only mainline-scale fragments get a through freight
+const TRAIN_SPEED  =CONFIG.trains.speedMps;
+const TRAIN_DWELL  =CONFIG.trains.dwellSecondsRange;
+const PASSENGER_ROUTE_COUNT   = CONFIG.trains.passengerRouteCount;
+const FREIGHT_THROUGH_MIN_LEN = CONFIG.trains.freightThroughMinLengthM;
 
 function buildRailRoute(feat){
   const geom=feat.geometry;
@@ -2774,10 +3295,10 @@ function buildRailTracks(geojson){
   if(railBedMesh){railBedMesh.geometry.dispose();scene.remove(railBedMesh);railBedMesh=null;}
   if(railRailLineMesh){railRailLineMesh.geometry.dispose();scene.remove(railRailLineMesh);railRailLineMesh=null;}
   const bedPos=[],bedCol=[],railPos=[];
-  const GAUGE=0.7175, RAIL_W=0.10, RAIL_H=0.20;
+  const GAUGE=CONFIG.rail.gaugeHalfWidth, RAIL_W=CONFIG.rail.trainRailHeadWidth, RAIL_H=CONFIG.rail.trainRailHeight;
   for(const feat of geojson.features){
     const through=feat.properties.rail_class==='through';
-    const w=through?4.0:2.4;
+    const w=through?CONFIG.rail.throughLineBedWidth:CONFIG.rail.sidingBedWidth;
     const geom=feat.geometry;
     const lines=geom.type==='MultiLineString'?geom.coordinates:[geom.coordinates];
     for(const line of lines){
@@ -2787,7 +3308,8 @@ function buildRailTracks(geojson){
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.05)continue;
-        const px=-dz/len,pz=dx/len,y=0.16;
+        const px=-dz/len,pz=dx/len;
+        const y=(sampleTerrainY(x1,z1)+sampleTerrainY(x2,z2))*0.5+0.16;
         const hx=px*(w/2),hz=pz*(w/2);
         bedPos.push(x1+hx,y,z1+hz, x2+hx,y,z2+hz, x1-hx,y,z1-hz,
                     x2+hx,y,z2+hz, x2-hx,y,z2-hz, x1-hx,y,z1-hz);
@@ -2811,6 +3333,8 @@ function buildRailTracks(geojson){
     g.setAttribute('color',new THREE.Float32BufferAttribute(bedCol,3));
     g.computeVertexNormals();
     railBedMesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+    railBedMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
+    railBedMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     railBedMesh.receiveShadow=true;
     scene.add(railBedMesh);
   }
@@ -2818,7 +3342,9 @@ function buildRailTracks(geojson){
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     g.computeVertexNormals();
-    railRailLineMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:0x2a2a28,shininess:35,specular:0x2c2c2c,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+    railRailLineMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:CONFIG.rail.color,shininess:35,specular:CONFIG.rail.specular,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+    railRailLineMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
+    railRailLineMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     railRailLineMesh.receiveShadow=true;
     scene.add(railRailLineMesh);
   }
@@ -2826,26 +3352,26 @@ function buildRailTracks(geojson){
 }
 
 // ── Rolling stock — shared geometry/materials, instanced per car ───────
-const LOCO_BODY_L=9.5, LOCO_BODY_W=2.5, LOCO_BODY_H=2.9;
-const TENDER_L=6.0, TENDER_W=2.4, TENDER_H=2.3;
-const CAR_GAP=0.6;
-const PASS_CAR_L=18.0, PASS_CAR_W=2.7, PASS_CAR_H=3.2;
-const FREIGHT_CAR_L=11.5, FREIGHT_CAR_W=2.6, FREIGHT_CAR_H=2.5;
-const SWITCH_CAR_L=10.0;
+const LOCO_BODY_L=CONFIG.trains.dimensions.locoBodyLength, LOCO_BODY_W=CONFIG.trains.dimensions.locoBodyWidth, LOCO_BODY_H=CONFIG.trains.dimensions.locoBodyHeight;
+const TENDER_L=CONFIG.trains.dimensions.tenderLength, TENDER_W=CONFIG.trains.dimensions.tenderWidth, TENDER_H=CONFIG.trains.dimensions.tenderHeight;
+const CAR_GAP=CONFIG.trains.dimensions.carGap;
+const PASS_CAR_L=CONFIG.trains.dimensions.passengerCarLength, PASS_CAR_W=CONFIG.trains.dimensions.passengerCarWidth, PASS_CAR_H=CONFIG.trains.dimensions.passengerCarHeight;
+const FREIGHT_CAR_L=CONFIG.trains.dimensions.freightCarLength, FREIGHT_CAR_W=CONFIG.trains.dimensions.freightCarWidth, FREIGHT_CAR_H=CONFIG.trains.dimensions.freightCarHeight;
+const SWITCH_CAR_L=CONFIG.trains.dimensions.switcherCarLength;
 
 const locoBoilerGeo=new THREE.CylinderGeometry(LOCO_BODY_H*0.42,LOCO_BODY_H*0.42,LOCO_BODY_L*0.8,14);
 const locoCabGeo=new THREE.BoxGeometry(LOCO_BODY_W,LOCO_BODY_H*0.9,LOCO_BODY_L*0.22);
 const locoStackGeo=new THREE.CylinderGeometry(0.32,0.4,1.3,10);
 const locoDomeGeo=new THREE.CylinderGeometry(0.45,0.45,0.55,12);
 const locoPilotGeo=new THREE.BoxGeometry(LOCO_BODY_W*0.7,0.7,1.1);
-const locoMat=new THREE.MeshPhongMaterial({color:0x14110f,shininess:55,specular:0x444444});
-const locoCabMat=new THREE.MeshPhongMaterial({color:0x2a2420,shininess:20});
+const locoMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.locoBody,shininess:55,specular:CONFIG.trains.colors.locoSpecular});
+const locoCabMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.locoCab,shininess:20});
 const tenderGeo=new THREE.BoxGeometry(TENDER_W,TENDER_H,TENDER_L);
-const tenderMat=new THREE.MeshPhongMaterial({color:0x1c1814,shininess:15});
+const tenderMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.tender,shininess:15});
 const tenderCoalGeo=new THREE.BoxGeometry(TENDER_W*0.86,TENDER_H*0.4,TENDER_L*0.62);
-const tenderCoalMat=new THREE.MeshPhongMaterial({color:0x0c0c0c,shininess:5});
+const tenderCoalMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.tenderCoal,shininess:5});
 const headlightGeo=new THREE.CylinderGeometry(0.22,0.22,0.18,10);
-const headlightMat=new THREE.MeshPhongMaterial({color:0xfff2c0,emissive:0xfff2c0,emissiveIntensity:0.9});
+const headlightMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.headlight,emissive:CONFIG.trains.colors.headlight,emissiveIntensity:0.9});
 
 function buildLocoGroup(){
   const g=new THREE.Group();
@@ -2861,7 +3387,7 @@ function buildLocoGroup(){
   const pilot=new THREE.Mesh(locoPilotGeo,locoMat);
   pilot.position.set(0,baseY-LOCO_BODY_H*0.32,LOCO_BODY_L*0.5+0.4);
   const head=new THREE.Mesh(headlightGeo,headlightMat);
-  head.rotation.x=Math.PI/2; head.position.set(0,baseY+LOCO_BODY_H*0.05,LOCO_BODY_L*0.5+0.55);
+  head.rotation.x=Math.PI/2; head.position.set(0,baseY+LOCO_BODY_H*0.05,LOCO_BODY_L*0.46+0.12);
   const tender=new THREE.Mesh(tenderGeo,tenderMat);
   tender.position.set(0,baseY+0.05,-LOCO_BODY_L*0.5-CAR_GAP-TENDER_L*0.5);
   const coal=new THREE.Mesh(tenderCoalGeo,tenderCoalMat);
@@ -2871,12 +3397,12 @@ function buildLocoGroup(){
   return g;
 }
 
-const PASS_COLORS=[0x6e2c2c,0x5a2a28,0x4d2624];  // tuscan-red wooden-coach liveries
+const PASS_COLORS=CONFIG.trains.colors.passengerCars;
 const passBodyGeo=new THREE.BoxGeometry(PASS_CAR_W,PASS_CAR_H*0.62,PASS_CAR_L);
 const passRoofGeo=new THREE.BoxGeometry(PASS_CAR_W*0.94,PASS_CAR_H*0.18,PASS_CAR_L*0.94);
 const passWinGeo=new THREE.BoxGeometry(0.04,PASS_CAR_H*0.28,PASS_CAR_L*0.86);
-const passWinMat=new THREE.MeshPhongMaterial({color:0x1a2025,transparent:true,opacity:0.78});
-const passRoofMat=new THREE.MeshPhongMaterial({color:0x3a332c,shininess:8});
+const passWinMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.passengerWindow,transparent:true,opacity:0.78});
+const passRoofMat=new THREE.MeshPhongMaterial({color:CONFIG.trains.colors.passengerRoof,shininess:8});
 
 function buildPassengerCar(idx){
   const g=new THREE.Group();
@@ -2892,10 +3418,10 @@ function buildPassengerCar(idx){
 
 // Mixed freight rake: boxcar / gondola / flatcar, varied colour+height per car
 const FREIGHT_KINDS=[
-  {color:0x8b3a2e,h:1.00},
-  {color:0x55524c,h:0.62},
-  {color:0x6b6357,h:0.50},
-  {color:0x7a4a33,h:0.95},
+  {color:CONFIG.trains.colors.freightCars[0],h:1.00},
+  {color:CONFIG.trains.colors.freightCars[1],h:0.62},
+  {color:CONFIG.trains.colors.freightCars[2],h:0.50},
+  {color:CONFIG.trains.colors.freightCars[3],h:0.95},
 ];
 const freightBodyGeo=new THREE.BoxGeometry(FREIGHT_CAR_W,1,FREIGHT_CAR_L);
 
@@ -2907,6 +3433,219 @@ function buildFreightCar(seed){
   mesh.scale.y=h; mesh.position.y=0.16+h*0.5;
   const g=new THREE.Group(); g.add(mesh);
   return g;
+}
+
+// ── Chimney building smoke ─────────────────────────────────────────────────────
+// Architecture:
+//   • One shared sprite pool (smokePoolSize sprites) serves ALL building chimneys.
+//   • Per-frame we LOD by XZ distance from camera to world origin:
+//       < nearDist  → emit from up to maxNearEmitters closest chimneys
+//       > farDist   → switch to city-wide haze sprites, hide individual pool
+//   • chimneyTodMult (0.25–1.9) = time-of-day × season. Injected by setTimeOfDay().
+// Up≠N: camera XZ distance is sqrt(camX²+camZ²).
+function makeSmokeTextureDark(){
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const ctx=c.getContext('2d');
+  const grad=ctx.createRadialGradient(32,32,2,32,32,30);
+  grad.addColorStop(0,'rgba(52,48,44,0.90)');
+  grad.addColorStop(0.5,'rgba(40,38,35,0.48)');
+  grad.addColorStop(1,'rgba(32,30,28,0)');
+  ctx.fillStyle=grad; ctx.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+let chimneySmokeLightTex=null, chimneySmokeDarkTex=null;
+
+function buildChimneyPool(){
+  if(chimneyPool.length>0) return;  // already built
+  // Textures lazily created here so scene is definitely initialised
+  chimneySmokeLightTex=makeSmokeTexture();  // reuse train smoke (grey-white)
+  chimneySmokeDarkTex=makeSmokeTextureDark();
+  const n=CONFIG.chimneys.smokePoolSize;
+  // Split pool: first half light sprites, second half dark.
+  // type field must match so the emitter search finds the right half.
+  const half=Math.floor(n/2);
+  for(let i=0;i<n;i++){
+    const slotType=i<half?'light':'dark';
+    const tex=slotType==='light'?chimneySmokeLightTex:chimneySmokeDarkTex;
+    const mat=new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0,depthWrite:false});
+    const spr=new THREE.Sprite(mat);
+    spr.scale.set(0.1,0.1,1); spr.visible=false;
+    scene.add(spr);
+    chimneyPool.push({spr,active:false,age:0,life:4,vel:{x:0,y:0,z:0},type:slotType});
+  }
+}
+
+// City-wide haze layers (far zoom) — flat horizontal planes so they read
+// as a blanket of smoke from the zoomed-out overhead camera, not orbs.
+function buildCityHaze(){
+  if(cityHazeGroup) return;
+  const cfg=CONFIG.chimneys.cityHaze;
+  cityHazeGroup=new THREE.Group();
+  scene.add(cityHazeGroup);
+  cityHazeGroup.visible=false;
+  // Unit plane laid flat; each mesh is scaled per-slot
+  const planeGeo=new THREE.PlaneGeometry(1,1);
+  planeGeo.rotateX(-Math.PI/2);  // normal points up — lies horizontal
+  for(let i=0;i<cfg.positions.length;i++){
+    const [px,pz]=cfg.positions[i];
+    const sc =cfg.scale[0]+(cfg.scale[1]-cfg.scale[0])*seededRand(i*7.3);
+    const szR=cfg.scaleZ??0.55;  // depth:width ratio
+    const op =cfg.opacity[0]+(cfg.opacity[1]-cfg.opacity[0])*seededRand(i*3.7);
+    const mat=new THREE.MeshBasicMaterial({
+      map:chimneySmokeDarkTex||makeSmokeTextureDark(),
+      color:new THREE.Color(0x2a2820),  // dark sooty brown-grey tint
+      transparent:true,opacity:op,depthWrite:false,side:THREE.DoubleSide,
+    });
+    const mesh=new THREE.Mesh(planeGeo,mat);
+    mesh.scale.set(sc,1,sc*szR);
+    const py=cfg.baseY+(seededRand(i*4.1)-0.5)*cfg.yRange;
+    mesh.position.set(px,py,pz);
+    cityHazeGroup.add(mesh);
+    const ang=seededRand(i*1.9)*Math.PI*2;
+    cityHazeSlots.push({
+      spr:mesh,  // 'spr' kept for tick compatibility — it's a Mesh, not a Sprite
+      age:cfg.life*seededRand(i*5.1),
+      life:cfg.life*(0.8+seededRand(i*2.3)*0.4),
+      baseOp:op,baseScale:sc,szR,
+      vel:{x:Math.cos(ang)*cfg.drift,z:Math.sin(ang)*cfg.drift},
+      baseY:py,
+    });
+  }
+}
+
+// Reusable objects for per-tick chimney culling (avoids GC pressure)
+const _cv        = new THREE.Vector3();
+const _frustum   = new THREE.Frustum();
+const _psMat     = new THREE.Matrix4();
+function tickChimneySmoke(dt){
+  if(chimneyPool.length===0||chimneyEmitters.length===0) return;
+
+  const CHIM=CONFIG.chimneys;
+  const CAM=camera.position;
+  const xzDist=Math.sqrt(CAM.x*CAM.x+CAM.z*CAM.z);
+  // Update frustum once per tick — used to cull off-screen emitters
+  _psMat.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+  _frustum.setFromProjectionMatrix(_psMat);
+
+  // ── LOD mode ─────────────────────────────────────────────────────
+  const farMode=xzDist>CHIM.farDist;
+  // City haze
+  if(cityHazeGroup){
+    cityHazeGroup.visible=farMode;
+    if(farMode){
+      const hCfg=CHIM.cityHaze;
+      for(const slot of cityHazeSlots){
+        slot.age+=dt;
+        if(slot.age>slot.life){
+          // Respawn: drift to new position
+          slot.age=0;
+          slot.spr.position.set(
+            slot.spr.position.x+(seededRand(performance.now()*0.0001+slot.baseY)-0.5)*40,
+            slot.baseY+(seededRand(performance.now()*0.0003)-0.5)*hCfg.yRange*0.5,
+            slot.spr.position.z+(seededRand(performance.now()*0.0002+slot.baseY)-0.5)*40
+          );
+          const ang=seededRand(performance.now()*0.0011)*Math.PI*2;
+          slot.vel.x=Math.cos(ang)*hCfg.drift;
+          slot.vel.z=Math.sin(ang)*hCfg.drift;
+        }
+        const f=slot.age/slot.life;
+        // Pulse opacity gently; fade in first 20%, out last 20%
+        const fade=f<0.2?f/0.2:(f>0.8?(1-f)/0.2:1);
+        slot.spr.material.opacity=slot.baseOp*fade*chimneyTodMult;
+        slot.spr.position.x+=slot.vel.x*dt;
+        slot.spr.position.z+=slot.vel.z*dt;
+        // Layers drift very slightly in Y — no dramatic bob
+        slot.spr.position.y=slot.baseY+Math.sin(slot.age*0.15)*hCfg.yRange*0.08;
+        // Plane grows slightly over life; keep flat (Y scale stays 1)
+        const sc=slot.baseScale*(1+f*0.25);
+        slot.spr.scale.set(sc,1,sc*slot.szR);
+      }
+    }
+  }
+
+  // Hide/show individual pool based on LOD
+  if(farMode){
+    // Deactivate all pool sprites
+    for(const slot of chimneyPool){
+      if(slot.active){slot.active=false;slot.spr.visible=false;}
+    }
+    return;
+  }
+
+  // ── Tick active pool sprites ───────────────────────────────────
+  for(const slot of chimneyPool){
+    if(!slot.active) continue;
+    slot.age+=dt;
+    const sCfg=CHIM.smoke[slot.type];
+    const f=slot.age/slot.life;
+    if(f>=1){slot.active=false;slot.spr.visible=false;continue;}
+    slot.spr.position.x+=slot.vel.x*dt;
+    slot.spr.position.y+=slot.vel.y*dt;
+    slot.spr.position.z+=slot.vel.z*dt;
+    const sc=sCfg.scaleStart+(sCfg.scaleEnd-sCfg.scaleStart)*f;
+    slot.spr.scale.set(sc,sc,1);
+    const op=(sCfg.opacityRange[0]+(sCfg.opacityRange[1]-sCfg.opacityRange[0])*(1-f));
+    slot.spr.material.opacity=op*(1-Math.max(0,(f-0.7)/0.3));  // fade out last 30%
+  }
+
+  // ── Sort emitters by XZ distance from camera ─────────────────
+  // Only process the nearest maxNearEmitters.  Emitters are filtered by
+  // active layer visibility to suppress smoke from hidden layers.
+  let maxActive=CHIM.maxNearEmitters;
+  if(xzDist>CHIM.nearDist){
+    // Linear falloff: full detail at nearDist, 0 at farDist
+    const t=Math.min(1,(xzDist-CHIM.nearDist)/(CHIM.farDist-CHIM.nearDist));
+    maxActive=Math.max(2,Math.round(maxActive*(1-t)));
+  }
+
+  // Build sorted candidate list — visible emitters only, sorted by distance²
+  const cands=[];
+  for(const e of chimneyEmitters){
+    // Skip emitters whose layer is not currently visible
+    const lg=layerGroups.find(l=>l.year===e.year);
+    if(lg&&!lg.group.visible) continue;
+    // Frustum cull — skip chimneys not in the camera's view
+    _cv.set(e.wx,e.wy,e.wz);
+    if(!_frustum.containsPoint(_cv)) continue;
+    const dx=e.wx-CAM.x, dz=e.wz-CAM.z;
+    cands.push({e, d2:dx*dx+dz*dz});
+  }
+  cands.sort((a,b)=>a.d2-b.d2);
+
+  // ── Emit from nearest candidates ────────────────────────────
+  let active=0;
+  for(const {e} of cands){
+    if(active>=maxActive) break;
+    active++;
+    e.timer-=dt;
+    if(e.timer>0) continue;
+    const sCfg=CHIM.smoke[e.type];
+    e.timer=e.rate*(0.7+seededRand(performance.now()*0.0007+e.wx)*0.6)/chimneyTodMult;
+    if(e.timer<0.05) e.timer=0.05;
+
+    // Claim a pool slot
+    let slot=null;
+    for(let k=0;k<chimneyPool.length;k++){
+      const idx=(chimneyPoolNext+k)%chimneyPool.length;
+      if(!chimneyPool[idx].active&&chimneyPool[idx].type===e.type){
+        slot=chimneyPool[idx]; chimneyPoolNext=(idx+1)%chimneyPool.length; break;
+      }
+    }
+    if(!slot) continue;  // pool exhausted — skip emit
+
+    slot.active=true; slot.age=0;
+    slot.type=e.type;
+    slot.life=sCfg.life[0]+(sCfg.life[1]-sCfg.life[0])*seededRand(performance.now()*0.0013+e.wz);
+    slot.spr.visible=true;
+    slot.spr.material.opacity=sCfg.opacityRange[1];
+    slot.spr.scale.set(sCfg.scaleStart,sCfg.scaleStart,1);
+    slot.spr.position.set(e.wx,e.wy,e.wz);
+    const rise=sCfg.riseSpeed[0]+(sCfg.riseSpeed[1]-sCfg.riseSpeed[0])*seededRand(performance.now()*0.0017+e.wy);
+    const driftAng=seededRand(performance.now()*0.0019+e.wx)*Math.PI*2;
+    slot.vel.x=Math.cos(driftAng)*sCfg.drift*(0.5+seededRand(performance.now()*0.0021)*0.5);
+    slot.vel.y=rise;
+    slot.vel.z=Math.sin(driftAng)*sCfg.drift*(0.5+seededRand(performance.now()*0.0023)*0.5);
+  }
 }
 
 // ── Smoke / steam puffs — small per-locomotive sprite pool, no per-frame alloc ──
@@ -2921,7 +3660,7 @@ function makeSmokeTexture(){
   return new THREE.CanvasTexture(c);
 }
 const smokeTexture=makeSmokeTexture();
-const SMOKE_PER_LOCO=7;
+const SMOKE_PER_LOCO=CONFIG.trains.smokePuffsPerLocomotive;
 const _smokeVec=new THREE.Vector3();
 
 function buildSmokePool(seed){
@@ -3052,6 +3791,7 @@ function tickTrains(dt){
     for(const c of train.cars) c.visible=visible;
     if(!visible){
       for(const slot of train.smoke) if(slot.spr) slot.spr.visible=false;
+      train.moving=false;
       continue;
     }
 
@@ -3073,18 +3813,20 @@ function tickTrains(dt){
     }
 
     const head=sampleRoute(train.route,train.t);
-    train.loco.position.set(head.x,0,head.z);
+    const _trOffX=CONFIG.scene?.buildingOffsetX??0, _trOffZ=CONFIG.scene?.buildingOffsetZ??0;
+    train.loco.position.set(head.x+_trOffX, sampleTerrainY(head.x+_trOffX,head.z+_trOffZ), head.z+_trOffZ);
     train.loco.rotation.y=train.dir>0?head.yaw:head.yaw+Math.PI;
     for(let i=0;i<train.cars.length;i++){
       const ct=train.t-train.dir*(train.headOffsetT+i*train.carSpacingT);
       const samp=sampleRoute(train.route,ct);
-      train.cars[i].position.set(samp.x,0,samp.z);
+      train.cars[i].position.set(samp.x+_trOffX, sampleTerrainY(samp.x+_trOffX,samp.z+_trOffZ), samp.z+_trOffZ);
       train.cars[i].rotation.y=train.dir>0?samp.yaw:samp.yaw+Math.PI;
     }
 
     train.loco.updateMatrixWorld(true);
     train.loco.userData.stackAnchor.getWorldPosition(_smokeVec);
     tickSmoke(train,dt,_smokeVec,moving);
+    train.moving=moving;
   }
 }
 
@@ -3123,6 +3865,8 @@ function startLoop(){
     tickStreetcars(dt);
     tickCarts(dt);
     tickTrains(dt);
+    tickTrainAudio(dt);
+    tickChimneySmoke(dt);
     renderer.render(scene,camera);
   drawMinimap();
   }
@@ -3207,20 +3951,24 @@ function toggleWinter(){
   if(btn)btn.textContent=winterMode?'☀ Summer':'❄ Winter';
 
   // Ground
-  if(groundMatRef) groundMatRef.color.setHex(winterMode?0xF5F6FA:0x2D4A1A);
+  if(groundMatRef)  groundMatRef.color.setHex(winterMode?CONFIG.scene.ground.winterColor:CONFIG.scene.ground.summerColor);
+  // Channel walls match ground colour
+  if(channelMatRef) channelMatRef.color.setHex(winterMode?CONFIG.scene.ground.winterColor:CONFIG.scene.ground.summerColor);
+  // Creek ribbons match water/ice colour
+  if(creekMatRef)   creekMatRef.color.setHex(winterMode?CONFIG.water.winterColor:CONFIG.water.color);
 
   // River: frozen ice — bluer than snow, glossy like ice
   if(waterMatRef){
     if(winterMode){
-      waterMatRef.color.setHex(0xBBCCE8);      // blue-white ice, cooler than ground snow
+      waterMatRef.color.setHex(CONFIG.water.winterColor);      // blue-white ice, cooler than ground snow
       waterMatRef.shininess=120;               // glossy
-      waterMatRef.specular.setHex(0x8899CC);   // blue-tinted specular highlight
+      waterMatRef.specular.setHex(CONFIG.water.winterSpecular);   // blue-tinted specular highlight
       waterMatRef.opacity=0.95;
     }else{
-      waterMatRef.color.setHex(0x7A5230);      // restore turbid brown
-      waterMatRef.shininess=18;
-      waterMatRef.specular.setHex(0x3A2810);
-      waterMatRef.opacity=0.90;
+      waterMatRef.color.setHex(CONFIG.water.color);      // restore turbid brown
+      waterMatRef.shininess=30;
+      waterMatRef.specular.setHex(CONFIG.water.specular);
+      waterMatRef.opacity=0.88;
     }
     waterMatRef.needsUpdate=true;
   }
@@ -3233,9 +3981,8 @@ function toggleWinter(){
   // MeshBasicMaterial so lighting doesn't affect the colours.
   if(roadColBuf){
     const arr=roadColBuf.array;
-    // Lateral fractions stored implicitly — recompute from colour value:
-    // Summer dry (edge) target: 0x252322, summer wet (centre): 0x121110
-    // Winter snow (edge): 0xE8EAF0, winter mud (centre): 0x181614
+    // Lateral fractions stored implicitly — recompute from colour value.
+    // Edge/centre colour targets now live in CONFIG.scene.roadColors.
     // We can't recover t from the stored colour, so re-derive from relative brightness:
     // Instead just rebuild: bright=snow, dark=mud based on stored R channel brightness
     for(let i=0;i<arr.length;i+=3){
@@ -3243,15 +3990,11 @@ function toggleWinter(){
       // f=0 means centre (wet/dark), f=1 means edge (dry/bright)
       // Use ratio of current value to dry-edge value as f proxy
       const f=Math.min(r/0.072,1);
-      if(winterMode){
-        arr[i]  =(0xF5*f+0x20*(1-f))/255;
-        arr[i+1]=(0xF6*f+0x1C*(1-f))/255;
-        arr[i+2]=(0xFA*f+0x18*(1-f))/255;
-      } else {
-        arr[i]  = 0.072*f + 0.021*(1-f);
-        arr[i+1]= 0.065*f + 0.018*(1-f);
-        arr[i+2]= 0.058*f + 0.016*(1-f);
-      }
+      const rc=CONFIG.scene.roadColors;
+      const [edge,centre]=winterMode?[rc.winterEdge,rc.winterCentre]:[rc.summerEdge,rc.summerCentre];
+      arr[i]  =(edge[0]*f+centre[0]*(1-f))/255;
+      arr[i+1]=(edge[1]*f+centre[1]*(1-f))/255;
+      arr[i+2]=(edge[2]*f+centre[2]*(1-f))/255;
     }
     roadColBuf.needsUpdate=true;
     roadMatRef.color.setHex(0xFFFFFF);  // no tint — vertex colours are exact
@@ -3266,8 +4009,8 @@ function toggleWinter(){
   }
 
   // Grid lines
-  if(winterMode){ grid.material.color.setHex(0xC8C8D8);grid.material.opacity=0.12; }
-  else           { grid.material.color.setHex(0x3A5A22);grid.material.opacity=0.18; }
+  if(winterMode){ grid.material.color.setHex(CONFIG.scene.grid.winterTint);grid.material.opacity=CONFIG.scene.grid.winterOpacity; }
+  else           { grid.material.color.setHex(CONFIG.scene.grid.summerTint);grid.material.opacity=CONFIG.scene.grid.summerOpacity; }
 }
 
 function enableLiveDrops(){
@@ -3297,16 +4040,7 @@ function sniffGeoJSON(gj){
 // Wall material bump maps: file named e.g. bump_brick.png or brick_bump.png
 //   Applied as tiling bump to all buildings of that material.
 //   UVs from ExtrudeGeometry are in world-space metres, so repeat is per-metre.
-const BUMP_REPEAT = {
-  brick:    [4,    13   ],   // ~0.25m wide × 0.075m tall bricks
-  stone:    [1.5,  1.5  ],   // ~0.65m blocks
-  wood:     [1,    5    ],   // ~1m wide boards, 0.2m tall
-  log:      [0.8,  3    ],
-  iron:     [2,    2    ],
-  concrete: [1,    1    ],
-  unknown:  [2,    2    ],
-  lumber:   [0.3,  0.66],   // ~3m wide × ~1.5m tall per tile
-};
+const BUMP_REPEAT = CONFIG.building.bumpRepeat;
 
 // Convert greyscale heightmap → normal map via Sobel filter.
 // Returns THREE.CanvasTexture with RGB normals (blue-dominant).
@@ -3395,7 +4129,7 @@ async function applyFacadeBump(imageFile){
     const tex=await heightmapToNormalMap(imageFile, 4.0);
     entry.mat.normalMap=tex;
     entry.mat.normalScale=new THREE.Vector2(1.5,1.5);
-    entry.mat.specular=new THREE.Color(0x444444);
+    entry.mat.specular=new THREE.Color(CONFIG.facade.bumpSpecular);
     entry.mat.shininess=40;
     entry.mat.bumpMap=null;
     entry.mat.needsUpdate=true;
@@ -3478,7 +4212,31 @@ function rebuildGlassMesh(layerEntry){
           if(isFacadeFace){
             placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
           } else {
-            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,Math.round(floors),mat,isPrimary&&isNarrow);
+            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,floorsForWindows(floors),mat,isPrimary&&isNarrow);
+          }
+        }
+
+        // Re-add half-storey dormer windows too (dormer wall/roof geometry
+        // itself was already baked into the meshes at buildCity time and is
+        // untouched here — only the glass needs regenerating).
+        const fullFloorsForDormers=floorsForWindows(floors);
+        const halfFloorFrac=floors-Math.floor(floors+1e-6);
+        const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
+        const ridgeEdge=wEdges.reduce((a,b)=>b.len>a.len?b:a);
+        const ridgeAx=(ridgeEdge.bx-ridgeEdge.ax)/ridgeEdge.len, ridgeAz=(ridgeEdge.bz-ridgeEdge.az)/ridgeEdge.len;
+        const pe0=wEdges[primaryIdx];
+        const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
+        const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
+        if(hasHalfFloor&&primaryIsEave&&props.type!=='lumber'&&PEAKED_MATS.has(mat)&&floors>CONFIG.dormers.minFloorsForDormer&&floors<=CONFIG.dormers.maxFloorsForDormer&&areaOk){
+          const pe=wEdges[primaryIdx];
+          const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
+          if(primaryLen-1.6>DORMER_W){
+            const dormerCount=Math.max(1,Math.min(CONFIG.dormers.maxPerBuilding,Math.round(primaryLen/CONFIG.dormers.spacingMetres)));
+            for(let d=0;d<dormerCount;d++){
+              const t=((d+0.5)/dormerCount)*primaryLen;
+              const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
+              buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,0xffffff);
+            }
           }
         }
       }
@@ -3677,9 +4435,14 @@ async function loadFiles(fileList){
   document.getElementById('hud').style.display='block';
   document.getElementById('tod-control').style.display='flex';
   const todSlider=document.getElementById('tod-slider');
+  todSlider.value=CONFIG.start.timeOfDay;
   todSlider.addEventListener('input',()=>setTimeOfDay(parseFloat(todSlider.value)));
   const sb=document.getElementById('stat-bar');sb.style.display='block';
   updateStatBar();startLoop();enableLiveDrops();
+  buildChimneyPool();
+  buildCityHaze();
+  // Apply initial TOD so chimneyTodMult is set before first tick
+  setTimeOfDay(parseFloat(document.getElementById('tod-slider').value));
   document.getElementById('winter-btn').style.display='block';
   if(minimapBtn) minimapBtn.style.display='block';
   window.toggleWinter=toggleWinter;
@@ -3741,9 +4504,13 @@ renderer.render(scene,camera);
     const kind=sniffGeoJSON(gj);
     if(kind==='water')        await buildWater(gj);
     else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n; }
-    else if(kind==='road')   { roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
-    else if(kind==='rail')   { railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
+    else if(kind==='road')   { roadGeojson=gj;window.roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
+    else if(kind==='rail')   { railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
+
+  // Apply real LiDAR DEM if available (silently skipped if not yet generated)
+  setProgress(98,'Loading terrain…');await tick();
+  await applyDEM();
 
   setProgress(100,'Done.');await tick();
   document.getElementById('loading').style.display='none';
@@ -3756,18 +4523,21 @@ renderer.render(scene,camera);
     .addEventListener('input',e=>setTimeOfDay(parseFloat(e.target.value)));
   window.toggleWinter=toggleWinter;
   buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
+  buildChimneyPool();
+  buildCityHaze();
+  setTimeOfDay(parseFloat(document.getElementById('tod-slider').value||CONFIG.start.timeOfDay));
   window._layerGroups=layerGroups;  // debug: inspect in console
 
   // ── Facade manifest ───────────────────────────────────────────────
   // ./data/facades.json: array of filenames, images loaded from ./images/
   // e.g. ["Dominion_Bank_Facade.png","CNR_Building.png"]
   try{
-    const mres=await fetch('./data/facades.json');
+    const mres=await fetch(CONFIG.dataFiles.facadeConfig);
     if(mres.ok){
       const manifest=await mres.json();
       for(const fname of manifest){
         try{
-          const ires=await fetch('./images/'+fname);
+          const ires=await fetch(CONFIG.dataFiles.facadeImageDir+fname);
           if(!ires.ok)continue;
           const blob=await ires.blob();
           const file=new File([blob],fname,{type:blob.type});
@@ -3775,7 +4545,7 @@ renderer.render(scene,camera);
           // Attempt to auto-load a companion window mask (_mask suffix)
           const maskName=fname.replace(/(\.[^.]+)$/,'_mask$1');
           try{
-            const mires=await fetch('./images/'+maskName);
+            const mires=await fetch(CONFIG.dataFiles.facadeImageDir+maskName);
             if(mires.ok){
               const mblob=await mires.blob();
               await loadWindowMask(new File([mblob],maskName,{type:mblob.type}));
@@ -3788,7 +4558,7 @@ renderer.render(scene,camera);
 
   // ── Auto-load bump maps from ./data/ ─────────────────────────────
   // Silently skips any that are absent.  Keyed by material name stem.
-  const AUTOLOAD_BUMPS = ['brick','wood','stone','log','iron','concrete','lumber'];
+  const AUTOLOAD_BUMPS = CONFIG.dataFiles.bumpMapStems;
   for(const stem of AUTOLOAD_BUMPS){
     const burl=`./data/bump_${stem}.png`;
     try{
