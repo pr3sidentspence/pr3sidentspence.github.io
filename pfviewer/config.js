@@ -116,8 +116,20 @@ export const CONFIG = {
   scene: {
     // Registration offset for building/road data relative to river GeoJSON + LiDAR DEM.
     // Positive offsetX = shift buildings east (metres); positive offsetZ = shift south.
-    buildingOffsetX:  20,   // parcel data is ~10 m west of modern GPS reference
+    // Set to 0 to establish baseline — adjust once misalignment is measured.
+    buildingOffsetX:   0,
     buildingOffsetZ:   0,
+    // DEM terrain offset — shifts the terrain mesh in world space (no reprocessing needed).
+    // Positive terrainOffsetZ = shift terrain south; negative = shift north.
+    terrainOffsetX:    0,
+    terrainOffsetZ:  -5,
+    // DEM terrain rotation — rotates the terrain mesh around a geographic pivot.
+    // terrainRotationDeg: clockwise-positive degrees around world Y axis.  0 = no rotation.
+    // Pivot is the tip of land at The Forks (west of the Red, south of the Assiniboine).
+    // Adjust lon/lat to move the fixed point; adjust deg to dial in alignment.
+    terrainRotationDeg:         1.5,
+    terrainRotationPivotLon:   -97.1283,
+    terrainRotationPivotLat:    49.8843,
     backgroundColor: 0x8AB8D0,
     fog: {
       color: 0x8AB8D0,
@@ -177,6 +189,7 @@ export const CONFIG = {
     near: 0.5,
     far: 30000,
     pixelRatioCap: 2,    // caps device pixel ratio for perf on hi-DPI screens
+    homeAltitude: 1500,  // metres above ground for H key top-down overview
   },
 
   orbitControls: {
@@ -370,7 +383,10 @@ export const CONFIG = {
     baseY:  -10.0,   // flood plane Y at slider=0 (fully dry / below channel)
     startY:  -5.8,   // default water level on page load (inside channel, not overbank)
     riverHalfWidth: 120, creekHalfWidth: 8,
-    widths: { brownsCreek: 2.5, redRiver: 220, assiniboineRiver: 85, seineRiver: 22 },
+    widths: { brownsCreek: 3, redRiver: 220, assiniboineRiver: 85, seineRiver: 22 },
+    // Brown's Creek: a small clear prairie creek — no glacial silt, no Red River brown.
+    // Dark teal-green reads as shallow moving water in a 3D scene.
+    brownsCreekColor: 0x2E6058,
     floodMaxRiseMetres: 12.5, // historic 1826-flood-scale peak at slider=1.0 → water at +9.5m
     // Geographic registration offset applied to all river/water geometry.
     // The NHD river data (modern GPS) is slightly north of the Goad's Atlas

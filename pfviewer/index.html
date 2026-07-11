@@ -344,7 +344,33 @@ for(let _i = 0; _i < _tPos.count; _i++){
 _tGeo.computeVertexNormals();
 const terrainMesh = new THREE.Mesh(_tGeo, groundMat);
 terrainMesh.receiveShadow = true;
-scene.add(terrainMesh);
+// Terrain rotation around a geographic pivot (e.g. The Forks confluence).
+// The pivot is expressed as lon/lat → world XZ via the same projection used
+// for buildings, so it stays geographically anchored regardless of offset.
+{
+  const _tRotDeg  = CONFIG.scene?.terrainRotationDeg ?? 0;
+  const _tRotRad  = -_tRotDeg * Math.PI / 180; // negative = clockwise in Three.js Y-up
+  const _tPivLon  = CONFIG.scene?.terrainRotationPivotLon ?? C_LON;
+  const _tPivLat  = CONFIG.scene?.terrainRotationPivotLat ?? C_LAT;
+  const [_tPivSX, _tPivSY] = project(_tPivLon, _tPivLat);
+  const _tPivX    = _tPivSX;                          // worldX = shapeX
+  const _tPivZ    = -_tPivSY;                         // worldZ = -shapeY
+  const _tOffX    = CONFIG.scene?.terrainOffsetX ?? 0;
+  const _tOffZ    = CONFIG.scene?.terrainOffsetZ ?? 0;
+  if(_tRotDeg !== 0){
+    // Place terrain inside a pivot group so Three.js rotation is around the
+    // geographic point rather than the geometry centre.
+    const _terrainPivot = new THREE.Group();
+    _terrainPivot.position.set(_tPivX, 0, _tPivZ);
+    _terrainPivot.rotation.y = _tRotRad;
+    terrainMesh.position.set(_tOffX - _tPivX, 0, _tOffZ - _tPivZ);
+    _terrainPivot.add(terrainMesh);
+    scene.add(_terrainPivot);
+  } else {
+    terrainMesh.position.set(_tOffX, 0, _tOffZ);
+    scene.add(terrainMesh);
+  }
+}
 window.terrainMesh = terrainMesh;
 window.ground = terrainMesh; // backward compat
 
@@ -353,6 +379,8 @@ window.ground = terrainMesh; // backward compat
 // Replaces Perlin noise Y values with LiDAR-derived ground elevations.
 // Silently falls back to noise if files are absent.
 async function applyDEM(){
+  // Ensure terrainMesh world matrix is current before any sampleTerrainY calls.
+  if(terrainMesh) terrainMesh.updateWorldMatrix(true, false);
   try{
     const metaRes = await fetch('./data/dem.json?v='+Date.now());
     if(!metaRes.ok) return;  // no DEM yet — keep Perlin noise
@@ -390,12 +418,18 @@ window.grid = grid;
 // ── Terrain height sampler ──────────────────────────────────────────
 // Returns world Y at any XZ position by nearest-cell lookup on the terrain mesh.
 // Used by buildRoads (and anything else that must sit on the ground).
+// Uses worldToLocal so it handles terrain offset AND rotation correctly.
+const _sampleVec = new THREE.Vector3();
 function sampleTerrainY(wx, wz){
   const segs  = CONFIG.terrain?.segments ?? 300;
   const verts = segs + 1;
   const cell  = 12000 / segs;
-  const ix = Math.max(0, Math.min(verts - 1, Math.round((wx + 6000) / cell)));
-  const iz = Math.max(0, Math.min(verts - 1, Math.round((wz + 6000) / cell)));
+  _sampleVec.set(wx, 0, wz);
+  terrainMesh.worldToLocal(_sampleVec);
+  const lx = _sampleVec.x;
+  const lz = _sampleVec.z;
+  const ix = Math.max(0, Math.min(verts - 1, Math.round((lx + 6000) / cell)));
+  const iz = Math.max(0, Math.min(verts - 1, Math.round((lz + 6000) / cell)));
   return terrainMesh.geometry.attributes.position.getY(iz * verts + ix);
 }
 
@@ -431,7 +465,7 @@ renderer.domElement.addEventListener('wheel',e=>{
 // ── FPS ────────────────────────────────────────────────────────────
 let fpsMode=false,yaw=Math.PI,pitch=0,sprinting=false;
 // Fall-to-ground state (F key — gravity drop instead of teleport)
-let falling=false,fallVelocity=0;
+let falling=false,fallVelocity=0,fpsGrounded=true;
 let fallStartX=0,fallStartY=0,fallStartZ=0;
 let fallTargetX=0,fallTargetZ=0;
 const keys={};
@@ -945,20 +979,13 @@ async function buildCity(geojson){
   const yearRadius = year==='1880' ? 1000 : 3000;
   roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
 
-  // Extract creek/fence features before building loop
-  const creekFeatures=geojson.features.filter(f=>{
-    const n=(f.properties.name||'').toLowerCase();
-    return n.includes("brown's creek")||n.includes("browns creek");
-  });
-  if(creekFeatures.length>0){
-    await buildWater({type:'FeatureCollection',features:creekFeatures});
-  }
   const glassVerts=[];  // accumulated window glass vertex data
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
   const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[];
   const lumberWallGeos=[];  // separate accumulator → own mesh → wallMaterials['lumber']
+  const walkwayWallGeos=[];  // separate accumulator → own mesh with terrain lift + polygonOffset
   const lumberLog=[];  // [{name, floors}] for end-of-load console summary
   const chimneyStackGeos=[];  // CylinderGeometry stacks merged → one chimney mesh per layer
 
@@ -971,6 +998,11 @@ async function buildCity(geojson){
     const fullFloorsForDormers=floorsForWindows(floors);
     const halfFloorFrac=floors-Math.floor(floors+1e-6);
     const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
+    // Explicit roof-type override from planimetro (overrides material/floor heuristics).
+    const roofTypeOverride=props.roof_type||'';
+    const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','barrel','sod']);
+    const forcePeaked=PEAKED_ROOF_TYPES.has(roofTypeOverride);
+    const forceFlat=roofTypeOverride==='flat';
 
     // Index for facade matching — by normalised name and by id
     const entry={feat,props,height};
@@ -994,6 +1026,17 @@ async function buildCity(geojson){
         for(let j=1;j<rings[h].length-1;j++){const[hx,hy]=project(rings[h][j][0],rings[h][j][1]);hole.lineTo(hx,hy);}
         shape.holes.push(hole);
       }
+      // Centroid + terrain base height for this polygon.
+      // Sample at centroid plus up to 4 evenly-spaced ring points, average them.
+      const _nPts=outer.length-1;
+      let mcx=0,mcz=0;
+      for(let j=0;j<_nPts;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);mcx+=sx;mcz+=(-sy);}
+      mcx/=_nPts;mcz/=_nPts;
+      let _tSum=sampleTerrainY(mcx,mcz),_tN=1;
+      const _tStep=Math.max(1,Math.floor(_nPts/4));
+      for(let j=0;j<_nPts;j+=_tStep){const[sx,sy]=project(outer[j][0],outer[j][1]);_tSum+=sampleTerrainY(sx,-sy);_tN++;}
+      const buildingBaseY=_tSum/_tN;
+
       // ── Grain elevator: multi-stage geometry (lower body + shoulder + cupola + roof) ──
       {
         const _nm=(props.name||'').toLowerCase();
@@ -1022,7 +1065,7 @@ async function buildCity(geojson){
           for(let j=1;j<shapeOuter.length;j++) loShape.lineTo(shapeOuter[j][0],shapeOuter[j][1]);
           try{
             const loGeom=new THREE.ExtrudeGeometry(loShape,{depth:lowerH,bevelEnabled:false});
-            loGeom.rotateX(-Math.PI/2); applyVertexColour(loGeom,bldgCol); wallGeos[mat].push(loGeom);
+            loGeom.rotateX(-Math.PI/2); loGeom.translate(0,buildingBaseY,0); applyVertexColour(loGeom,bldgCol); wallGeos[mat].push(loGeom);
           }catch(e){console.warn('elevator lower body failed',props.id,e.message);}
 
           // Shoulder shelf (annular ring at lowerH)
@@ -1035,7 +1078,7 @@ async function buildCity(geojson){
           shelfShape.holes.push(shelfHole);
           try{
             const shelfGeom=new THREE.ExtrudeGeometry(shelfShape,{depth:0.15,bevelEnabled:false});
-            shelfGeom.rotateX(-Math.PI/2); shelfGeom.translate(0,lowerH,0);
+            shelfGeom.rotateX(-Math.PI/2); shelfGeom.translate(0,buildingBaseY+lowerH,0);
             applyVertexColour(shelfGeom,bldgCol); wallGeos[mat].push(shelfGeom);
           }catch(e){/* skip degenerate shelf */}
 
@@ -1045,7 +1088,7 @@ async function buildCity(geojson){
           for(let j=1;j<shapeInner.length;j++) upShape.lineTo(shapeInner[j][0],shapeInner[j][1]);
           try{
             const upGeom=new THREE.ExtrudeGeometry(upShape,{depth:upperH,bevelEnabled:false});
-            upGeom.rotateX(-Math.PI/2); upGeom.translate(0,lowerH,0);
+            upGeom.rotateX(-Math.PI/2); upGeom.translate(0,buildingBaseY+lowerH,0);
             applyVertexColour(upGeom,bldgCol); wallGeos[mat].push(upGeom);
           }catch(e){console.warn('elevator cupola failed',props.id,e.message);}
 
@@ -1053,7 +1096,7 @@ async function buildCity(geojson){
           const innerRing=shapeInner.map(([x,y])=>[x,-y]); // shapeY → worldZ
           const elevRidgeH=upperH*0.9;
           const rg=buildRoofGeometry(innerRing,height+0.05,elevRidgeH);
-          if(rg&&roofGeos[mat]) roofGeos[mat].push(rg);
+          if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
 
           // Register for minimap
           matCounts[mat]++;
@@ -1071,6 +1114,7 @@ async function buildCity(geojson){
       // weathered-gold colour variation in buildingColour().
       // Roof, peaked roof, parapet, and windows all suppressed below.
       const isLumberYard = props.type==='lumber';
+      const isWalkway    = props.type==='walkway';
       if(isLumberYard) lumberLog.push({name:props.name||'(unnamed)', floors});
 
 
@@ -1084,19 +1128,24 @@ async function buildCity(geojson){
       const bldgCol=buildingColour(isLumberYard?'lumber':mat,props.uid,floors,props.area_m2);
       applyVertexColour(wallGeom,bldgCol);
       if(isLumberYard){
+        wallGeom.translate(0,buildingBaseY,0);
         lumberWallGeos.push(wallGeom);
+      }else if(isWalkway){
+        // Walkway uses its own centroid terrain sample (already computed as buildingBaseY ≈ centroid, but keep dedicated sample for walkways).
+        wallGeom.translate(0,sampleTerrainY(mcx,mcz),0);
+        walkwayWallGeos.push(wallGeom);
       }else{
+        wallGeom.translate(0,buildingBaseY,0);
         wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
         wallGeos[mat].push(wallGeom);
       }
-      // Centroid for mini-map
-      let mcx=0,mcz=0;
-      for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);mcx+=sx;mcz+=(-sy);}
-      mcx/=(outer.length-1);mcz/=(outer.length-1);
+      // mcx,mcz already computed above; register for mini-map and facade index
       buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
       buildingCentroids.get(year).push({cx:mcx,cz:mcz});
       wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
       matCounts[mat]++;
+      // Track glass vert start so we can apply buildingBaseY to window Y coords after geometry is built
+      const _glassStart=glassVerts.length;
       // Place procedural windows on all wall edges of this building
       const areaOk=props.area_m2==null||props.area_m2>0.3;
       const isBridge=props.type==='bridge';
@@ -1107,12 +1156,11 @@ async function buildCity(geojson){
                    ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
       const isElevator=nm.includes('elevator');
       const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
-      const noWindows=isWall||isElevator||isLumberYard;
+      const noWindows=isWall||isElevator||isLumberYard||isWalkway;
 
       if(!isPlatform&&!isChurch&&!noWindows&&floors>0.5){
         const outerCoords=outer.slice(0,-1);
-        const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
-        const wcz=outerCoords.reduce((s,c)=>s+(-project(c[0],c[1])[1]),0)/outerCoords.length;
+        const wcx=mcx,wcz=mcz;  // reuse centroid already computed above
 
         // Collect edges with outward normals first
         const wEdges=[];
@@ -1180,7 +1228,7 @@ async function buildCity(geojson){
         const pe0=wEdges[primaryIdx];
         const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
         const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
-        if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&PEAKED_MATS.has(mat)&&floors>CONFIG.dormers.minFloorsForDormer&&floors<=CONFIG.dormers.maxFloorsForDormer&&areaOk){
+        if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!forceFlat&&(forcePeaked||PEAKED_MATS.has(mat))&&floors>CONFIG.dormers.minFloorsForDormer&&floors<=CONFIG.dormers.maxFloorsForDormer&&areaOk){
           const pe=wEdges[primaryIdx];
           const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
           const usableP=primaryLen-1.6;  // margin from corners
@@ -1189,19 +1237,23 @@ async function buildCity(geojson){
             for(let d=0;d<dormerCount;d++){
               const t=((d+0.5)/dormerCount)*primaryLen;
               const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
-              const{wallGeom,gableGeom,roofGeom}=buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,bldgCol);
-              if(wallGeom) wallGeos[mat].push(wallGeom);
-              if(gableGeom) wallGeos[mat].push(gableGeom);
-              if(roofGeom) roofGeos[mat].push(roofGeom);
+              // Pass bare `height` so buildDormer places verts at Y≈height (Y=0 baseline).
+              // Glass vert fix below then adds buildingBaseY once — no double-offset.
+              // Returned geoms are translated by buildingBaseY here.
+              const{wallGeom:dWG,gableGeom:dGG,roofGeom:dRG}=buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,bldgCol);
+              if(dWG){dWG.translate(0,buildingBaseY,0);wallGeos[mat].push(dWG);}
+              if(dGG){dGG.translate(0,buildingBaseY,0);wallGeos[mat].push(dGG);}
+              if(dRG){dRG.translate(0,buildingBaseY,0);roofGeos[mat].push(dRG);}
             }
           }
         }
       }
-      // Standard peaked roofs: wood/iron/etc, low-rise
-      if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&PEAKED_MATS.has(mat)&&floors>0.2&&floors<=2.5&&areaOk&&outer.length<=14){
+      // Standard peaked roofs: wood/iron/etc, low-rise — or any material with explicit peaked roof_type.
+      // forcePeaked overrides material/floor/vertex limits; forceFlat suppresses the automatic peaked roof.
+      if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&outer.length<=14))){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
-        const rg=buildRoofGeometry(ring,height+0.05);if(rg)roofGeos[mat].push(rg);
+        const rg=buildRoofGeometry(ring,height+0.05);if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
       }
 
       // Church/cathedral: steep peaked roof regardless of material or floor count.
@@ -1211,12 +1263,13 @@ async function buildCity(geojson){
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const churchRidgeH=height*0.8;
         const rg=buildRoofGeometry(ring,height+0.05,churchRidgeH);
-        if(rg&&roofGeos[mat]) roofGeos[mat].push(rg);
+        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
       }
 
       // ── Brick flat-roof details ──────────────────────────────────
-      // Only for brick, non-platform, tall enough to matter
-      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&!isLumberYard&&height>MIN_H+0.5;
+      // Only for brick, non-platform, tall enough to matter.
+      // Suppressed when roof_type is an explicit peaked value (parapet makes no sense on a gabled roof).
+      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&!isLumberYard&&!isWalkway&&height>MIN_H+0.5&&!forcePeaked;
       if(hasParapet){
         // Stone parapets are more substantial than brick
         const pW = mat==='stone' ? CONFIG.building.parapet.stoneWidth : PARAPET_W;   // thickness
@@ -1236,7 +1289,7 @@ async function buildCity(geojson){
         for(let j=1;j<capInset.length;j++)capShape.lineTo(capInset[j][0],capInset[j][1]);
         const capGeom=new THREE.ShapeGeometry(capShape);
         capGeom.rotateX(-Math.PI/2);
-        capGeom.translate(0,height+0.02,0);
+        capGeom.translate(0,buildingBaseY+height+0.02,0);
         capGeom.userData={capCol};   // store colour for merge-time material selection
         roofCapGeos.push(capGeom);
 
@@ -1264,7 +1317,7 @@ async function buildCity(geojson){
           try{
             const pGeom=new THREE.ExtrudeGeometry(pShape,{depth:pH,bevelEnabled:false});
             pGeom.rotateX(-Math.PI/2);
-            pGeom.translate(0,height,0);
+            pGeom.translate(0,buildingBaseY+height,0);
             applyVertexColour(pGeom,bldgCol);
             (mat==='stone'?stoneParapetGeos:parapetGeos).push(pGeom);
           }catch(e){/* skip degenerate */}
@@ -1306,12 +1359,12 @@ async function buildCity(geojson){
 
             // Shaft geometry — 8-sided cylinder for performance
             const cGeom=new THREE.CylinderGeometry(chimRT,chimRB,chimH,8,1);
-            cGeom.translate(cx3,height+chimH*0.5,cz3);
+            cGeom.translate(cx3,buildingBaseY+height+chimH*0.5,cz3);
             applyVertexColour(cGeom,chimDef.color);
             chimneyStackGeos.push(cGeom);
 
             // Emit position: top of this stack (apply same registration offset as the building group)
-            const topY=height+chimH;
+            const topY=buildingBaseY+height+chimH;
             chimneyEmitters.push({
               wx:cx3+(CONFIG.scene?.buildingOffsetX??0), wy:topY, wz:cz3+(CONFIG.scene?.buildingOffsetZ??0),
               type:sType,
@@ -1321,6 +1374,10 @@ async function buildCity(geojson){
             });
           }
         }
+      }
+      // Offset all glass verts added for this building by its terrain base height.
+      if(buildingBaseY!==0){
+        for(let _gi=_glassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=buildingBaseY;
       }
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
@@ -1425,9 +1482,35 @@ async function buildCity(geojson){
   }
 
   const fenceGeos=[];
+  const creekRibbonVerts=[];  // Brown's Creek layer-tied ribbon (flat, terrain-sampled)
   for(const feat of features){
     if(feat.geometry.type!=='LineString'&&feat.geometry.type!=='MultiLineString') continue;
     if(feat.properties.type!=='fence') continue;
+    const fname=(feat.properties.name||'').toLowerCase();
+    const isBrownCreek=fname.includes("brown's creek")||fname.includes("browns creek");
+    if(isBrownCreek){
+      // Render as a terrain-hugging ribbon tied to this layer group, not a fence wall.
+      // Width and colour come from config so they're easy to tweak.
+      const hw=CONFIG.water.widths.brownsCreek;  // half-width in metres
+      const lines2=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
+      for(const line of lines2){
+        for(let i=0;i<line.length-1;i++){
+          const[sx1,sy1]=project(line[i][0],  line[i][1]);
+          const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
+          const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+          const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
+          if(len<0.3) continue;
+          const px=(-dz/len)*hw, pz=(dx/len)*hw;
+          const y1=sampleTerrainY(x1,z1)+0.12;
+          const y2=sampleTerrainY(x2,z2)+0.12;
+          creekRibbonVerts.push(
+            x1+px,y1,z1+pz,  x2+px,y2,z2+pz,  x1-px,y1,z1-pz,
+            x2+px,y2,z2+pz,  x2-px,y2,z2-pz,  x1-px,y1,z1-pz
+          );
+        }
+      }
+      continue;  // skip fence geometry
+    }
     const fMatRaw=feat.properties.material||'';
     const fMat=MATS[fMatRaw]?fMatRaw:'unknown';
     const fFloors=feat.properties.floors??1;
@@ -1456,6 +1539,21 @@ async function buildCity(geojson){
       group.add(fMesh);
       console.log(`Fences: ${fenceGeos.length} geos`);
     }
+  }
+  // ── Brown's Creek ribbon (layer-tied) ────────────────────────────────────
+  if(creekRibbonVerts.length>0){
+    const bcGeo=new THREE.BufferGeometry();
+    bcGeo.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(creekRibbonVerts),3));
+    bcGeo.computeVertexNormals();
+    const bcMat=new THREE.MeshLambertMaterial({
+      color: CONFIG.water.brownsCreekColor,
+      side:  THREE.DoubleSide,
+      polygonOffset:      true,
+      polygonOffsetFactor: -5,
+      polygonOffsetUnits:  -5,
+    });
+    group.add(new THREE.Mesh(bcGeo,bcMat));
+    console.log(`Brown's Creek: ${creekRibbonVerts.length/18} ribbon segments`);
   }
 
   setProgress(74,'Merging geometry…');await tick();
@@ -1553,6 +1651,25 @@ async function buildCity(geojson){
     cMesh.castShadow=true; cMesh.receiveShadow=true;
     group.add(cMesh);
     console.log(`Chimneys: ${chimneyStackGeos.length} stacks, ${chimneyEmitters.filter(e=>e.year===year).length} emitters`);
+  }
+
+  // ── Walkway mesh — terrain-lifted, draws over roads ───────────────
+  if(walkwayWallGeos.length>0){
+    setProgress(96,'Merging walkways…');await tick();
+    const wkMerged=mergeGeometries(walkwayWallGeos,false);
+    for(const g of walkwayWallGeos)g.dispose();
+    if(wkMerged){
+      const wkMat=new THREE.MeshPhongMaterial({
+        vertexColors:true,
+        shininess:MATS['wood'].shininess,
+        polygonOffset:true,
+        polygonOffsetFactor:-6,   // more negative than roads(-2), tracks(-3), rails(-4) → always on top
+        polygonOffsetUnits:-6,
+      });
+      const wkMesh=new THREE.Mesh(wkMerged,wkMat);
+      wkMesh.receiveShadow=true;
+      group.add(wkMesh);
+    }
   }
 
   // ── Glass window mesh ──────────────────────────────────────────────
@@ -1965,8 +2082,9 @@ async function buildWater(geojson){
     const name  = (feat.properties.name  || '').toLowerCase();
     const wway  = feat.properties.waterway || '';
     const isBrownCreek = name.includes("brown's creek") || name.includes("browns creek");
-    const w = isBrownCreek ? CONFIG.water.widths.brownsCreek
-            : wway === 'stream' || name.includes('creek') || name.includes('drain') ? CREEK_W
+    // Brown's Creek is handled as a layer-tied ribbon in the fence renderer — skip here.
+    if(isBrownCreek) continue;
+    const w = wway === 'stream' || name.includes('creek') || name.includes('drain') ? CREEK_W
             : RIVER_W;
 
     for(const line of lines){
@@ -1985,6 +2103,58 @@ async function buildWater(geojson){
         );
       }
     }
+  }
+
+  // ── Flood plane (created once, before early-return so any buildWater call triggers it) ──
+  // Starts at WATER_BASE (below banks).  Only visible inside channels where
+  // terrain has been cut to -channelDepth.  depthWrite:false so opaque terrain
+  // naturally occludes it via the depth buffer without Z-fighting.
+  if(!waterMesh){
+    const _floodGeo = new THREE.PlaneGeometry(14000, 14000);
+    _floodGeo.rotateX(-Math.PI / 2);
+    waterMatRef = new THREE.MeshPhongMaterial({
+      color:       CONFIG.water.color,
+      shininess:   30,
+      specular:    CONFIG.water.specular,
+      transparent: true,
+      opacity:     0.88,
+      depthWrite:  false,
+      side:        THREE.FrontSide,
+    });
+    waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
+    waterMesh.position.y = WATER_BASE;
+    scene.add(waterMesh);
+    window.waterMesh = waterMesh;
+
+    const fc = document.getElementById('flood-control');
+    if(fc) fc.style.display = 'flex';
+    const fs = document.getElementById('flood-slider');
+    if(fs){
+      const _t0 = Math.max(0, Math.min(1,
+        (CONFIG.water.startY - WATER_BASE) / CONFIG.water.floodMaxRiseMetres));
+      fs.value = _t0;
+      waterMesh.position.y = CONFIG.water.startY;
+    }
+    if(fs) fs.addEventListener('input', () => {
+      const t  = parseFloat(fs.value);
+      const wY = WATER_BASE + t * CONFIG.water.floodMaxRiseMetres;
+      waterMesh.position.y = wY;
+      const lbl = document.getElementById('flood-label');
+      if(lbl){
+        if(t < 0.01)       lbl.textContent = 'Channel';
+        else if(wY < -0.3) lbl.textContent = `${wY.toFixed(1)}m`;
+        else if(t > 0.95)  lbl.textContent = '1826 Peak';
+        else               lbl.textContent = `+${wY.toFixed(1)}m`;
+      }
+      const floodBase = CONFIG.water.color, floodPeak = CONFIG.water.floodPeakColor;
+      waterMatRef.color.setRGB(
+        (((floodBase>>16)&0xff)*(1-t)+((floodPeak>>16)&0xff)*t)/255,
+        (((floodBase>>8 )&0xff)*(1-t)+((floodPeak>>8 )&0xff)*t)/255,
+        (( floodBase     &0xff)*(1-t)+( floodPeak     &0xff)*t)/255
+      );
+      waterMatRef.opacity = 0.88 + t * 0.10;
+      waterMatRef.needsUpdate = true;
+    });
   }
 
   if(wallPos.length === 0 && creekPos.length === 0) return;
@@ -2041,59 +2211,6 @@ async function buildWater(geojson){
     window.creekMesh = creekMesh;
   }
 
-  // ── Flood plane (created once) ────────────────────────────────────────────
-  // Starts at WATER_BASE (below banks).  Only visible inside channels where
-  // terrain has been cut to -channelDepth.  depthWrite:false so opaque terrain
-  // naturally occludes it via the depth buffer without Z-fighting.
-  if(!waterMesh){
-    const _floodGeo = new THREE.PlaneGeometry(14000, 14000);
-    _floodGeo.rotateX(-Math.PI / 2);
-    waterMatRef = new THREE.MeshPhongMaterial({
-      color:       CONFIG.water.color,
-      shininess:   30,
-      specular:    CONFIG.water.specular,
-      transparent: true,
-      opacity:     0.88,
-      depthWrite:  false,
-      side:        THREE.FrontSide,
-    });
-    waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
-    waterMesh.position.y = WATER_BASE;
-    scene.add(waterMesh);
-    window.waterMesh = waterMesh;
-
-    // Flood slider — attach once only.
-    const fc = document.getElementById('flood-control');
-    if(fc) fc.style.display = 'flex';
-    const fs = document.getElementById('flood-slider');
-    if(fs){
-      // Set slider to configured start level
-      const _t0 = Math.max(0, Math.min(1,
-        (CONFIG.water.startY - WATER_BASE) / CONFIG.water.floodMaxRiseMetres));
-      fs.value = _t0;
-      waterMesh.position.y = CONFIG.water.startY;
-    }
-    if(fs) fs.addEventListener('input', () => {
-      const t  = parseFloat(fs.value);
-      const wY = WATER_BASE + t * CONFIG.water.floodMaxRiseMetres;
-      waterMesh.position.y = wY;
-      const lbl = document.getElementById('flood-label');
-      if(lbl){
-        if(t < 0.01)       lbl.textContent = 'Channel';
-        else if(wY < -0.3) lbl.textContent = `${wY.toFixed(1)}m`;
-        else if(t > 0.95)  lbl.textContent = '1826 Peak';
-        else               lbl.textContent = `+${wY.toFixed(1)}m`;
-      }
-      const floodBase = CONFIG.water.color, floodPeak = CONFIG.water.floodPeakColor;
-      waterMatRef.color.setRGB(
-        (((floodBase>>16)&0xff)*(1-t)+((floodPeak>>16)&0xff)*t)/255,
-        (((floodBase>>8 )&0xff)*(1-t)+((floodPeak>>8 )&0xff)*t)/255,
-        (( floodBase     &0xff)*(1-t)+( floodPeak     &0xff)*t)/255
-      );
-      waterMatRef.opacity = 0.88 + t * 0.10;
-      waterMatRef.needsUpdate = true;
-    });
-  }
 }
 // Up ≠ N: facade plane faces along outward edge normal in world XZ.
 // Width axis = polygon edge direction (horizontal XZ).
@@ -2552,14 +2669,16 @@ function enterFPS(){
   yaw=Math.atan2(-fwd.x,-fwd.z);
   pitch=Math.asin(Math.max(-1,Math.min(1,fwd.y)));  // preserve current tilt
 
-  if(camera.position.y > EYE_H + 0.5){
+  const _entryFloor = sampleTerrainY(camera.position.x, camera.position.z) + EYE_H;
+  fpsGrounded = camera.position.y <= _entryFloor + 0.5;
+  if(camera.position.y > _entryFloor + 0.5){
     // Fall straight down — no XZ swoop, no heading change
     falling=true;fallVelocity=0;
     fallStartX=camera.position.x;fallStartY=camera.position.y;fallStartZ=camera.position.z;
     // Target directly below
     fallTargetX=camera.position.x;fallTargetZ=camera.position.z;
   }else{
-    camera.position.y=Math.max(camera.position.y,EYE_H);
+    camera.position.y=Math.max(camera.position.y,_entryFloor);
   }
 
   if(!isMobile){renderer.domElement.requestPointerLock();}
@@ -2707,7 +2826,14 @@ window.addEventListener('keydown',e=>{
   if(e.code==='KeyF'&&!fpsMode)enterFPS();
   if(e.code==='Escape'&&fpsMode)exitFPS();
   if(e.code==='Escape'&&facadePending)exitFacadePlacement();
-  if(e.code==='KeyH'&&!fpsMode){camera.position.set(startX+700,380,startZ);orbit.target.set(startX,0,startZ);orbit.update();}
+  if(e.code==='KeyH'&&!fpsMode){
+    const _ha=CONFIG.camera?.homeAltitude??1500;
+    orbit.target.set(startX,0,startZ);
+    // Tiny southward offset (2m) prevents gimbal lock and keeps north facing up
+    camera.position.set(startX,_ha,startZ+2);
+    camera.up.set(0,1,0);
+    orbit.update();
+  }
   if(e.code==='KeyM'&&!fpsMode)toggleMinimap();
   initAudio();
 });
@@ -3839,14 +3965,17 @@ function startLoop(){
       const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pitch);
       camera.quaternion.copy(qYaw).multiply(qPitch);
 
+      // Terrain-aware floor: eye height above the ground surface at camera XZ.
+      const _groundFloor = sampleTerrainY(camera.position.x, camera.position.z) + EYE_H;
+
       if(falling){
         // 4× gravity, straight down — no XZ drift, no heading change
         fallVelocity=Math.max(fallVelocity-39.2*dt,-120);
         camera.position.y+=fallVelocity*dt;
-        // No XZ interpolation — fall straight down from orbit camera position
-        if(camera.position.y<=EYE_H){
-          camera.position.y=EYE_H;
-          falling=false;
+        // Land when we reach the terrain surface below us
+        if(camera.position.y<=_groundFloor){
+          camera.position.y=_groundFloor;
+          falling=false;fpsGrounded=true;
         }
       }else{
         const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
@@ -3858,8 +3987,20 @@ function startLoop(){
         if(keys['KeyA']||keys['ArrowLeft']||jRight<-0.15)camera.position.addScaledVector(right,spd*(keys['KeyA']||keys['ArrowLeft']?-1:jRight));
         if(keys['KeyD']||keys['ArrowRight']||jRight>0.15)camera.position.addScaledVector(right,spd*(keys['KeyD']||keys['ArrowRight']?1:jRight));
         if(keys['KeyQ']||udDown)camera.position.y-=spd;
-        if(keys['KeyE']||udUp)camera.position.y+=spd;
-        camera.position.y=Math.max(EYE_H,camera.position.y);
+        if(keys['KeyE']||udUp){camera.position.y+=spd;fpsGrounded=false;}
+        // Smooth terrain following — lerp toward ground floor in both directions.
+        // Upward correction always applies (don't clip into a rising hill).
+        // Downward following only applies when grounded — flying up with E detaches
+        // from the surface; touching back down (or Q-descending to it) re-attaches.
+        const _yErr = _groundFloor - camera.position.y;
+        if(_yErr > 0.01){
+          camera.position.y = Math.min(_groundFloor, camera.position.y + _yErr * Math.min(1, 10 * dt));
+          fpsGrounded = true;
+        } else if(fpsGrounded && _yErr < -0.05){
+          camera.position.y = Math.max(_groundFloor, camera.position.y + _yErr * Math.min(1, 6 * dt));
+        }
+        // Re-ground when Q brings camera back to surface
+        if((keys['KeyQ']||udDown) && camera.position.y <= _groundFloor + 0.1) fpsGrounded = true;
       }
     }else{orbit.update();updateHover();}
     tickStreetcars(dt);
@@ -4175,10 +4316,19 @@ function rebuildGlassMesh(layerEntry){
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
                    ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
       const noWindows=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls')||nm.includes('elevator')||props.type==='lumber';
+      // Terrain base for this building (centroid + up to 4 ring samples)
+      const _rbNPts=outer.length-1;
+      let _rbCx=0,_rbCz=0;
+      for(let j=0;j<_rbNPts;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);_rbCx+=sx;_rbCz+=(-sy);}
+      _rbCx/=_rbNPts;_rbCz/=_rbNPts;
+      let _rbTSum=sampleTerrainY(_rbCx,_rbCz),_rbTN=1;
+      const _rbStep=Math.max(1,Math.floor(_rbNPts/4));
+      for(let j=0;j<_rbNPts;j+=_rbStep){const[sx,sy]=project(outer[j][0],outer[j][1]);_rbTSum+=sampleTerrainY(sx,-sy);_rbTN++;}
+      const _rbBaseY=_rbTSum/_rbTN;
+      const _rbGlassStart=glassVerts.length;
       if(!isPlatform&&!isChurch&&!isBridge&&!noWindows&&floors>0.5&&areaOk){
         const outerCoords=outer.slice(0,-1);
-        const wcx=outerCoords.reduce((s,c)=>s+(project(c[0],c[1])[0]),0)/outerCoords.length;
-        const wcz=outerCoords.reduce((s,c)=>s+(-project(c[0],c[1])[1]),0)/outerCoords.length;
+        const wcx=_rbCx,wcz=_rbCz;
         const wEdges=[];
         for(let j=0;j<outerCoords.length-1;j++){
           const[ax0,ay0]=project(outerCoords[j][0],outerCoords[j][1]);
@@ -4235,10 +4385,15 @@ function rebuildGlassMesh(layerEntry){
             for(let d=0;d<dormerCount;d++){
               const t=((d+0.5)/dormerCount)*primaryLen;
               const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
+              // Use bare height — glass vert fix below adds _rbBaseY once (no double-offset).
               buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,0xffffff);
             }
           }
         }
+      }
+      // Apply terrain base Y to all glass verts placed for this building
+      if(_rbBaseY!==0){
+        for(let _gi=_rbGlassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=_rbBaseY;
       }
     }
   }
@@ -4498,6 +4653,13 @@ renderer.render(scene,camera);
   document.getElementById('drop-zone').style.display='none';
   document.getElementById('loading').style.display='flex';
 
+  // Apply real LiDAR DEM FIRST so sampleTerrainY returns correct heights
+  // when buildCity() and buildRoads() run below.  Roads/rails rebuild inside
+  // applyDEM() is a no-op here (they haven't loaded yet) but will be called
+  // correctly when they load in the loop below using DEM heights.
+  setProgress(5,'Loading terrain…');await tick();
+  await applyDEM();
+
   for(const{url,gj}of found){
     setProgress(10,`Loading ${url.split('/').pop()}…`);await tick();
     gj._filename=url;  // lets detectYear identify combined.geojson by name
@@ -4507,10 +4669,6 @@ renderer.render(scene,camera);
     else if(kind==='road')   { roadGeojson=gj;window.roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
     else if(kind==='rail')   { railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
-
-  // Apply real LiDAR DEM if available (silently skipped if not yet generated)
-  setProgress(98,'Loading terrain…');await tick();
-  await applyDEM();
 
   setProgress(100,'Done.');await tick();
   document.getElementById('loading').style.display='none';
