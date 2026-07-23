@@ -124,9 +124,13 @@ canvas{display:block;position:fixed;inset:0;}
     </svg>
   </div>
   <div id="mode-badge">Overview</div>
+  <div id="pointer-lock-hint" style="display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,48px);background:rgba(9,8,10,0.9);border:1px solid #C8A05A;border-radius:8px;padding:10px 18px;font-size:0.78rem;color:#C8A05A;letter-spacing:0.06em;pointer-events:none;z-index:25;text-align:center;white-space:nowrap;">
+    Click to look around &nbsp;·&nbsp; <span class="key">Esc</span> for Overview
+  </div>
   <div id="controls-hint">
     <b>Orbit:</b> drag · scroll to zoom<br>
     <span class="key">F</span>&nbsp; Walk mode &nbsp;&nbsp;<span class="key">hover</span> building info<br>
+    <span class="key">C</span>&nbsp; Copy camera link<br>
     <span id="fps-hint">
       <span class="key">W A S D</span> Move &nbsp;<span class="key">Mouse</span> Look<br>
       <span class="key">Shift</span> Sprint &nbsp;<span class="key">Q / E</span> Down / Up<br>
@@ -158,7 +162,19 @@ canvas{display:block;position:fixed;inset:0;}
   <input type="range" id="flood-slider" min="0" max="1" step="0.01" value="0" style="width:180px;accent-color:#2A8ACC;cursor:pointer;">
   <span id="flood-label" style="font-size:0.75rem;color:#4A9ACC;min-width:56px;text-align:right;">Normal</span>
 </div>
-<div id="layer-bar" style="display:none;position:fixed;top:18px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
+<div id="date-control" style="display:none;position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.88);border:1px solid #2a1e0e;border-radius:10px;padding:10px 22px 12px;flex-direction:column;align-items:center;gap:7px;pointer-events:auto;z-index:14;width:min(640px,80vw);">
+  <div style="display:flex;align-items:center;justify-content:center;gap:14px;width:100%;">
+    <button id="timeline-play-btn" title="Play time-lapse" style="background:transparent;border:1px solid #3a2810;border-radius:50%;width:30px;height:30px;color:#C8A05A;font-size:0.8rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶</button>
+    <div id="date-display" style="font-size:0.95rem;color:#C8A05A;letter-spacing:0.06em;min-width:180px;text-align:center;"></div>
+    <input type="date" id="date-picker" style="background:#1e1610;border:1px solid #3a2810;border-radius:4px;color:#C8A05A;font-family:Georgia,serif;font-size:0.72rem;padding:3px 6px;color-scheme:dark;">
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;width:100%;">
+    <span style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1850</span>
+    <input type="range" id="date-slider" min="0" max="443" step="1" value="228" style="flex:1;accent-color:#C8A05A;cursor:pointer;">
+    <span style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1960</span>
+  </div>
+</div>
+<div id="layer-bar" style="display:none;position:fixed;top:100px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
 <button id="winter-btn" onclick="toggleWinter()" style="display:none;position:fixed;top:18px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">❄ Winter</button>
 
 <div id="facade-picker" style="display:none;position:fixed;top:50%;right:24px;transform:translateY(-50%);background:rgba(9,8,10,0.95);border:1px solid #C8A05A;border-radius:12px;padding:16px;pointer-events:auto;z-index:20;max-width:220px;text-align:center;">
@@ -200,6 +216,12 @@ function project(lon, lat) {
   return [(lon - C_LON) * M_PER_LON, (lat - C_LAT) * M_PER_LAT];
 }
 
+// Inverse of project() combined with the worldZ=-shapeY flip used throughout
+// (see the coordinate-system note above) — world (x,z) back to (lon,lat).
+function unproject(wx, wz) {
+  return [C_LON + wx / M_PER_LON, C_LAT - wz / M_PER_LAT];
+}
+
 const MATS = CONFIG.materials;
 const PEAKED_MATS = new Set(['wood','log','concrete','unknown','iron','wood_industrial']);
 const FLOOR_H    = CONFIG.building.floorHeight;
@@ -229,7 +251,8 @@ camera.lookAt(CONFIG.start.cameraLookAt.x, CONFIG.start.cameraLookAt.y, CONFIG.s
 // ── Season state (declared here — used before buildingMeshes block) ─
 let winterMode=CONFIG.start.winterMode;
 const seasonalMats=[];   // {mat3, summerCol, winterCol}
-let groundMatRef=null, roadMatRef=null, cartTrackMesh=null, railMesh=null, roadColBuf=null;
+let groundMatRef=null, roadMatRef=null, cartTrackMesh=null, roadColBuf=null;
+let streetcarRailMeshes=[]; // {year,mesh} — one ground-rail mesh per route, bucketed by that route's streetcar_start year (see buildRoads)
 const SNOW_SKIP=new Set(['blue']); // railways/sidings only — no snow accumulation
 
 // ── Lighting ───────────────────────────────────────────────────────
@@ -248,6 +271,20 @@ scene.add(sun);
 // Sun arc: Up ≠ N. East=+X, south=−Z, up=+Y.
 // Sunrise: +X; noon: above, biased −Z; sunset: −X.
 const TOD_START_H = 4, TOD_RANGE_H = 18;
+
+// Conversions between the tod-slider's 0..1 fraction and clock hours/minutes —
+// shared by the URL-param loader and the copy-camera-link feature so both
+// read the same clock the sky/lighting actually uses.
+function todFractionToHM(frac){
+  const totalH=TOD_START_H+frac*TOD_RANGE_H;
+  let hours=Math.floor(totalH), minutes=Math.round((totalH-hours)*60);
+  if(minutes===60){minutes=0;hours+=1;}
+  return {hours,minutes};
+}
+function hmToTodFraction(hours,minutes){
+  return Math.max(0,Math.min(1,(hours+minutes/60-TOD_START_H)/TOD_RANGE_H));
+}
+
 const SKY_KEYS = CONFIG.skyKeyframes;
 function lerpHex(a,b,t){
   const ar=(a>>16)&0xff,ag=(a>>8)&0xff,ab=a&0xff;
@@ -264,7 +301,15 @@ const hemiLight = new THREE.HemisphereLight(CONFIG.lighting.hemisphere.skyColor,
 scene.add(hemiLight);
 const ambLight = new THREE.AmbientLight(CONFIG.lighting.ambient.color,CONFIG.lighting.ambient.intensity);
 scene.add(ambLight);
+// Exact tod fraction as last set — kept separate from the tod-slider's own
+// DOM value, which browsers silently snap to its step="0.002" attribute
+// even on programmatic assignment (confirmed: assigning 0.5833 reads back
+// as "0.584"). copyCameraToClipboard() reads this instead, so a URL-loaded
+// hours/minutes round-trips through copy exactly instead of drifting by a
+// minute or two.
+let currentTodFraction=CONFIG.start.timeOfDay;
 function setTimeOfDay(t){
+  currentTodFraction=t;
   // Physically correct solar position for Winnipeg 49.895°N — Up ≠ N (X=east,Y=up,Z=south)
   // Declination: equinox=0, summer solstice=+23.45°, winter solstice=−23.45°
   // Tied to winterMode so sun arc narrows and flattens in winter automatically.
@@ -428,10 +473,32 @@ function sampleTerrainY(wx, wz){
   terrainMesh.worldToLocal(_sampleVec);
   const lx = _sampleVec.x;
   const lz = _sampleVec.z;
-  const ix = Math.max(0, Math.min(verts - 1, Math.round((lx + 6000) / cell)));
-  const iz = Math.max(0, Math.min(verts - 1, Math.round((lz + 6000) / cell)));
-  return terrainMesh.geometry.attributes.position.getY(iz * verts + ix);
+  // Bilinear across the 4 surrounding grid vertices — was nearest-neighbour
+  // (Math.round), which returned a stair-stepped height that only changed
+  // at each 10m grid line. Roads/buildings/etc. sample this at arbitrary
+  // points, so a smooth value matters more than it costs here.
+  const fx = Math.max(0, Math.min(verts - 1.0001, (lx + 6000) / cell));
+  const fz = Math.max(0, Math.min(verts - 1.0001, (lz + 6000) / cell));
+  const ix0 = Math.floor(fx), iz0 = Math.floor(fz);
+  const ix1 = ix0 + 1, iz1 = iz0 + 1;
+  const tx = fx - ix0, tz = fz - iz0;
+  const pos = terrainMesh.geometry.attributes.position;
+  const y00 = pos.getY(iz0 * verts + ix0), y10 = pos.getY(iz0 * verts + ix1);
+  const y01 = pos.getY(iz1 * verts + ix0), y11 = pos.getY(iz1 * verts + ix1);
+  const y0 = y00 + (y10 - y00) * tx;
+  const y1 = y01 + (y11 - y01) * tx;
+  return y0 + (y1 - y0) * tz;
 }
+
+// Terrain is only ever resolved at its own ~10m grid above — sampling
+// road/track/rail height only at each digitized segment's two endpoints was
+// fine when segments were short, but a single feature (a Portage/Main block,
+// or a long freight through-line) can run 100m+, long enough for real DEM
+// relief to poke through a flat quad drawn between just those two points.
+// buildRoads() and buildRailTracks() both chop every segment into chunks of
+// this size and sample terrain at each one instead — matches the height
+// data's own resolution, so there's no benefit to finer chunks.
+const ROAD_SAMPLE_STEP = 10;
 
 // ── Orbit controls ─────────────────────────────────────────────────
 const orbit=new OrbitControls(camera,renderer.domElement);
@@ -474,6 +541,58 @@ const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
 const wallMaterials  = {};   // matKey → MeshPhongMaterial
 const wallMeshes     = {};   // matKey → THREE.Mesh (for DecalGeometry projection)
+
+// ── Building born/died shader discard ───────────────────────────────
+// Every building-piece geometry (walls, roofs, parapets, roof caps, chimney
+// stacks, lumber walls, walkway walls, window glass) gets a per-vertex
+// `aLifespan` attribute — [bornYear, diedYear], using sentinels for "no
+// constraint" — stamped on in buildCity() before merging. Each material
+// that renders those pieces gets `tagMaterialForLifespan()` called once
+// (at creation, since most of these materials are rebuilt fresh per
+// buildCity() call), wiring a fragment-shader discard driven by the single
+// shared `buildingYearUniform` below. Updating that one uniform's `.value`
+// (see setCurrentViewDate) instantly shows/hides every dated building with
+// no CPU geometry rebuild — this is what lets the date slider scrub live.
+// Meshes that cast shadows also need `customDepthMaterial` set to a
+// matching depth material (see makeLifespanDepthMaterial), or a hidden
+// building would still cast a phantom shadow.
+const buildingYearUniform = { value: 1906 };
+const NO_BORN = -99999, NO_DIED = 99999; // sentinels meaning "no born/died constraint"
+
+function parseYearOrSentinel(v, sentinel){
+  if(v==null) return sentinel;
+  if(typeof v==='number') return v;
+  const y=parseInt(String(v).slice(0,4),10);
+  return Number.isFinite(y) ? y : sentinel;
+}
+
+function tagLifespan(geom, born, died){
+  const n=geom.attributes.position.count;
+  const arr=new Float32Array(n*2);
+  for(let i=0;i<n;i++){ arr[i*2]=born; arr[i*2+1]=died; }
+  geom.setAttribute('aLifespan', new THREE.Float32BufferAttribute(arr,2));
+  return geom;
+}
+
+function _installLifespanShader(shader){
+  shader.uniforms.buildingYear = buildingYearUniform;
+  shader.vertexShader = 'attribute vec2 aLifespan;\nvarying vec2 vLifespan;\n' + shader.vertexShader
+    .replace('void main() {', 'void main() {\n  vLifespan = aLifespan;');
+  shader.fragmentShader = 'uniform float buildingYear;\nvarying vec2 vLifespan;\n' + shader.fragmentShader
+    .replace('void main() {', 'void main() {\n  if(buildingYear < vLifespan.x || buildingYear >= vLifespan.y) discard;');
+}
+function tagMaterialForLifespan(mat){
+  mat.onBeforeCompile = _installLifespanShader;
+  mat.customProgramCacheKey = () => 'lifespan';
+  return mat;
+}
+// One fresh depth material per call — three.js needs a distinct customDepthMaterial
+// per mesh (it's not a shared cache key like the main material is).
+function makeLifespanDepthMaterial(){
+  const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  tagMaterialForLifespan(depthMat);
+  return depthMat;
+}
 
 // ── Chimney smoke state ────────────────────────────────────────────
 // chimneyEmitters: populated by buildCity for every chimney stack placed.
@@ -869,6 +988,8 @@ const glassMat=new THREE.MeshPhongMaterial({
   side:THREE.DoubleSide,
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
+tagMaterialForLifespan(glassMat); // shared across all layers/rebuilds — tagged once here, not per buildCity() call
+// Glass never casts shadows (no castShadow set on its mesh), so no customDepthMaterial needed.
 setTimeOfDay(CONFIG.start.timeOfDay); // initial sky/lighting — must be after glassMat
 
 // Place glass quads derived from a window mask on a single wall edge.
@@ -968,6 +1089,22 @@ function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat,
   }
 }
 
+// NOTE on building born/died dates: the source GeoJSON (mcphillips_1880,
+// goad_1906, combined) already carries `born`/`died` ISO-date properties on
+// a meaningful minority of features (~1-in-4 in the 1880 layer, ~1-in-7 in
+// 1906/combined). currentViewDate is not wired to building visibility yet
+// because every building of a given material is merged into ONE shared
+// BufferGeometry/draw call below (wallGeos[mat] → mergeGeometries → one
+// mesh) — same for windows/glass, chimneys, fences, parapets, roof caps —
+// so there's no cheap per-building `.visible` toggle to flip. Making that
+// work correctly needs either (a) a per-vertex born/died attribute + a
+// shader discard driven by a shared "current year" uniform (fast, no
+// rebuild, but touches every material here plus shadow depth materials —
+// unproven in this codebase), or (b) filtering features and re-running
+// buildCity per layer on date change (simple, reuses everything below
+// as-is, but must also re-apply any facades/bump maps already loaded onto
+// specific buildings, and clear old chimneyEmitters/buildingCentroids
+// entries for that year first, or they'll leak/duplicate on every rebuild).
 async function buildCity(geojson){
   const year=detectYear(geojson);
   const group=new THREE.Group();
@@ -980,6 +1117,7 @@ async function buildCity(geojson){
   roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
 
   const glassVerts=[];  // accumulated window glass vertex data
+  const glassLifespan=[];  // parallel [born,died] per glass vertex — see tagLifespan()
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
@@ -992,6 +1130,16 @@ async function buildCity(geojson){
   for(let i=0;i<total;i++){
     const feat=features[i],props=feat.properties;
     const mat=MATS[props.material]?props.material:'unknown';
+    // Born/died lifespan tag for every geometry this feature contributes below —
+    // recorded here as "start" indices into each accumulator, applied in one
+    // sweep right after the ring loop ends (see the matching block below), so
+    // individual geometry-push sites don't each need their own tagging call.
+    const _lifeBorn=parseYearOrSentinel(props.born,NO_BORN), _lifeDied=parseYearOrSentinel(props.died,NO_DIED);
+    const _wallStart0=wallGeos[mat].length, _roofStart0=roofGeos[mat].length;
+    const _parapetStart0=parapetGeos.length, _stoneParapetStart0=stoneParapetGeos.length;
+    const _roofCapStart0=roofCapGeos.length, _chimneyStart0=chimneyStackGeos.length;
+    const _lumberWallStart0=lumberWallGeos.length, _walkwayWallStart0=walkwayWallGeos.length;
+    const _glassOuterStart0=glassVerts.length;
     const floors=props.floors??1,isPlatform=floors<=0.2;
     const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
     // Half-storey detection (e.g. floors=1.5/2.5/3.5…) — see floorsForWindows().
@@ -1371,6 +1519,7 @@ async function buildCity(geojson){
               rate:baseRate*(0.85+((hc>>8&0xff)/255)*0.30),
               timer:Math.random()*baseRate,  // stagger first emit
               year,
+              born:_lifeBorn, died:_lifeDied,  // so a building hidden by the date scrubber stops smoking too
             });
           }
         }
@@ -1380,6 +1529,18 @@ async function buildCity(geojson){
         for(let _gi=_glassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=buildingBaseY;
       }
     }
+    // Apply this feature's born/died tag to every geometry it added above,
+    // across every ring/branch (elevator, dormers, normal walls, etc.) —
+    // done once here rather than at each individual push site.
+    for(let _k=_wallStart0;_k<wallGeos[mat].length;_k++) tagLifespan(wallGeos[mat][_k],_lifeBorn,_lifeDied);
+    for(let _k=_roofStart0;_k<roofGeos[mat].length;_k++) tagLifespan(roofGeos[mat][_k],_lifeBorn,_lifeDied);
+    for(let _k=_parapetStart0;_k<parapetGeos.length;_k++) tagLifespan(parapetGeos[_k],_lifeBorn,_lifeDied);
+    for(let _k=_stoneParapetStart0;_k<stoneParapetGeos.length;_k++) tagLifespan(stoneParapetGeos[_k],_lifeBorn,_lifeDied);
+    for(let _k=_roofCapStart0;_k<roofCapGeos.length;_k++) tagLifespan(roofCapGeos[_k],_lifeBorn,_lifeDied);
+    for(let _k=_chimneyStart0;_k<chimneyStackGeos.length;_k++) tagLifespan(chimneyStackGeos[_k],_lifeBorn,_lifeDied);
+    for(let _k=_lumberWallStart0;_k<lumberWallGeos.length;_k++) tagLifespan(lumberWallGeos[_k],_lifeBorn,_lifeDied);
+    for(let _k=_walkwayWallStart0;_k<walkwayWallGeos.length;_k++) tagLifespan(walkwayWallGeos[_k],_lifeBorn,_lifeDied);
+    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++) glassLifespan.push(_lifeBorn,_lifeDied);
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
 
@@ -1573,8 +1734,10 @@ async function buildCity(geojson){
       shininess:MATS[mat].shininess,
       specular:mat==='iron'?CONFIG.building.wallSpecular.iron:CONFIG.building.wallSpecular.default,  // iron gets slight metallic specular
     });
+    tagMaterialForLifespan(wMat);
     wallMaterials[mat]=wMat;
     const wMesh=new THREE.Mesh(wMerged,wMat);
+    wMesh.customDepthMaterial=makeLifespanDepthMaterial();
     wallMeshes[mat]=wMesh;
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
@@ -1591,8 +1754,10 @@ async function buildCity(geojson){
       if(!rMerged){console.warn(`Roof merge failed for material "${mat}" — skipping mesh (mismatched geometry attributes).`);continue;}
       const summerCol=roofColor(MATS[mat].color);
       const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:CONFIG.building.roofSpecular,side:THREE.DoubleSide});
+      tagMaterialForLifespan(rMat);
       if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
       const rMesh=new THREE.Mesh(rMerged,rMat);
+      rMesh.customDepthMaterial=makeLifespanDepthMaterial();
       rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
     }
   }
@@ -1603,8 +1768,10 @@ async function buildCity(geojson){
     const lMat=new THREE.MeshPhongMaterial({
       vertexColors:true, shininess:MATS.lumber.shininess, specular:CONFIG.building.fenceSpecular,
     });
+    tagMaterialForLifespan(lMat);
     wallMaterials['lumber']=lMat;
     const lMesh=new THREE.Mesh(lMerged,lMat);
+    lMesh.customDepthMaterial=makeLifespanDepthMaterial();
     lMesh.castShadow=true;lMesh.receiveShadow=true;
     group.add(lMesh);
   }
@@ -1614,19 +1781,27 @@ async function buildCity(geojson){
     setProgress(74,'Merging parapets…');await tick();
     const pMerged=mergeGeometries(parapetGeos,false);
     for(const g of parapetGeos)g.dispose();
-    const pMesh=new THREE.Mesh(pMerged,new THREE.MeshPhongMaterial({
+    const pMat=new THREE.MeshPhongMaterial({
       vertexColors:true,shininess:MATS.brick.shininess,specular:CONFIG.building.parapetSpecular.brick,
       side:THREE.DoubleSide,
-    }));    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
+    });
+    tagMaterialForLifespan(pMat);
+    const pMesh=new THREE.Mesh(pMerged,pMat);
+    pMesh.customDepthMaterial=makeLifespanDepthMaterial();
+    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
   }
   if(stoneParapetGeos.length>0){
     setProgress(74,'Merging stone parapets…');await tick();
     const spMerged=mergeGeometries(stoneParapetGeos,false);
     for(const g of stoneParapetGeos)g.dispose();
-    const spMesh=new THREE.Mesh(spMerged,new THREE.MeshPhongMaterial({
+    const spMat=new THREE.MeshPhongMaterial({
       vertexColors:true,shininess:MATS.stone.shininess,specular:CONFIG.building.parapetSpecular.stone,
       side:THREE.DoubleSide,
-    }));    spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
+    });
+    tagMaterialForLifespan(spMat);
+    const spMesh=new THREE.Mesh(spMerged,spMat);
+    spMesh.customDepthMaterial=makeLifespanDepthMaterial();
+    spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
   }
 
   // ── Tar paper / gravel flat roof cap ──────────────────────────────
@@ -1635,6 +1810,7 @@ async function buildCity(geojson){
     const cMerged=mergeGeometries(roofCapGeos,false);
     for(const g of roofCapGeos)g.dispose();
     const cMat=new THREE.MeshLambertMaterial({color:CONFIG.building.roofCap.tarPaperColor,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+    tagMaterialForLifespan(cMat);
     seasonalMats.push({mat3:cMat,summerCol:CONFIG.building.roofCap.tarPaperColor,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
     const cMesh=new THREE.Mesh(cMerged,cMat);
     cMesh.receiveShadow=true;group.add(cMesh);
@@ -1645,9 +1821,12 @@ async function buildCity(geojson){
     setProgress(75,'Merging chimneys…');await tick();
     const cMerged=mergeGeometries(chimneyStackGeos,false);
     for(const g of chimneyStackGeos)g.dispose();
-    const cMesh=new THREE.Mesh(cMerged,new THREE.MeshPhongMaterial({
+    const chimMat=new THREE.MeshPhongMaterial({
       vertexColors:true, shininess:8, specular:0x111111,
-    }));
+    });
+    tagMaterialForLifespan(chimMat);
+    const cMesh=new THREE.Mesh(cMerged,chimMat);
+    cMesh.customDepthMaterial=makeLifespanDepthMaterial();
     cMesh.castShadow=true; cMesh.receiveShadow=true;
     group.add(cMesh);
     console.log(`Chimneys: ${chimneyStackGeos.length} stacks, ${chimneyEmitters.filter(e=>e.year===year).length} emitters`);
@@ -1666,6 +1845,7 @@ async function buildCity(geojson){
         polygonOffsetFactor:-6,   // more negative than roads(-2), tracks(-3), rails(-4) → always on top
         polygonOffsetUnits:-6,
       });
+      tagMaterialForLifespan(wkMat);
       const wkMesh=new THREE.Mesh(wkMerged,wkMat);
       wkMesh.receiveShadow=true;
       group.add(wkMesh);
@@ -1677,6 +1857,7 @@ async function buildCity(geojson){
     setProgress(96,'Adding windows…');await tick();
     const gGeom=new THREE.BufferGeometry();
     gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
+    gGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(new Float32Array(glassLifespan),2));
     gGeom.computeVertexNormals();
     const gMesh=new THREE.Mesh(gGeom,glassMat);
     gMesh.renderOrder=1;   // draw after opaque walls
@@ -1697,7 +1878,8 @@ async function buildRoads(geojson){
     for(const obj of toRemove){obj.geometry.dispose();scene.remove(obj);}
     roadMatRef=null;
   }
-  if(railMesh){railMesh.geometry.dispose();scene.remove(railMesh);railMesh=null;}
+  for(const{mesh}of streetcarRailMeshes){mesh.geometry.dispose();scene.remove(mesh);}
+  streetcarRailMeshes=[];
   if(cartTrackMesh){cartTrackMesh.geometry.dispose();scene.remove(cartTrackMesh);cartTrackMesh=null;}
   const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[];
 
@@ -1773,10 +1955,9 @@ async function buildRoads(geojson){
         const mx=(x1+x2)/2, mz=(z1+z2)/2;
         if(!isSegmentVisible(stName,mx,mz))continue;
         const pxu=(-dz/len),pzu=(dx/len);
-        // Lift road slightly above terrain at both endpoints; use mean so the
+        // Lift road slightly above terrain; use each chunk's own mean so the
         // quad sits flush rather than twisting on sloped ground.
         const ROAD_LIFT = 0.18;
-        const y = (sampleTerrainY(x1,z1) + sampleTerrainY(x2,z2)) * 0.5 + ROAD_LIFT;
         // 3 lateral strips: outer-dry → inner-dry → centre-wet
         // Lateral offsets as fractions of half-width: ±1=edge, ±0.35=inner, 0=centre
         const strips=[
@@ -1785,26 +1966,33 @@ async function buildRoads(geojson){
           [0.0, -0.35],  // centre to left inner (wet→inner)
           [-0.35,-1.0],  // left shoulder (inner→dry)
         ];
-        for(const[tA,tB]of strips){
-          const ax1=x1+pxu*tA*(w*0.5), az1=z1+pzu*tA*(w*0.5);
-          const bx1=x1+pxu*tB*(w*0.5), bz1=z1+pzu*tB*(w*0.5);
-          const ax2=x2+pxu*tA*(w*0.5), az2=z2+pzu*tA*(w*0.5);
-          const bx2=x2+pxu*tB*(w*0.5), bz2=z2+pzu*tB*(w*0.5);
-          // 6 verts: two triangles per strip quad
-          pos.push(ax1,y,az1, ax2,y,az2, bx1,y,bz1,
-                   ax2,y,az2, bx2,y,bz2, bx1,y,bz1);
-          // Vertex colours: lerp dry→wet based on lateral position
-      // MeshLambertMaterial: target sRGB ~0x55 edge (dark charcoal), ~0x30 centre (dark mud).
-      // Under scene lighting (~1.42x at noon): linear = pow(sRGB/255,2.2)/1.42
-      // 0x55→pow(0.333,2.2)/1.42≈0.072 edge; 0x30→pow(0.188,2.2)/1.42≈0.021 centre
-      for(const t of[tA,tA,tB, tA,tB,tB]){
-        const f=Math.abs(t);
-        col.push(
-          0.072*f + 0.021*(1-f),
-          0.065*f + 0.018*(1-f),
-          0.058*f + 0.016*(1-f)
-        );
-      }
+        const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
+        for(let c=0;c<chunks;c++){
+          const ct0=c/chunks, ct1=(c+1)/chunks;
+          const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
+          const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
+          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+ROAD_LIFT;
+          for(const[tA,tB]of strips){
+            const ax1=cx1+pxu*tA*(w*0.5), az1=cz1+pzu*tA*(w*0.5);
+            const bx1=cx1+pxu*tB*(w*0.5), bz1=cz1+pzu*tB*(w*0.5);
+            const ax2=cx2+pxu*tA*(w*0.5), az2=cz2+pzu*tA*(w*0.5);
+            const bx2=cx2+pxu*tB*(w*0.5), bz2=cz2+pzu*tB*(w*0.5);
+            // 6 verts: two triangles per strip quad
+            pos.push(ax1,y,az1, ax2,y,az2, bx1,y,bz1,
+                     ax2,y,az2, bx2,y,bz2, bx1,y,bz1);
+            // Vertex colours: lerp dry→wet based on lateral position
+        // MeshLambertMaterial: target sRGB ~0x55 edge (dark charcoal), ~0x30 centre (dark mud).
+        // Under scene lighting (~1.42x at noon): linear = pow(sRGB/255,2.2)/1.42
+        // 0x55→pow(0.333,2.2)/1.42≈0.072 edge; 0x30→pow(0.188,2.2)/1.42≈0.021 centre
+        for(const t of[tA,tA,tB, tA,tB,tB]){
+          const f=Math.abs(t);
+          col.push(
+            0.072*f + 0.021*(1-f),
+            0.065*f + 0.018*(1-f),
+            0.058*f + 0.016*(1-f)
+          );
+        }
+          }
         }
       }
     }
@@ -1839,15 +2027,21 @@ async function buildRoads(geojson){
         if(len<0.1)continue;
         if(!isSegmentVisible(stName,(x1+x2)/2,(z1+z2)/2))continue;
         const px=(-dz/len),pz=(dx/len);
-        const y=(sampleTerrainY(x1,z1)+sampleTerrainY(x2,z2))*0.5+0.20;
-        // Two ruts (left and right of centre)
-        for(const sign of[-1,1]){
-          const ox=px*sign*TG,oz=pz*sign*TG;
-          const hx=px*(TW/2),hz=pz*(TW/2);
-          trackPos.push(
-            x1+ox+hx,y,z1+oz+hz,  x2+ox+hx,y,z2+oz+hz,  x1+ox-hx,y,z1+oz-hz,
-            x2+ox+hx,y,z2+oz+hz,  x2+ox-hx,y,z2+oz-hz,  x1+ox-hx,y,z1+oz-hz
-          );
+        const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
+        for(let c=0;c<chunks;c++){
+          const ct0=c/chunks, ct1=(c+1)/chunks;
+          const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
+          const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
+          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+0.20;
+          // Two ruts (left and right of centre)
+          for(const sign of[-1,1]){
+            const ox=px*sign*TG,oz=pz*sign*TG;
+            const hx=px*(TW/2),hz=pz*(TW/2);
+            trackPos.push(
+              cx1+ox+hx,y,cz1+oz+hz,  cx2+ox+hx,y,cz2+oz+hz,  cx1+ox-hx,y,cz1+oz-hz,
+              cx2+ox+hx,y,cz2+oz+hz,  cx2+ox-hx,y,cz2+oz-hz,  cx1+ox-hx,y,cz1+oz-hz
+            );
+          }
         }
       }
     }
@@ -1866,19 +2060,28 @@ async function buildRoads(geojson){
     scene.add(cartTrackMesh);
   }
 
-  // ── Streetcar rails — Portage and Main only ─────────────────────
+  // ── Streetcar rails — one route per streetcar_start year bucket ──────
+  // Every feature tagged with streetcar_start (see data/wpg_roads_streetcar.geojson
+  // / add_streetcar_dates.py) gets a rail mesh, not just Portage/Main — this
+  // used to be hardcoded to those two streets before the other 27 routes were
+  // matched. Segments are grouped into one BufferGeometry per distinct
+  // streetcar_start year so tickStreetcars can toggle each bucket's
+  // visibility independently as currentViewDate crosses that year (mirrors
+  // the per-car startYear gating already used for the moving streetcar meshes).
   // Standard gauge: 1.435m → half-gauge 0.7175m from centreline.
   // Up ≠ N: offsets in world XZ. Rail Y slightly above road surface.
   // Two lanes of traffic share centreline; each direction offset by STREETCAR_LANE.
   // Rails run along the centreline of each lane (one pair per direction).
-  const railPos=[];
   const RAIL_W=CONFIG.rail.railHeadWidth;
   const RAIL_H=CONFIG.rail.railHeight;
   const RAIL_GAUGE=CONFIG.rail.gaugeHalfWidth;
   const RAIL_LANE=STREETCAR_LANE; // match streetcar lane offset
+  const railBuckets=new Map(); // streetcar_start year -> flat vertex array
   for(const feat of geojson.features){
-    const stName=feat.properties.st_name||'';
-    if(stName!=='Portage'&&stName!=='Main') continue;
+    const startYear=feat.properties.streetcar_start;
+    if(startYear==null) continue;
+    let railPos=railBuckets.get(startYear);
+    if(!railPos){railPos=[];railBuckets.set(startYear,railPos);}
     for(const line of feat.geometry.coordinates){
       for(let i=0;i<line.length-1;i++){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
@@ -1889,39 +2092,50 @@ async function buildRoads(geojson){
         if(len<0.1)continue;
         // Perpendicular unit vector (Up ≠ N: XZ only)
         const px=-dz/len, pz=dx/len;
-        const y=(sampleTerrainY(x1,z1)+sampleTerrainY(x2,z2))*0.5+0.18+RAIL_H;
-        // Two track lanes (one per direction), each with two rails
-        for(const laneSign of[-1,1]){          // -1=one dir, +1=other
-          const lx=px*RAIL_LANE*laneSign;
-          const lz=pz*RAIL_LANE*laneSign;
-          for(const railSign of[-1,1]){        // inner and outer rail of each pair
-            const rx=px*(RAIL_GAUGE*railSign);
-            const rz=pz*(RAIL_GAUGE*railSign);
-            const hx=px*(RAIL_W/2), hz=pz*(RAIL_W/2);
-            const ox=lx+rx, oz=lz+rz;
-            railPos.push(
-              x1+ox+hx,y,z1+oz+hz,  x2+ox+hx,y,z2+oz+hz,  x1+ox-hx,y,z1+oz-hz,
-              x2+ox+hx,y,z2+oz+hz,  x2+ox-hx,y,z2+oz-hz,  x1+ox-hx,y,z1+oz-hz
-            );
+        const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
+        for(let c=0;c<chunks;c++){
+          const ct0=c/chunks, ct1=(c+1)/chunks;
+          const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
+          const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
+          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+0.18+RAIL_H;
+          // Two track lanes (one per direction), each with two rails
+          for(const laneSign of[-1,1]){          // -1=one dir, +1=other
+            const lx=px*RAIL_LANE*laneSign;
+            const lz=pz*RAIL_LANE*laneSign;
+            for(const railSign of[-1,1]){        // inner and outer rail of each pair
+              const rx=px*(RAIL_GAUGE*railSign);
+              const rz=pz*(RAIL_GAUGE*railSign);
+              const hx=px*(RAIL_W/2), hz=pz*(RAIL_W/2);
+              const ox=lx+rx, oz=lz+rz;
+              railPos.push(
+                cx1+ox+hx,y,cz1+oz+hz,  cx2+ox+hx,y,cz2+oz+hz,  cx1+ox-hx,y,cz1+oz-hz,
+                cx2+ox+hx,y,cz2+oz+hz,  cx2+ox-hx,y,cz2+oz-hz,  cx1+ox-hx,y,cz1+oz-hz
+              );
+            }
           }
         }
       }
     }
   }
-  if(railPos.length>0){
+  let railSegTotal=0;
+  for(const[startYear,railPos]of railBuckets){
+    if(railPos.length===0)continue;
     const rGeom=new THREE.BufferGeometry();
     rGeom.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     rGeom.computeVertexNormals();
-    railMesh=new THREE.Mesh(rGeom,new THREE.MeshPhongMaterial({
+    const mesh=new THREE.Mesh(rGeom,new THREE.MeshPhongMaterial({
       color:CONFIG.rail.streetcarRailColor,shininess:40,specular:CONFIG.rail.streetcarRailSpecular,
       polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4
     }));
-    railMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
-    railMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
-    railMesh.receiveShadow=true;
-    scene.add(railMesh);
-    console.log(`Rails: ${railPos.length/18} segments`);
+    mesh.position.x=CONFIG.scene?.buildingOffsetX??0;
+    mesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
+    mesh.receiveShadow=true;
+    mesh.visible=false; // corrected every frame in tickStreetcars once the date is known
+    scene.add(mesh);
+    streetcarRailMeshes.push({year:startYear,mesh});
+    railSegTotal+=railPos.length/18;
   }
+  console.log(`Streetcar rails: ${streetcarRailMeshes.length} year-buckets, ${railSegTotal} segments`);
 }
 
 // ── Water / Terrain channel ────────────────────────────────────────
@@ -2702,8 +2916,142 @@ function exitFPS(){
   document.getElementById('crosshair').style.display='none';
   document.getElementById('mode-badge').textContent='Overview';
   document.getElementById('fps-hint').style.display='none';
+  document.getElementById('pointer-lock-hint').style.display='none';
 }
-if(!isMobile)document.addEventListener('pointerlockchange',()=>{if(!document.pointerLockElement&&fpsMode)exitFPS();});
+if(!isMobile)document.addEventListener('pointerlockchange',()=>{
+  if(document.pointerLockElement===renderer.domElement){
+    document.getElementById('pointer-lock-hint').style.display='none';
+  }else if(fpsMode){
+    exitFPS();
+  }
+});
+// A camera placed via URL params (applyCameraFromURL) starts in FPS mode
+// without pointer lock — browsers require a real user gesture for that, so
+// the request made at load time silently fails. This retries it on the
+// first actual click, which is what the on-screen hint tells you to do.
+if(!isMobile)renderer.domElement.addEventListener('click',()=>{
+  if(fpsMode&&document.pointerLockElement!==renderer.domElement){
+    renderer.domElement.requestPointerLock();
+  }
+});
+
+// ── Camera start position via URL query params ──────────────────────
+// ?lon=&lat=&az=&elev=&alt= — deep-links a specific viewpoint instead of
+// the default overview. All optional; the camera is only touched if at
+// least one is present, so a plain URL behaves exactly as before.
+//   lon,lat — geographic location (same lon/lat convention as project())
+//   az      — compass azimuth in degrees the camera faces (0=N, 90=E, ...)
+//   elev    — look elevation angle in degrees, + = up, − = down (0 = level)
+//   alt     — camera height in metres above the terrain at that point
+// Drops the camera straight into FPS/walk mode at that exact pose — no
+// falling-in animation, the given altitude is taken literally. Pointer
+// lock (mouse-look) needs a real user gesture, so on load it just quietly
+// waits for the first click rather than erroring.
+function applyCameraFromURL(){
+  const params=new URLSearchParams(location.search);
+  const hasLoc=params.has('lon')&&params.has('lat');
+  const hasAz=params.has('az'), hasElev=params.has('elev'), hasAlt=params.has('alt');
+  if(!hasLoc&&!hasAz&&!hasElev&&!hasAlt) return false;
+
+  const lon=hasLoc?parseFloat(params.get('lon')):_slon;
+  const lat=hasLoc?parseFloat(params.get('lat')):_slat;
+  const azDeg=hasAz?parseFloat(params.get('az')):255;
+  const elevDeg=hasElev?parseFloat(params.get('elev')):0;
+  const alt=hasAlt?parseFloat(params.get('alt')):EYE_H;
+
+  const[sx,sy]=project(lon,lat);
+  const wx=sx, wz=-sy;
+  const groundY=sampleTerrainY(wx,wz);
+
+  yaw=-azDeg*Math.PI/180;
+  pitch=elevDeg*Math.PI/180;
+  camera.position.set(wx, groundY+alt, wz);
+  const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
+  const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pitch);
+  camera.quaternion.copy(qYaw).multiply(qPitch);
+
+  fpsMode=true; orbit.enabled=false;
+  fpsGrounded=alt<=EYE_H+0.5;
+  document.getElementById('crosshair').style.display=isMobile?'none':'flex';
+  document.getElementById('mode-badge').textContent='Walk Mode';
+  document.getElementById('fps-hint').style.display='block';
+  document.getElementById('info-panel').style.display='none';
+  if(isMobile) showTouchControls();
+  else{
+    try{renderer.domElement.requestPointerLock();}catch(e){}
+    // Fails silently — no user gesture at load time — so mouse-look isn't
+    // actually live yet. Tell them how to get it (click) or bail to
+    // Overview (Esc); the click handler below is what makes clicking work.
+    document.getElementById('pointer-lock-hint').style.display='block';
+  }
+  return true;
+}
+
+// ── Date/time via URL query params ───────────────────────────────────
+// ?year=&month=&day=&hours=&minutes= — same "only touch what's given"
+// rule as applyCameraFromURL(). You can give just `year` and everything
+// else (month/day/hours/minutes) falls back to the app's own normal
+// startup defaults (CONFIG.timeline.startDate + CONFIG.start.timeOfDay) —
+// so e.g. ?year=1920 alone lands on July 1, 1920 at the usual ~11:34am
+// light, with only the year actually overridden.
+function applyDateFromURL(){
+  const params=new URLSearchParams(location.search);
+  const has=k=>params.has(k);
+  if(!has('year')&&!has('month')&&!has('day')&&!has('hours')&&!has('minutes')) return false;
+
+  const defaultDate=parseLocalISODate(CONFIG.timeline.startDate);
+  const defaultHM=todFractionToHM(CONFIG.start.timeOfDay);
+
+  let year=has('year')?parseInt(params.get('year'),10):defaultDate.getFullYear();
+  year=Math.max(TIMELINE_MIN_YEAR,Math.min(TIMELINE_MAX_YEAR,year));
+  const month  =has('month')  ?Math.max(1,Math.min(12,parseInt(params.get('month'),10)))  :defaultDate.getMonth()+1;
+  const day    =has('day')    ?Math.max(1,Math.min(31,parseInt(params.get('day'),10)))     :defaultDate.getDate();
+  const hours  =has('hours')  ?Math.max(0,Math.min(23,parseInt(params.get('hours'),10)))   :defaultHM.hours;
+  const minutes=has('minutes')?Math.max(0,Math.min(59,parseInt(params.get('minutes'),10))) :defaultHM.minutes;
+
+  setCurrentViewDate(new Date(year,month-1,day),'day');
+
+  const todFrac=hmToTodFraction(hours,minutes);
+  const todSlider=document.getElementById('tod-slider');
+  if(todSlider) todSlider.value=todFrac;
+  setTimeOfDay(todFrac);
+  return true;
+}
+
+// ── Copy current camera as a ?lon=&lat=&az=&elev=&alt=&year=&month=&day=&hours=&minutes= link ──────────
+// Inverse of applyCameraFromURL() above — reads the live camera (works in
+// both orbit and FPS mode, since camera.quaternion is always current) and
+// builds the matching query string, so "frame a shot, hit C, paste the
+// link" round-trips exactly.
+let _copyCameraToastTimer=null;
+function copyCameraToClipboard(){
+  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
+  const azDeg=((Math.atan2(fwd.x,-fwd.z)*180/Math.PI)+360)%360;
+  const elevDeg=Math.asin(Math.max(-1,Math.min(1,fwd.y)))*180/Math.PI;
+  const[lon,lat]=unproject(camera.position.x,camera.position.z);
+  const alt=camera.position.y-sampleTerrainY(camera.position.x,camera.position.z);
+
+  const year=currentViewDate.getFullYear(), month=currentViewDate.getMonth()+1, day=currentViewDate.getDate();
+  const{hours,minutes}=todFractionToHM(currentTodFraction);
+
+  const qs=`lon=${lon.toFixed(6)}&lat=${lat.toFixed(6)}&az=${azDeg.toFixed(1)}&elev=${elevDeg.toFixed(1)}&alt=${alt.toFixed(1)}`
+         +`&year=${year}&month=${month}&day=${day}&hours=${hours}&minutes=${minutes}`;
+  const url=`${location.origin}${location.pathname}?${qs}`;
+  console.log('📷 Camera link:',url);
+
+  const announce=msg=>{
+    showToast(msg);
+    clearTimeout(_copyCameraToastTimer);
+    _copyCameraToastTimer=setTimeout(()=>showToast(''),2200);
+  };
+  if(navigator.clipboard?.writeText){
+    navigator.clipboard.writeText(url)
+      .then(()=>announce('Camera link copied to clipboard'))
+      .catch(()=>announce('Clipboard blocked — link logged to console (F12)'));
+  }else{
+    announce('Clipboard unavailable — link logged to console (F12)');
+  }
+}
 
 // ── Mobile touch controls (runtime) ─────────────────────────────────────────
 const joyVec={x:0,y:0};
@@ -2835,6 +3183,7 @@ window.addEventListener('keydown',e=>{
     orbit.update();
   }
   if(e.code==='KeyM'&&!fpsMode)toggleMinimap();
+  if(e.code==='KeyC'&&document.activeElement?.tagName!=='INPUT')copyCameraToClipboard();
   initAudio();
 });
 window.addEventListener('keyup',e=>{keys[e.code]=false;sprinting=e.shiftKey;});
@@ -3006,6 +3355,119 @@ function tickTrainAudio(dt){
 
 // ── Render loop ────────────────────────────────────────────────────
 let lastTime=performance.now();
+
+// ── Timeline / date system ───────────────────────────────────────────
+// `currentViewDate` is the single source of truth for "what date is being
+// viewed", driving the top-of-screen scrubber. It's a plain local-time
+// Date — all reads/writes below use local getters (getFullYear/getMonth/
+// getDate), never the UTC variants or `new Date(isoString)`, so the value
+// showing on screen always matches the value other systems compare
+// against (an ISO-string round-trip would shift by a day in negative-UTC
+// timezones). Read by the streetcar-line overlay right now; buildings
+// with born/died year fields can hook in the same way later (see TODO in
+// setCurrentViewDate).
+const TIMELINE_MIN_YEAR = CONFIG.timeline.minYear;
+const TIMELINE_MAX_YEAR = CONFIG.timeline.maxYear;
+const QUARTER_SEASON_NAMES = ['Winter','Spring','Summer','Fall']; // Jan-Mar, Apr-Jun, Jul-Sep, Oct-Dec
+
+function parseLocalISODate(iso){
+  const[y,m,d]=iso.split('-').map(Number);
+  return new Date(y,(m||1)-1,d||1);
+}
+
+let currentViewDate = parseLocalISODate(CONFIG.timeline.startDate);
+window.currentViewDate = currentViewDate;
+buildingYearUniform.value = currentViewDate.getFullYear(); // supersede the placeholder default above
+let dateResolutionMode = 'quarter';  // 'quarter' (slider-driven) | 'day' (date-picker-driven) — controls label format only
+let timelinePlaying = false;
+
+function dateToQuarterUnit(date){
+  const q  = Math.floor(date.getMonth()/3);
+  const yr = Math.max(TIMELINE_MIN_YEAR, Math.min(TIMELINE_MAX_YEAR, date.getFullYear()));
+  return (yr-TIMELINE_MIN_YEAR)*4 + q;
+}
+function quarterUnitToDate(unit){
+  const yr = TIMELINE_MIN_YEAR + Math.floor(unit/4);
+  const q  = ((unit%4)+4)%4;
+  return new Date(yr, q*3, 1);
+}
+function isoLocal(date){
+  const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+function formatDateLabel(date, mode){
+  if(mode==='quarter'){
+    return `${QUARTER_SEASON_NAMES[Math.floor(date.getMonth()/3)]} ${date.getFullYear()}`;
+  }
+  return date.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+}
+
+function updateDateUI(){
+  const label=document.getElementById('date-display');
+  if(label) label.textContent=formatDateLabel(currentViewDate,dateResolutionMode);
+  const slider=document.getElementById('date-slider');
+  if(slider) slider.value=String(dateToQuarterUnit(currentViewDate));
+  const picker=document.getElementById('date-picker');
+  if(picker){
+    const iso=isoLocal(currentViewDate);
+    if(picker.value!==iso) picker.value=iso;
+  }
+}
+
+function setCurrentViewDate(date, mode){
+  currentViewDate=date;
+  window.currentViewDate=date;
+  if(mode) dateResolutionMode=mode;
+  updateDateUI();
+  // Streetcars/carts read currentViewDate directly every render-loop tick
+  // (see tickStreetcars/tickCarts) — no explicit notify needed here.
+  // Buildings: a single shared shader uniform — every tagged building
+  // material discards fragments outside [born,died) against this value, so
+  // buildings pop in/out instantly with no geometry rebuild (see the
+  // design note above buildCity() / tagMaterialForLifespan()).
+  buildingYearUniform.value = date.getFullYear();
+}
+
+let dateControlWired=false;
+function initDateControl(){
+  document.getElementById('date-control').style.display='flex';
+  if(dateControlWired) { updateDateUI(); return; }
+  dateControlWired=true;
+
+  const slider=document.getElementById('date-slider');
+  slider.min='0'; slider.max=String((TIMELINE_MAX_YEAR-TIMELINE_MIN_YEAR)*4+3);
+  slider.addEventListener('input',()=>{
+    setCurrentViewDate(quarterUnitToDate(parseInt(slider.value,10)),'quarter');
+  });
+
+  const picker=document.getElementById('date-picker');
+  picker.min=`${TIMELINE_MIN_YEAR}-01-01`; picker.max=`${TIMELINE_MAX_YEAR}-12-31`;
+  picker.addEventListener('input',()=>{
+    if(!picker.value)return;
+    setCurrentViewDate(parseLocalISODate(picker.value),'day');
+  });
+
+  const playBtn=document.getElementById('timeline-play-btn');
+  playBtn.addEventListener('click',()=>{
+    timelinePlaying=!timelinePlaying;
+    playBtn.textContent=timelinePlaying?'⏸':'▶';
+  });
+
+  updateDateUI();
+}
+
+// Advances currentViewDate while the ▶ button is active. A simple linear
+// time-lapse (speed tunable via CONFIG.timeline.playSpeedDaysPerSecond) —
+// deliberately basic; refine here if/when real time-lapse playback design
+// (easing, per-era pacing, etc.) is settled.
+function tickTimeline(dt){
+  if(!timelinePlaying) return;
+  const d=new Date(currentViewDate);
+  d.setDate(d.getDate()+dt*CONFIG.timeline.playSpeedDaysPerSecond);
+  if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
+  setCurrentViewDate(d,dateResolutionMode);
+}
+
 // ── Streetcar traffic system ────────────────────────────────────────
 // Up ≠ N: all waypoints are world XZ (X=east, Z=south).
 
@@ -3018,7 +3480,7 @@ const ROUTE_CLIPS = {
   'Main':    CONFIG.streetcars.routeClips.Main,
 };
 
-const STREETCAR_MIN_YEAR = CONFIG.streetcars.electrificationYear;
+const STREETCAR_MIN_YEAR = CONFIG.streetcars.electrificationYear; // carts (below) vanish at this year — a global "streetcar era begins" marker, separate from any one route's own streetcar_start
 
 function seededRand(seed){ const x=Math.sin(seed+1)*43758.5453123; return x-Math.floor(x); }
 
@@ -3170,7 +3632,7 @@ function buildStreetcarGroup(){
   return{group};
 }
 
-function spawnStreetcars(route, count, dir, routeIdx){
+function spawnStreetcars(route, count, dir, routeIdx, startYear){
   for(let i=0;i<count;i++){
     const{group}=buildStreetcarGroup();
     scene.add(group);
@@ -3180,7 +3642,7 @@ function spawnStreetcars(route, count, dir, routeIdx){
     const tOffset=dir>0?tBase:(tBase+0.5/count)%1;
     const speedMult=0.85+seededRand(seed+0.5)*0.30;
     const bellInterval=15+seededRand(seed+1)*30;
-    streetcarMeshes.push({mesh:group,route,dir,t:tOffset,speedMult,bellTimer:seededRand(seed+2)*bellInterval,bellInterval});
+    streetcarMeshes.push({mesh:group,route,dir,t:tOffset,speedMult,bellTimer:seededRand(seed+2)*bellInterval,bellInterval,startYear});
   }
 }
 
@@ -3307,10 +3769,15 @@ function initCarts(roadGJ){
 
 function tickCarts(dt){
   if(!cartMeshes.length) return;
-  // Carts only visible in pre-electric era (< STREETCAR_MIN_YEAR)
-  // They exist in all eras really but we suppress in 1906 for simplicity
-  const layerYear=parseInt(activeLayer)||9999;
-  const showCarts=layerYear<STREETCAR_MIN_YEAR;
+  // Carts only visible in the pre-electric era (< STREETCAR_MIN_YEAR), driven
+  // by the same date scrubber as everything else now. They exist in all eras
+  // really but we suppress them once electric streetcars take over, for
+  // simplicity. NOTE: Main/Portage actually ran HORSE-drawn streetcars
+  // 1882-1891 (see streetcar_start in data/wpg_roads_streetcar.geojson) —
+  // between those years both carts and the (visually electric-styled)
+  // streetcar model can appear together; we don't have a horsecar mesh to
+  // render that distinction accurately, so this is an accepted simplification.
+  const showCarts=currentViewDate.getFullYear()<STREETCAR_MIN_YEAR;
   const _cOffX=CONFIG.scene?.buildingOffsetX??0, _cOffZ=CONFIG.scene?.buildingOffsetZ??0;
   for(const cart of cartMeshes){
     cart.mesh.visible=showCarts;
@@ -3328,26 +3795,57 @@ function tickCarts(dt){
 }
 
 function initStreetcars(roadGJ){
-  const routeDefs=[['Portage',0],['Main',1]];
-  for(const[name,idx]of routeDefs){
+  // One route per road name tagged with a streetcar_start year (see
+  // add_streetcar_dates.py / data/wpg_roads_streetcar.geojson) — Portage and
+  // Main keep their historically-dense headway (unchanged from before);
+  // every other matched route gets a much sparser fixed car count, since the
+  // 29+ routes combined span well over 100km and the dense per-length
+  // formula would spawn 1000+ additional cars citywide (unplayable frame
+  // rate). Tune via CONFIG.streetcars.minorRouteCarsPerDirection for denser
+  // coverage.
+  //
+  // streetcar_start is now tagged per ROAD SEGMENT (a street was often built
+  // out in stages, years apart — see add_streetcar_dates.py), not uniformly
+  // per street. Cars still travel the whole stitched route (not just the
+  // segment that opened first) — per the project owner, a short later
+  // extension is part of the same route, not a new one — so a route's cars
+  // appear from the EARLIEST year among its own segments, i.e. as soon as
+  // service reached ANY part of that named street. This means a car can
+  // visually run over a stretch that historically opened later than the
+  // route's start year; treated as an accepted simplification rather than
+  // dynamically growing each route's traversable length over time.
+  const routeYears=new Map(); // st_name -> earliest streetcar_start year across its segments
+  for(const feat of roadGJ.features){
+    const yr=feat.properties.streetcar_start;
+    if(yr==null) continue;
+    const name=feat.properties.st_name;
+    const existing=routeYears.get(name);
+    if(existing==null||yr<existing) routeYears.set(name,yr);
+  }
+  let idx=0;
+  for(const[name,startYear]of routeYears){
     const r=buildRouteWaypoints(roadGJ,name);
     if(!r||r.totalLen<10){console.warn(`Route "${name}" failed`);continue;}
-    console.log(`Route "${name}": ${r.pts.length} waypoints, ${r.totalLen.toFixed(0)}m`);
-    const carsPerDir=Math.max(2,Math.ceil(r.totalLen/(STREETCAR_SPEED*STREETCAR_INTERVAL)));
-    spawnStreetcars(r,carsPerDir,+1,idx);
-    spawnStreetcars(r,carsPerDir,-1,idx);
-    console.log(`Streetcars on ${name}: ${carsPerDir} each direction`);
+    const isMajor=name==='Portage'||name==='Main';
+    const carsPerDir=isMajor
+      ? Math.max(2,Math.ceil(r.totalLen/(STREETCAR_SPEED*STREETCAR_INTERVAL)))
+      : CONFIG.streetcars.minorRouteCarsPerDirection;
+    spawnStreetcars(r,carsPerDir,+1,idx,startYear);
+    spawnStreetcars(r,carsPerDir,-1,idx,startYear);
+    console.log(`Streetcars on ${name} (from ${startYear}): ${carsPerDir} each direction, ${r.totalLen.toFixed(0)}m`);
+    idx++;
   }
 }
 
 function tickStreetcars(dt){
-  // Streetcars and rails only exist from electrification year onward (Up ≠ N irrelevant here)
-  const layerYear=parseInt(activeLayer)||9999;
-  const preElectric=layerYear<STREETCAR_MIN_YEAR;
-  if(railMesh) railMesh.visible=!preElectric;
+  // Each car is visible once currentViewDate reaches its own route's
+  // streetcar_start year — no longer tied to the building-era layer toggle.
+  const yr=currentViewDate.getFullYear();
+  for(const{year,mesh}of streetcarRailMeshes) mesh.visible = yr>=year;
   for(const car of streetcarMeshes){
-    car.mesh.visible=!preElectric;
-    if(preElectric) continue;
+    const active = yr>=car.startYear;
+    car.mesh.visible=active;
+    if(!active) continue;
     const tStep=(STREETCAR_SPEED*car.speedMult*dt)/car.route.totalLen;
     car.t+=tStep*car.dir;
     if(car.t>=1){car.t=1-(car.t-1);car.dir*=-1;}
@@ -3435,20 +3933,29 @@ function buildRailTracks(geojson){
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.05)continue;
         const px=-dz/len,pz=dx/len;
-        const y=(sampleTerrainY(x1,z1)+sampleTerrainY(x2,z2))*0.5+0.16;
         const hx=px*(w/2),hz=pz*(w/2);
-        bedPos.push(x1+hx,y,z1+hz, x2+hx,y,z2+hz, x1-hx,y,z1-hz,
-                    x2+hx,y,z2+hz, x2-hx,y,z2-hz, x1-hx,y,z1-hz);
         const c=through?0.095:0.075;
-        for(let k=0;k<6;k++) bedCol.push(c,c*0.86,c*0.74);
-        const ry=y+RAIL_H;
-        for(const sign of[-1,1]){
-          const rx=px*GAUGE*sign, rz=pz*GAUGE*sign;
-          const rhx=px*(RAIL_W/2), rhz=pz*(RAIL_W/2);
-          railPos.push(
-            x1+rx+rhx,ry,z1+rz+rhz,  x2+rx+rhx,ry,z2+rz+rhz,  x1+rx-rhx,ry,z1+rz-rhz,
-            x2+rx+rhx,ry,z2+rz+rhz,  x2+rx-rhx,ry,z2+rz-rhz,  x1+rx-rhx,ry,z1+rz-rhz
-          );
+        const rhx=px*(RAIL_W/2), rhz=pz*(RAIL_W/2);
+        // Chop into ~10m chunks and resample terrain per chunk — through
+        // lines especially can run 100m+ between digitized vertices (see
+        // ROAD_SAMPLE_STEP note above sampleTerrainY).
+        const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
+        for(let cN=0;cN<chunks;cN++){
+          const ct0=cN/chunks, ct1=(cN+1)/chunks;
+          const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
+          const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
+          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+0.16;
+          bedPos.push(cx1+hx,y,cz1+hz, cx2+hx,y,cz2+hz, cx1-hx,y,cz1-hz,
+                      cx2+hx,y,cz2+hz, cx2-hx,y,cz2-hz, cx1-hx,y,cz1-hz);
+          for(let k=0;k<6;k++) bedCol.push(c,c*0.86,c*0.74);
+          const ry=y+RAIL_H;
+          for(const sign of[-1,1]){
+            const rx=px*GAUGE*sign, rz=pz*GAUGE*sign;
+            railPos.push(
+              cx1+rx+rhx,ry,cz1+rz+rhz,  cx2+rx+rhx,ry,cz2+rz+rhz,  cx1+rx-rhx,ry,cz1+rz-rhz,
+              cx2+rx+rhx,ry,cz2+rz+rhz,  cx2+rx-rhx,ry,cz2+rz-rhz,  cx1+rx-rhx,ry,cz1+rz-rhz
+            );
+          }
         }
       }
     }
@@ -3725,11 +4232,17 @@ function tickChimneySmoke(dt){
   }
 
   // Build sorted candidate list — visible emitters only, sorted by distance²
+  const _chimYr=currentViewDate.getFullYear();
   const cands=[];
   for(const e of chimneyEmitters){
     // Skip emitters whose layer is not currently visible
     const lg=layerGroups.find(l=>l.year===e.year);
     if(lg&&!lg.group.visible) continue;
+    // Skip emitters on a building that's hidden by the date scrubber
+    // (born/died) — a not-yet-built or already-demolished building
+    // shouldn't smoke, even though its (shader-hidden) chimney mesh still
+    // technically exists in the scene graph.
+    if(_chimYr<e.born||_chimYr>=e.died) continue;
     // Frustum cull — skip chimneys not in the camera's view
     _cv.set(e.wx,e.wy,e.wz);
     if(!_frustum.containsPoint(_cv)) continue;
@@ -4005,6 +4518,7 @@ function startLoop(){
     }else{orbit.update();updateHover();}
     tickStreetcars(dt);
     tickCarts(dt);
+    tickTimeline(dt);
     tickTrains(dt);
     tickTrainAudio(dt);
     tickChimneySmoke(dt);
@@ -4076,10 +4590,18 @@ function buildLayerBar(){
     bar.appendChild(btn);
   }
 
+  // Single-year layers get a representative date so date-driven systems
+  // (streetcars, carts, building born/died) match what you're looking at —
+  // e.g. clicking "1880" without this would leave 1906-era streetcars
+  // running over the 1880 buildings. "1880 & 1906" and "Combined" aren't a
+  // single point in time, so clicking those leaves the date untouched.
+  const LAYER_REPRESENTATIVE_DATE = { '1880': [1880,0,1], '1906': [1906,6,1] };
   bar.addEventListener('click',e=>{
     const btn=e.target.closest('button');if(!btn)return;
     activeLayer=btn.dataset.layer;
     applyVisibility();
+    const repDate=LAYER_REPRESENTATIVE_DATE[activeLayer];
+    if(repDate) setCurrentViewDate(new Date(...repDate),'day');
     for(const b of bar.querySelectorAll('button')){
       b.style.cssText=btnStyle+(b.dataset.layer===activeLayer?activeStyle:inactiveStyle);
     }
@@ -4299,8 +4821,11 @@ function rebuildGlassMesh(layerEntry){
 
   // Re-collect glass verts using same logic as buildCity
   const glassVerts=[];
+  const glassLifespan=[];  // parallel [born,died] per glass vertex — see tagLifespan()/buildCity()
   for(const feat of geojson.features){
     const props=feat.properties;
+    const _lifeBorn=parseYearOrSentinel(props.born,NO_BORN), _lifeDied=parseYearOrSentinel(props.died,NO_DIED);
+    const _glassOuterStart0=glassVerts.length;
     const mat=MATS[props.material]?props.material:'unknown';
     const floors=props.floors??1, isPlatform=floors<=0.2;
     const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
@@ -4396,11 +4921,13 @@ function rebuildGlassMesh(layerEntry){
         for(let _gi=_rbGlassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=_rbBaseY;
       }
     }
+    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++) glassLifespan.push(_lifeBorn,_lifeDied);
   }
 
   if(glassVerts.length>0){
     const gGeom=new THREE.BufferGeometry();
     gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
+    gGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(new Float32Array(glassLifespan),2));
     gGeom.computeVertexNormals();
     const gMesh=new THREE.Mesh(gGeom,glassMat);
     gMesh.renderOrder=1;
@@ -4592,6 +5119,7 @@ async function loadFiles(fileList){
   const todSlider=document.getElementById('tod-slider');
   todSlider.value=CONFIG.start.timeOfDay;
   todSlider.addEventListener('input',()=>setTimeOfDay(parseFloat(todSlider.value)));
+  initDateControl();
   const sb=document.getElementById('stat-bar');sb.style.display='block';
   updateStatBar();startLoop();enableLiveDrops();
   buildChimneyPool();
@@ -4617,6 +5145,8 @@ async function loadFiles(fileList){
   // Store FPS yaw/pitch for when F is pressed — faces azimuth 255° (WSW)
   yaw   = -START_AZ;
   pitch = 0;
+  applyCameraFromURL();  // overrides the above if ?lon=/lat=/az=/elev=/alt= are present
+  applyDateFromURL();    // overrides the date/time of day if ?year=/month=/day=/hours=/minutes= are present
 }
 
 function setProgress(pct,msg){
@@ -4679,6 +5209,7 @@ renderer.render(scene,camera);
   document.getElementById('stat-bar').style.display='block';
   document.getElementById('tod-slider')
     .addEventListener('input',e=>setTimeOfDay(parseFloat(e.target.value)));
+  initDateControl();
   window.toggleWinter=toggleWinter;
   buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
   buildChimneyPool();
@@ -4728,6 +5259,8 @@ renderer.render(scene,camera);
       await applyWallBump(file, stem);
     }catch(e){ console.warn(`🧱 Bump autoload error for ${burl}:`,e); }
   }
+  applyCameraFromURL();  // ?lon=/lat=/az=/elev=/alt= — no-op if none are present
+  applyDateFromURL();    // ?year=/month=/day=/hours=/minutes= — no-op if none are present
 })();
 </script>
 

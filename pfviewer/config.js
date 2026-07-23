@@ -28,7 +28,7 @@ export const CONFIG = {
       './data/goad_1906.geojson',
       './data/combined.geojson',
       './data/wpg_rivers.geojson',
-      './data/wpg_roads.geojson',
+      './data/wpg_roads_streetcar.geojson',
       './data/wpg_rails_1906.geojson',
     ],
     facadeConfig: './data/facades.json',
@@ -400,7 +400,7 @@ export const CONFIG = {
   rail: {
     color: 0x4e5060, specular: 0x2c2c2c,                  // train (freight/passenger) rails
     streetcarRailColor: 0x222222, streetcarRailSpecular: 0x333333,
-    // Streetcar rails (Portage/Main only):
+    // Streetcar rails — one mesh per route, bucketed by streetcar_start year:
     railHeadWidth: 0.12, railHeight: 0.22,
     // Freight/passenger train rails (slightly slimmer in this model):
     trainRailHeadWidth: 0.10, trainRailHeight: 0.20,
@@ -409,12 +409,33 @@ export const CONFIG = {
     minVisibleYear: 1900,  // rail layer hidden before this year
   },
 
+  // ── Timeline / date slider ───────────────────────────────────────────
+  // Drives the top-of-screen date scrubber. `currentViewDate` (module-scope
+  // in index.html, mirrored on `window.currentViewDate`) is the single
+  // source of truth for "what date is being viewed" — read today by the
+  // streetcar traffic system below (tickStreetcars/tickCarts), and intended
+  // for building born/died visibility once that hookup exists (see the
+  // design note above buildCity() in index.html for why that's not a
+  // one-line change).
+  timeline: {
+    minYear: 1850,
+    maxYear: 1960,
+    startDate: '1906-07-01',      // date shown on first load (YYYY-MM-DD, local)
+    playSpeedDaysPerSecond: 45,   // time-lapse advance rate once ▶ is pressed
+  },
+
   // ── Streetcars ───────────────────────────────────────────────────────
   streetcars: {
     speed: 4.5,              // m/s (~16 km/h)
-    intervalSeconds: 60,     // seconds between cars, each direction
+    intervalSeconds: 60,     // seconds between cars, each direction — Portage/Main only
+    minorRouteCarsPerDirection: 2, // fixed (length-independent) car count for every other
+                                   // route in data/wpg_roads_streetcar.geojson — the dense
+                                   // per-length formula above would spawn 1000+ cars across
+                                   // all 29 matched historical routes combined (~170km)
     laneOffset: 2.5,         // metres from centreline
-    electrificationYear: 1891, // streetcars only run from this year onward
+    electrificationYear: 1891, // horse carts (below) vanish at this year — a global
+                                // "streetcar era begins" cutoff, separate from each
+                                // route's own streetcar_start (see data/wpg_roads_streetcar.geojson)
     dimensions: { width: 2.4, height: 2.8, length: 12.0, skirtHeight: 0.75, roofHeight: 0.55, roadOffsetY: 0.18 },
     colors: {
       body: 0xF0A800, skirt: 0x3A1A0A, roof: 0x3A2E22, window: 0x1A2A35,

@@ -23193,7 +23193,8 @@
         "source_sheet": "McPhillips 1880",
         "source_file": "Blocks_29_30_1880_export.geojson",
         "import_date": "2026-04-07",
-        "group": "import_Blocks_29_30_1880_export_20260407"
+        "group": "import_Blocks_29_30_1880_export_20260407",
+        "roof_type": "gabled"
       },
       "geometry": {
         "type": "Polygon",
@@ -43280,93 +43281,6 @@
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
-        "floors": 1,
-        "name": "Baptist Church",
-        "source_file": "McPhillips_1880_Sheet_13.geojson",
-        "import_date": "2026-04-22",
-        "group": "import_McPhillips_1880_Sheet_13_20260422"
-      },
-      "geometry": {
-        "type": "Polygon",
-        "coordinates": [
-          [
-            [
-              -97.1383923564693,
-              49.90125196800115
-            ],
-            [
-              -97.13834753655586,
-              49.90123765957568
-            ],
-            [
-              -97.13836498585788,
-              49.90121498521013
-            ],
-            [
-              -97.13832237744612,
-              49.9012013827902
-            ],
-            [
-              -97.1383051236691,
-              49.901223803082196
-            ],
-            [
-              -97.13825954268191,
-              49.90120925168956
-            ],
-            [
-              -97.13819804494595,
-              49.901289164464465
-            ],
-            [
-              -97.13810933900128,
-              49.90126084574852
-            ],
-            [
-              -97.13806922047465,
-              49.90131297746914
-            ],
-            [
-              -97.13816167095626,
-              49.9013424916008
-            ],
-            [
-              -97.13814572856886,
-              49.901363207817354
-            ],
-            [
-              -97.13822158171115,
-              49.90138742337134
-            ],
-            [
-              -97.13824368360696,
-              49.90135870322747
-            ],
-            [
-              -97.13829709524012,
-              49.90137575449584
-            ],
-            [
-              -97.1383923564693,
-              49.90125196800115
-            ]
-          ]
-        ]
-      },
-      "_bbox": {
-        "minLon": -97.1383923564693,
-        "maxLon": -97.13806922047465,
-        "minLat": 49.9012013827902,
-        "maxLat": 49.90138742337134
-      }
-    },
-    {
-      "type": "Feature",
-      "properties": {
-        "id": 880,
-        "material": "wood",
-        "snapped": false,
-        "born": "1879-08-01",
         "floors": 1.5,
         "name": "DWG",
         "source_file": "McPhillips_1880_Sheet_13.geojson",
@@ -43410,7 +43324,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 881,
+        "id": 880,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43457,7 +43371,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 882,
+        "id": 881,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43504,7 +43418,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 883,
+        "id": 882,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43551,7 +43465,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 884,
+        "id": 883,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43598,7 +43512,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 885,
+        "id": 884,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43644,7 +43558,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 886,
+        "id": 885,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43691,7 +43605,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 887,
+        "id": 886,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43737,7 +43651,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 888,
+        "id": 887,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43786,7 +43700,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 889,
+        "id": 888,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43835,7 +43749,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 890,
+        "id": 889,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43883,7 +43797,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 891,
+        "id": 890,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43931,7 +43845,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 892,
+        "id": 891,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -43979,7 +43893,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 893,
+        "id": 892,
         "type": "walkway",
         "material": "unknown",
         "snapped": false,
@@ -44032,7 +43946,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 894,
+        "id": 893,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -44082,7 +43996,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 895,
+        "id": 894,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44132,7 +44046,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 896,
+        "id": 895,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44182,7 +44096,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 897,
+        "id": 896,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -44232,7 +44146,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 898,
+        "id": 897,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44280,7 +44194,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 899,
+        "id": 898,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44328,7 +44242,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 900,
+        "id": 899,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44376,7 +44290,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 901,
+        "id": 900,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44423,7 +44337,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 902,
+        "id": 901,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44470,7 +44384,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 903,
+        "id": 902,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44517,7 +44431,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 904,
+        "id": 903,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -44565,7 +44479,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 905,
+        "id": 904,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -44613,7 +44527,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 906,
+        "id": 905,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44661,7 +44575,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 907,
+        "id": 906,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44709,7 +44623,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 908,
+        "id": 907,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44757,7 +44671,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 909,
+        "id": 908,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44805,7 +44719,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 910,
+        "id": 909,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -44853,7 +44767,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 911,
+        "id": 910,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -44901,7 +44815,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 912,
+        "id": 911,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44949,7 +44863,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 913,
+        "id": 912,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -44997,7 +44911,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 914,
+        "id": 913,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -45044,7 +44958,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 915,
+        "id": 914,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45091,7 +45005,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 916,
+        "id": 915,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45138,7 +45052,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 917,
+        "id": 916,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -45194,7 +45108,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 918,
+        "id": 917,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45242,7 +45156,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 919,
+        "id": 918,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45290,7 +45204,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 920,
+        "id": 919,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -45338,7 +45252,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 921,
+        "id": 920,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45385,7 +45299,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 922,
+        "id": 921,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45432,7 +45346,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 923,
+        "id": 922,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45479,7 +45393,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 924,
+        "id": 923,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45527,7 +45441,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 925,
+        "id": 924,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45575,7 +45489,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 926,
+        "id": 925,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45622,7 +45536,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 927,
+        "id": 926,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45669,7 +45583,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 928,
+        "id": 927,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -45717,7 +45631,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 929,
+        "id": 928,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45773,7 +45687,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 930,
+        "id": 929,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45821,7 +45735,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 931,
+        "id": 930,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45869,7 +45783,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 932,
+        "id": 931,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -45917,7 +45831,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 933,
+        "id": 932,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -45967,7 +45881,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 934,
+        "id": 933,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -46017,7 +45931,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 935,
+        "id": 934,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46067,7 +45981,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 936,
+        "id": 935,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -46117,7 +46031,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 937,
+        "id": 936,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46166,7 +46080,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 938,
+        "id": 937,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46216,7 +46130,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 939,
+        "id": 938,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46266,7 +46180,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 940,
+        "id": 939,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46316,7 +46230,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 941,
+        "id": 940,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46366,7 +46280,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 942,
+        "id": 941,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46416,7 +46330,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 943,
+        "id": 942,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46466,7 +46380,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 944,
+        "id": 943,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46516,7 +46430,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 945,
+        "id": 944,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46580,7 +46494,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 946,
+        "id": 945,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46644,7 +46558,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 947,
+        "id": 946,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46694,7 +46608,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 948,
+        "id": 947,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46744,7 +46658,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 949,
+        "id": 948,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46794,7 +46708,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 950,
+        "id": 949,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46844,7 +46758,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 951,
+        "id": 950,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46894,7 +46808,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 952,
+        "id": 951,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -46944,7 +46858,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 953,
+        "id": 952,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -46994,7 +46908,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 954,
+        "id": 953,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -47043,7 +46957,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 955,
+        "id": 954,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -47092,7 +47006,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 956,
+        "id": 955,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47141,7 +47055,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 957,
+        "id": 956,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47190,7 +47104,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 958,
+        "id": 957,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -47239,7 +47153,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 959,
+        "id": 958,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47288,7 +47202,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 960,
+        "id": 959,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47338,7 +47252,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 961,
+        "id": 960,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47388,7 +47302,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 962,
+        "id": 961,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -47437,7 +47351,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 963,
+        "id": 962,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -47487,7 +47401,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 964,
+        "id": 963,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -47537,7 +47451,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 965,
+        "id": 964,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47587,7 +47501,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 966,
+        "id": 965,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47637,7 +47551,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 967,
+        "id": 966,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47686,7 +47600,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 968,
+        "id": 967,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47735,7 +47649,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 969,
+        "id": 968,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47784,7 +47698,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 970,
+        "id": 969,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47833,7 +47747,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 971,
+        "id": 970,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -47883,7 +47797,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 972,
+        "id": 971,
         "material": "stone",
         "snapped": false,
         "name": "Well",
@@ -47928,7 +47842,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 973,
+        "id": 972,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -47978,7 +47892,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 974,
+        "id": 973,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -48028,7 +47942,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 975,
+        "id": 974,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -48078,7 +47992,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 976,
+        "id": 975,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48128,7 +48042,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 977,
+        "id": 976,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -48178,7 +48092,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 978,
+        "id": 977,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48228,7 +48142,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 979,
+        "id": 978,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48278,7 +48192,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 980,
+        "id": 979,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48328,7 +48242,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 981,
+        "id": 980,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48378,7 +48292,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 982,
+        "id": 981,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -48428,7 +48342,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 983,
+        "id": 982,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48478,7 +48392,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 984,
+        "id": 983,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48527,7 +48441,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 985,
+        "id": 984,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48577,7 +48491,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 986,
+        "id": 985,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -48627,7 +48541,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 987,
+        "id": 986,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -48676,7 +48590,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 988,
+        "id": 987,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -48726,7 +48640,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 989,
+        "id": 988,
         "material": "log",
         "snapped": false,
         "floors": 2,
@@ -48776,7 +48690,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 990,
+        "id": 989,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -48826,7 +48740,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 991,
+        "id": 990,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -48876,7 +48790,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 992,
+        "id": 991,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -48926,7 +48840,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 993,
+        "id": 992,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -48976,7 +48890,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 994,
+        "id": 993,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49026,7 +48940,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 995,
+        "id": 994,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49076,7 +48990,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 996,
+        "id": 995,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49126,7 +49040,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 997,
+        "id": 996,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49175,7 +49089,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 998,
+        "id": 997,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49225,7 +49139,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 999,
+        "id": 998,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49275,7 +49189,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1000,
+        "id": 999,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49324,7 +49238,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1001,
+        "id": 1000,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49374,7 +49288,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1002,
+        "id": 1001,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -49424,7 +49338,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1003,
+        "id": 1002,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49473,7 +49387,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1004,
+        "id": 1003,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49523,7 +49437,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1005,
+        "id": 1004,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -49573,7 +49487,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1006,
+        "id": 1005,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49622,7 +49536,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1007,
+        "id": 1006,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -49672,7 +49586,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1008,
+        "id": 1007,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49722,7 +49636,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1009,
+        "id": 1008,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -49772,7 +49686,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1010,
+        "id": 1009,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49822,7 +49736,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1011,
+        "id": 1010,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49872,7 +49786,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1012,
+        "id": 1011,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49921,7 +49835,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1013,
+        "id": 1012,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -49971,7 +49885,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1014,
+        "id": 1013,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50027,7 +49941,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1015,
+        "id": 1014,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50077,7 +49991,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1016,
+        "id": 1015,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50126,7 +50040,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1017,
+        "id": 1016,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50176,7 +50090,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1018,
+        "id": 1017,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50225,7 +50139,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1019,
+        "id": 1018,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50275,7 +50189,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1020,
+        "id": 1019,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50325,7 +50239,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1021,
+        "id": 1020,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50375,7 +50289,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1022,
+        "id": 1021,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50424,7 +50338,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1023,
+        "id": 1022,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -50472,7 +50386,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1024,
+        "id": 1023,
         "material": "wood",
         "snapped": false,
         "floors": 2.5,
@@ -50520,7 +50434,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1025,
+        "id": 1024,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -50568,7 +50482,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1026,
+        "id": 1025,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50624,7 +50538,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1027,
+        "id": 1026,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -50672,7 +50586,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1028,
+        "id": 1027,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50720,7 +50634,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1029,
+        "id": 1028,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -50794,7 +50708,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1030,
+        "id": 1029,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50842,7 +50756,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1031,
+        "id": 1030,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50889,7 +50803,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1032,
+        "id": 1031,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50938,7 +50852,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1033,
+        "id": 1032,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -50988,7 +50902,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1034,
+        "id": 1033,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51038,7 +50952,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1035,
+        "id": 1034,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -51088,7 +51002,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1036,
+        "id": 1035,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51138,7 +51052,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1037,
+        "id": 1036,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51201,7 +51115,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1038,
+        "id": 1037,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51259,7 +51173,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1039,
+        "id": 1038,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -51307,7 +51221,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1040,
+        "id": 1039,
         "material": "brick",
         "snapped": false,
         "floors": 1,
@@ -51355,7 +51269,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1041,
+        "id": 1040,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -51402,7 +51316,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1042,
+        "id": 1041,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51449,7 +51363,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1043,
+        "id": 1042,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51499,7 +51413,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1044,
+        "id": 1043,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -51549,7 +51463,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1045,
+        "id": 1044,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -51598,7 +51512,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1046,
+        "id": 1045,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51647,7 +51561,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1047,
+        "id": 1046,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -51696,7 +51610,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1048,
+        "id": 1047,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -51745,7 +51659,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1049,
+        "id": 1048,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51795,7 +51709,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1050,
+        "id": 1049,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51845,7 +51759,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1051,
+        "id": 1050,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51895,7 +51809,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1052,
+        "id": 1051,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -51943,7 +51857,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1053,
+        "id": 1052,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -51990,7 +51904,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1054,
+        "id": 1053,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52037,7 +51951,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1055,
+        "id": 1054,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -52087,7 +52001,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1056,
+        "id": 1055,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52137,7 +52051,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1057,
+        "id": 1056,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52187,7 +52101,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1058,
+        "id": 1057,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52254,7 +52168,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1059,
+        "id": 1058,
         "material": "wood",
         "snapped": false,
         "floors": 2.5,
@@ -52304,7 +52218,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1060,
+        "id": 1059,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -52353,7 +52267,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1061,
+        "id": 1060,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52403,7 +52317,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1062,
+        "id": 1061,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -52453,7 +52367,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1063,
+        "id": 1062,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -52503,7 +52417,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1064,
+        "id": 1063,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52553,7 +52467,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1065,
+        "id": 1064,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -52602,7 +52516,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1066,
+        "id": 1065,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -52652,7 +52566,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1067,
+        "id": 1066,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -52702,7 +52616,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1068,
+        "id": 1067,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -52752,7 +52666,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1069,
+        "id": 1068,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -52802,7 +52716,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1070,
+        "id": 1069,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -52852,7 +52766,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1071,
+        "id": 1070,
         "material": "log",
         "snapped": false,
         "floors": 2,
@@ -52900,7 +52814,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1072,
+        "id": 1071,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -52948,7 +52862,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1073,
+        "id": 1072,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -52996,7 +52910,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1074,
+        "id": 1073,
         "material": "log",
         "snapped": false,
         "floors": 2,
@@ -53044,7 +52958,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1075,
+        "id": 1074,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -53092,7 +53006,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1076,
+        "id": 1075,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -53141,7 +53055,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1077,
+        "id": 1076,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -53190,7 +53104,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1078,
+        "id": 1077,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -53239,7 +53153,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1079,
+        "id": 1078,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -53285,7 +53199,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1080,
+        "id": 1079,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53333,7 +53247,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1081,
+        "id": 1080,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53381,7 +53295,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1082,
+        "id": 1081,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53429,7 +53343,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1083,
+        "id": 1082,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53477,7 +53391,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1084,
+        "id": 1083,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53525,7 +53439,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1085,
+        "id": 1084,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53573,7 +53487,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1086,
+        "id": 1085,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53621,7 +53535,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1087,
+        "id": 1086,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53668,7 +53582,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1088,
+        "id": 1087,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53715,7 +53629,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1089,
+        "id": 1088,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53763,7 +53677,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1090,
+        "id": 1089,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53811,7 +53725,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1091,
+        "id": 1090,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53859,7 +53773,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1092,
+        "id": 1091,
         "material": "brick",
         "snapped": false,
         "born": "1879-08-01",
@@ -53907,7 +53821,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1093,
+        "id": 1092,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -53955,7 +53869,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1094,
+        "id": 1093,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54003,7 +53917,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1095,
+        "id": 1094,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54051,7 +53965,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1096,
+        "id": 1095,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54098,7 +54012,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1097,
+        "id": 1096,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54146,7 +54060,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1098,
+        "id": 1097,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54202,7 +54116,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1099,
+        "id": 1098,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54258,7 +54172,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1100,
+        "id": 1099,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54306,7 +54220,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1101,
+        "id": 1100,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54354,7 +54268,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1102,
+        "id": 1101,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54402,7 +54316,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1103,
+        "id": 1102,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54450,7 +54364,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1104,
+        "id": 1103,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54497,7 +54411,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1105,
+        "id": 1104,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54547,7 +54461,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1106,
+        "id": 1105,
         "material": "wood",
         "snapped": false,
         "born": "1871-09-17",
@@ -54614,7 +54528,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1107,
+        "id": 1106,
         "material": "wood",
         "snapped": false,
         "born": "1871-09-17",
@@ -54665,7 +54579,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1108,
+        "id": 1107,
         "material": "wood",
         "snapped": false,
         "born": "1871-09-17",
@@ -54716,7 +54630,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1109,
+        "id": 1108,
         "material": "wood",
         "snapped": false,
         "born": "1871-09-17",
@@ -54767,7 +54681,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1110,
+        "id": 1109,
         "material": "wood",
         "snapped": false,
         "born": "1871-09-17",
@@ -54818,7 +54732,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1111,
+        "id": 1110,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54867,7 +54781,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1112,
+        "id": 1111,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54916,7 +54830,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1113,
+        "id": 1112,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -54965,7 +54879,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1114,
+        "id": 1113,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55014,7 +54928,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1115,
+        "id": 1114,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55063,7 +54977,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1116,
+        "id": 1115,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55113,7 +55027,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1117,
+        "id": 1116,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55163,7 +55077,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1118,
+        "id": 1117,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55213,7 +55127,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1119,
+        "id": 1118,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55263,7 +55177,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1120,
+        "id": 1119,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55313,7 +55227,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1121,
+        "id": 1120,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55363,7 +55277,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1122,
+        "id": 1121,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55413,7 +55327,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1123,
+        "id": 1122,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55463,7 +55377,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1124,
+        "id": 1123,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55517,7 +55431,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1125,
+        "id": 1124,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55567,7 +55481,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1126,
+        "id": 1125,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55617,7 +55531,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1127,
+        "id": 1126,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55666,7 +55580,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1128,
+        "id": 1127,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55715,7 +55629,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1129,
+        "id": 1128,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55764,7 +55678,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1130,
+        "id": 1129,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55814,7 +55728,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1131,
+        "id": 1130,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55864,7 +55778,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1132,
+        "id": 1131,
         "material": "brick",
         "snapped": false,
         "born": "1879-08-01",
@@ -55912,7 +55826,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1133,
+        "id": 1132,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -55960,7 +55874,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1134,
+        "id": 1133,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56008,7 +55922,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1135,
+        "id": 1134,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56056,7 +55970,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1136,
+        "id": 1135,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56104,7 +56018,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1137,
+        "id": 1136,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56152,7 +56066,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1138,
+        "id": 1137,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56200,7 +56114,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1139,
+        "id": 1138,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56247,7 +56161,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1140,
+        "id": 1139,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -56295,7 +56209,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1141,
+        "id": 1140,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56342,7 +56256,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1142,
+        "id": 1141,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56389,7 +56303,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1143,
+        "id": 1142,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -56437,7 +56351,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1144,
+        "id": 1143,
         "material": "wood",
         "snapped": false,
         "floors": 0.5,
@@ -56483,7 +56397,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1145,
+        "id": 1144,
         "material": "wood",
         "snapped": false,
         "born": "1871-09-17",
@@ -56534,7 +56448,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1146,
+        "id": 1145,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -56592,7 +56506,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1147,
+        "id": 1146,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -56644,7 +56558,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1148,
+        "id": 1147,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -56694,7 +56608,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1149,
+        "id": 1148,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -56744,7 +56658,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1150,
+        "id": 1149,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -56793,7 +56707,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1151,
+        "id": 1150,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -56843,7 +56757,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1152,
+        "id": 1151,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -56893,7 +56807,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1153,
+        "id": 1152,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -56943,7 +56857,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1154,
+        "id": 1153,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -56993,7 +56907,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1155,
+        "id": 1154,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -57043,7 +56957,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1156,
+        "id": 1155,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -57093,7 +57007,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1157,
+        "id": 1156,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -57143,7 +57057,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1158,
+        "id": 1157,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -57193,7 +57107,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1159,
+        "id": 1158,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -57243,7 +57157,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1160,
+        "id": 1159,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -57293,7 +57207,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1161,
+        "id": 1160,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -57343,7 +57257,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1162,
+        "id": 1161,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -57406,7 +57320,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1163,
+        "id": 1162,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -57454,7 +57368,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1164,
+        "id": 1163,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -57502,7 +57416,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1165,
+        "id": 1164,
         "material": "brick",
         "snapped": false,
         "born": "1879-08-01",
@@ -57552,7 +57466,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1166,
+        "id": 1165,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57602,7 +57516,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1167,
+        "id": 1166,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57652,7 +57566,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1168,
+        "id": 1167,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57702,7 +57616,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1169,
+        "id": 1168,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57752,7 +57666,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1170,
+        "id": 1169,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57802,7 +57716,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1171,
+        "id": 1170,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57852,7 +57766,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1172,
+        "id": 1171,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57902,7 +57816,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1173,
+        "id": 1172,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -57952,7 +57866,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1174,
+        "id": 1173,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58002,7 +57916,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1175,
+        "id": 1174,
         "material": "log",
         "snapped": false,
         "born": "1879-08-01",
@@ -58052,7 +57966,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1176,
+        "id": 1175,
         "material": "log",
         "snapped": false,
         "born": "1879-08-01",
@@ -58102,7 +58016,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1177,
+        "id": 1176,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58151,7 +58065,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1178,
+        "id": 1177,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58200,7 +58114,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1179,
+        "id": 1178,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58249,7 +58163,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1180,
+        "id": 1179,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58299,7 +58213,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1181,
+        "id": 1180,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58349,7 +58263,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1182,
+        "id": 1181,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58399,7 +58313,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1183,
+        "id": 1182,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -58449,7 +58363,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1184,
+        "id": 1183,
         "material": "stone",
         "snapped": false,
         "floors": 0.5,
@@ -58497,7 +58411,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1185,
+        "id": 1184,
         "material": "stone",
         "snapped": false,
         "floors": 0.5,
@@ -58545,7 +58459,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1186,
+        "id": 1185,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -58593,7 +58507,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1187,
+        "id": 1186,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -58641,7 +58555,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1188,
+        "id": 1187,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -58697,7 +58611,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1189,
+        "id": 1188,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -58746,7 +58660,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1190,
+        "id": 1189,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -58795,7 +58709,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1191,
+        "id": 1190,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -58895,7 +58809,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1192,
+        "id": 1191,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -58944,7 +58858,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1193,
+        "id": 1192,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59024,7 +58938,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1194,
+        "id": 1193,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59072,7 +58986,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1195,
+        "id": 1194,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59120,7 +59034,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1196,
+        "id": 1195,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -59168,7 +59082,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1197,
+        "id": 1196,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59224,7 +59138,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1198,
+        "id": 1197,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59272,7 +59186,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1199,
+        "id": 1198,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59328,7 +59242,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1200,
+        "id": 1199,
         "material": "wood",
         "snapped": false,
         "floors": 2.5,
@@ -59376,7 +59290,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1201,
+        "id": 1200,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59423,7 +59337,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1202,
+        "id": 1201,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -59472,7 +59386,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1203,
+        "id": 1202,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59520,7 +59434,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1204,
+        "id": 1203,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59569,7 +59483,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1205,
+        "id": 1204,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -59619,7 +59533,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1206,
+        "id": 1205,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -59669,7 +59583,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1207,
+        "id": 1206,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -59719,7 +59633,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1208,
+        "id": 1207,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59765,7 +59679,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1209,
+        "id": 1208,
         "type": "walkway",
         "material": "unknown",
         "snapped": false,
@@ -59811,7 +59725,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1210,
+        "id": 1209,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -59861,7 +59775,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1211,
+        "id": 1210,
         "type": "walkway",
         "material": "unknown",
         "snapped": false,
@@ -59907,7 +59821,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1212,
+        "id": 1211,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -59952,7 +59866,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1213,
+        "id": 1212,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -59998,7 +59912,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1214,
+        "id": 1213,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60048,7 +59962,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1215,
+        "id": 1214,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60098,7 +60012,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1216,
+        "id": 1215,
         "material": "wood",
         "snapped": false,
         "source_file": "NE_SE_SW_corners_pnm.geojson",
@@ -60147,7 +60061,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1217,
+        "id": 1216,
         "material": "wood",
         "snapped": false,
         "source_file": "NE_SE_SW_corners_pnm.geojson",
@@ -60196,7 +60110,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1218,
+        "id": 1217,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -60246,7 +60160,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1219,
+        "id": 1218,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60296,7 +60210,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1220,
+        "id": 1219,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -60346,7 +60260,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1221,
+        "id": 1220,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60396,7 +60310,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1222,
+        "id": 1221,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -60445,7 +60359,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1223,
+        "id": 1222,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -60523,7 +60437,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1224,
+        "id": 1223,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60579,7 +60493,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1225,
+        "id": 1224,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60629,7 +60543,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1226,
+        "id": 1225,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60679,7 +60593,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1227,
+        "id": 1226,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -60727,7 +60641,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1228,
+        "id": 1227,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -60775,7 +60689,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1229,
+        "id": 1228,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60823,7 +60737,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1230,
+        "id": 1229,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -60871,7 +60785,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1231,
+        "id": 1230,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -60921,7 +60835,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1232,
+        "id": 1231,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -60969,7 +60883,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1233,
+        "id": 1232,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -61017,7 +60931,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1234,
+        "id": 1233,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -61065,7 +60979,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1235,
+        "id": 1234,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -61119,7 +61033,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1236,
+        "id": 1235,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -61172,7 +61086,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1237,
+        "id": 1236,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -61226,7 +61140,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1238,
+        "id": 1237,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -61279,7 +61193,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1239,
+        "id": 1238,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -61332,7 +61246,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1240,
+        "id": 1239,
         "material": "wood",
         "snapped": false,
         "source_file": "NE_SE_SW_corners_pnm.geojson",
@@ -61379,7 +61293,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1241,
+        "id": 1240,
         "material": "wood",
         "snapped": false,
         "source_file": "NE_SE_SW_corners_pnm.geojson",
@@ -61426,7 +61340,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1242,
+        "id": 1241,
         "material": "wood",
         "snapped": false,
         "source_file": "NE_SE_SW_corners_pnm.geojson",
@@ -61473,7 +61387,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1243,
+        "id": 1242,
         "material": "wood",
         "snapped": false,
         "source_file": "NE_SE_SW_corners_pnm.geojson",
@@ -61520,7 +61434,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1244,
+        "id": 1243,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -61568,7 +61482,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1245,
+        "id": 1244,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -61618,7 +61532,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1246,
+        "id": 1245,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -61666,7 +61580,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1247,
+        "id": 1246,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -61714,7 +61628,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1248,
+        "id": 1247,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -61762,7 +61676,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1249,
+        "id": 1248,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -61812,7 +61726,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1250,
+        "id": 1249,
         "material": "brick",
         "snapped": false,
         "floors": 1,
@@ -61868,7 +61782,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1251,
+        "id": 1250,
         "material": "wood",
         "snapped": false,
         "floors": 3,
@@ -61918,7 +61832,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1252,
+        "id": 1251,
         "material": "brick",
         "snapped": false,
         "floors": 3,
@@ -61968,7 +61882,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1253,
+        "id": 1252,
         "material": "wood",
         "snapped": false,
         "name": "Stable",
@@ -62018,7 +61932,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1254,
+        "id": 1253,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -62068,7 +61982,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1255,
+        "id": 1254,
         "material": "brick",
         "snapped": false,
         "floors": 3,
@@ -62116,7 +62030,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1256,
+        "id": 1255,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -62164,7 +62078,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1257,
+        "id": 1256,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -62212,7 +62126,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1258,
+        "id": 1257,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -62260,7 +62174,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1259,
+        "id": 1258,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -62316,7 +62230,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1260,
+        "id": 1259,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -62364,7 +62278,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1261,
+        "id": 1260,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -62416,7 +62330,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1262,
+        "id": 1261,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -62464,7 +62378,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1263,
+        "id": 1262,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -62511,7 +62425,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1264,
+        "id": 1263,
         "material": "brick",
         "snapped": false,
         "floors": 3,
@@ -62559,7 +62473,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1265,
+        "id": 1264,
         "material": "brick",
         "snapped": false,
         "floors": 1,
@@ -62607,7 +62521,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1266,
+        "id": 1265,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -62656,7 +62570,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1267,
+        "id": 1266,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -62705,7 +62619,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1268,
+        "id": 1267,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -62752,7 +62666,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1269,
+        "id": 1268,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -62799,7 +62713,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1270,
+        "id": 1269,
         "material": "wood_industrial",
         "snapped": false,
         "floors": 1.5,
@@ -62855,7 +62769,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1271,
+        "id": 1270,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -62903,7 +62817,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1272,
+        "id": 1271,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -62951,7 +62865,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1273,
+        "id": 1272,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -62999,7 +62913,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1274,
+        "id": 1273,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -63091,7 +63005,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1275,
+        "id": 1274,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -63139,7 +63053,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1276,
+        "id": 1275,
         "material": "wood_industrial",
         "snapped": false,
         "name": "Brown and Rutherford's factory",
@@ -63187,7 +63101,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1277,
+        "id": 1276,
         "material": "wood_industrial",
         "snapped": false,
         "name": "Brown and Rutherford's factory",
@@ -63235,7 +63149,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1278,
+        "id": 1277,
         "material": "wood_industrial",
         "snapped": false,
         "name": "Brown and Rutherford's factory Engine room",
@@ -63283,7 +63197,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1279,
+        "id": 1278,
         "material": "wood",
         "snapped": false,
         "name": "Brown and Rutherford's factory",
@@ -63331,7 +63245,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1280,
+        "id": 1279,
         "material": "wood_industrial",
         "snapped": false,
         "name": "Brown and Rutherford's factory",
@@ -63379,7 +63293,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1281,
+        "id": 1280,
         "material": "wood",
         "snapped": false,
         "name": "Stable",
@@ -63427,7 +63341,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1282,
+        "id": 1281,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -63474,7 +63388,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1283,
+        "id": 1282,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -63521,7 +63435,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1284,
+        "id": 1283,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -63568,7 +63482,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1285,
+        "id": 1284,
         "material": "wood",
         "snapped": false,
         "name": "DWG Dr. Benson",
@@ -63616,7 +63530,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1286,
+        "id": 1285,
         "material": "wood",
         "snapped": false,
         "name": "DWG Dr. Benson",
@@ -63664,7 +63578,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1287,
+        "id": 1286,
         "material": "wood",
         "snapped": false,
         "name": "DWG Dr. Benson",
@@ -63712,7 +63626,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1288,
+        "id": 1287,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -63759,7 +63673,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1289,
+        "id": 1288,
         "material": "wood",
         "snapped": false,
         "name": "DWG",
@@ -63807,7 +63721,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1290,
+        "id": 1289,
         "material": "wood",
         "snapped": false,
         "name": "DWG",
@@ -63855,7 +63769,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1291,
+        "id": 1290,
         "material": "wood",
         "snapped": false,
         "name": "DWG",
@@ -63903,7 +63817,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1292,
+        "id": 1291,
         "material": "wood_industrial",
         "snapped": false,
         "floors": 2,
@@ -63951,7 +63865,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1293,
+        "id": 1292,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64001,7 +63915,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1294,
+        "id": 1293,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64051,7 +63965,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1295,
+        "id": 1294,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -64101,7 +64015,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1296,
+        "id": 1295,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64150,7 +64064,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1297,
+        "id": 1296,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64199,7 +64113,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1298,
+        "id": 1297,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64247,7 +64161,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1299,
+        "id": 1298,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64295,7 +64209,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1300,
+        "id": 1299,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -64343,7 +64257,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1301,
+        "id": 1300,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -64390,7 +64304,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1302,
+        "id": 1301,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64438,7 +64352,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1303,
+        "id": 1302,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64486,7 +64400,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1304,
+        "id": 1303,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64534,7 +64448,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1305,
+        "id": 1304,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64582,7 +64496,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1306,
+        "id": 1305,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64630,7 +64544,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1307,
+        "id": 1306,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -64677,7 +64591,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1308,
+        "id": 1307,
         "material": "wood",
         "snapped": false,
         "name": "Stable",
@@ -64727,7 +64641,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1309,
+        "id": 1308,
         "material": "wood",
         "snapped": false,
         "name": "Stable",
@@ -64777,7 +64691,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1310,
+        "id": 1309,
         "material": "log",
         "snapped": false,
         "floors": 0.5,
@@ -64827,7 +64741,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1311,
+        "id": 1310,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -64877,7 +64791,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1312,
+        "id": 1311,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -64924,7 +64838,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1313,
+        "id": 1312,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -64971,7 +64885,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1314,
+        "id": 1313,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -65019,7 +64933,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1315,
+        "id": 1314,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -65067,7 +64981,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1316,
+        "id": 1315,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -65115,7 +65029,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1317,
+        "id": 1316,
         "type": "walkway",
         "material": "wood_industrial",
         "snapped": false,
@@ -65163,7 +65077,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1318,
+        "id": 1317,
         "type": "walkway",
         "material": "wood_industrial",
         "snapped": false,
@@ -65211,7 +65125,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1319,
+        "id": 1318,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -65259,7 +65173,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1320,
+        "id": 1319,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -65307,7 +65221,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1321,
+        "id": 1320,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -65365,7 +65279,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1322,
+        "id": 1321,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -65413,7 +65327,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1323,
+        "id": 1322,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65460,7 +65374,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1324,
+        "id": 1323,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65507,7 +65421,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1325,
+        "id": 1324,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -65553,7 +65467,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1326,
+        "id": 1325,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65599,7 +65513,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1327,
+        "id": 1326,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65646,7 +65560,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1328,
+        "id": 1327,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65693,7 +65607,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1329,
+        "id": 1328,
         "snapped": false,
         "material": "log",
         "born": "1879-08-01",
@@ -65739,7 +65653,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1330,
+        "id": 1329,
         "snapped": false,
         "material": "log",
         "born": "1879-08-01",
@@ -65785,7 +65699,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1331,
+        "id": 1330,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -65831,7 +65745,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1332,
+        "id": 1331,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65878,7 +65792,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1333,
+        "id": 1332,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65925,7 +65839,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1334,
+        "id": 1333,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -65976,7 +65890,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1335,
+        "id": 1334,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66023,7 +65937,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1336,
+        "id": 1335,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66069,7 +65983,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1337,
+        "id": 1336,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66115,7 +66029,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1338,
+        "id": 1337,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66161,7 +66075,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1339,
+        "id": 1338,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66208,7 +66122,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1340,
+        "id": 1339,
         "material": "wood",
         "snapped": false,
         "name": "Stairs and platform",
@@ -66261,7 +66175,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1341,
+        "id": 1340,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -66308,7 +66222,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1342,
+        "id": 1341,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66383,7 +66297,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1343,
+        "id": 1342,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66430,7 +66344,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1344,
+        "id": 1343,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -66480,7 +66394,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1345,
+        "id": 1344,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -66542,7 +66456,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1346,
+        "id": 1345,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -66589,7 +66503,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1347,
+        "id": 1346,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -66636,7 +66550,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1348,
+        "id": 1347,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -66690,7 +66604,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1349,
+        "id": 1348,
         "type": "walkway",
         "material": "wood_industrial",
         "snapped": false,
@@ -66736,7 +66650,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1350,
+        "id": 1349,
         "type": "walkway",
         "material": "wood_industrial",
         "snapped": false,
@@ -66782,7 +66696,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1351,
+        "id": 1350,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66851,7 +66765,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1352,
+        "id": 1351,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66898,7 +66812,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1353,
+        "id": 1352,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -66945,7 +66859,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1354,
+        "id": 1353,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -67000,7 +66914,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1355,
+        "id": 1354,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -67046,7 +66960,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1356,
+        "id": 1355,
         "type": "walkway",
         "material": "stone",
         "snapped": false,
@@ -67185,7 +67099,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1357,
+        "id": 1356,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -67232,7 +67146,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1358,
+        "id": 1357,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -67283,7 +67197,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1359,
+        "id": 1358,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -67330,7 +67244,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1360,
+        "id": 1359,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -67377,7 +67291,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1361,
+        "id": 1360,
         "snapped": false,
         "material": "wood",
         "born": "1879-08-01",
@@ -67424,7 +67338,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1362,
+        "id": 1361,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -67472,7 +67386,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1363,
+        "id": 1362,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -67520,7 +67434,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1364,
+        "id": 1363,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -67568,7 +67482,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1365,
+        "id": 1364,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -67616,7 +67530,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1366,
+        "id": 1365,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -67664,7 +67578,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1367,
+        "id": 1366,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -67712,7 +67626,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1368,
+        "id": 1367,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -67765,7 +67679,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1369,
+        "id": 1368,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -67813,7 +67727,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1370,
+        "id": 1369,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -67861,7 +67775,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1371,
+        "id": 1370,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -67909,7 +67823,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1372,
+        "id": 1371,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -67963,7 +67877,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1373,
+        "id": 1372,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -68011,7 +67925,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1374,
+        "id": 1373,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -68059,7 +67973,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1375,
+        "id": 1374,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68107,7 +68021,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1376,
+        "id": 1375,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -68163,7 +68077,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1377,
+        "id": 1376,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68210,7 +68124,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1378,
+        "id": 1377,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68257,7 +68171,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1379,
+        "id": 1378,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68303,7 +68217,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1380,
+        "id": 1379,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -68348,7 +68262,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1381,
+        "id": 1380,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68401,7 +68315,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1382,
+        "id": 1381,
         "material": "wood",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -68448,7 +68362,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1383,
+        "id": 1382,
         "material": "wood",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -68494,7 +68408,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1384,
+        "id": 1383,
         "material": "log",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -68541,7 +68455,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1385,
+        "id": 1384,
         "material": "log",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -68588,7 +68502,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1386,
+        "id": 1385,
         "material": "log",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -68635,7 +68549,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1387,
+        "id": 1386,
         "material": "log",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -68682,7 +68596,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1388,
+        "id": 1387,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68730,7 +68644,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1389,
+        "id": 1388,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68778,7 +68692,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1390,
+        "id": 1389,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68826,7 +68740,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1391,
+        "id": 1390,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -68874,7 +68788,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1392,
+        "id": 1391,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -68922,7 +68836,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1393,
+        "id": 1392,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -68970,7 +68884,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1394,
+        "id": 1393,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69018,7 +68932,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1395,
+        "id": 1394,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -69066,7 +68980,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1396,
+        "id": 1395,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69113,7 +69027,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1397,
+        "id": 1396,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69160,7 +69074,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1398,
+        "id": 1397,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69207,7 +69121,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1399,
+        "id": 1398,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69255,7 +69169,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1400,
+        "id": 1399,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69303,7 +69217,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1401,
+        "id": 1400,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -69363,7 +69277,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1402,
+        "id": 1401,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -69410,7 +69324,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1403,
+        "id": 1402,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69458,7 +69372,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1404,
+        "id": 1403,
         "material": "log",
         "snapped": false,
         "name": "DWG",
@@ -69504,7 +69418,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1405,
+        "id": 1404,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -69550,7 +69464,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1406,
+        "id": 1405,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69595,7 +69509,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1407,
+        "id": 1406,
         "material": "wood",
         "snapped": false,
         "name": "DWG",
@@ -69641,7 +69555,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1408,
+        "id": 1407,
         "material": "wood",
         "snapped": false,
         "name": "DWG",
@@ -69687,7 +69601,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1409,
+        "id": 1408,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -69735,7 +69649,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1410,
+        "id": 1409,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69783,7 +69697,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1411,
+        "id": 1410,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69831,7 +69745,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1412,
+        "id": 1411,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69885,7 +69799,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1413,
+        "id": 1412,
         "material": "log",
         "snapped": false,
         "floors": 1.5,
@@ -69933,7 +69847,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1414,
+        "id": 1413,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -69981,7 +69895,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1415,
+        "id": 1414,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70029,7 +69943,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1416,
+        "id": 1415,
         "material": "concrete",
         "snapped": false,
         "floors": 2,
@@ -70091,7 +70005,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1417,
+        "id": 1416,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70139,7 +70053,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1418,
+        "id": 1417,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70187,7 +70101,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1419,
+        "id": 1418,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -70235,7 +70149,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1420,
+        "id": 1419,
         "material": "wood",
         "snapped": false,
         "name": "Bakery",
@@ -70283,7 +70197,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1421,
+        "id": 1420,
         "material": "unknown",
         "snapped": false,
         "source_file": "mcphillips_1880.geojson",
@@ -70339,7 +70253,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1422,
+        "id": 1421,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -70385,7 +70299,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1423,
+        "id": 1422,
         "material": "wood",
         "snapped": false,
         "name": "Bakery",
@@ -70443,7 +70357,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1424,
+        "id": 1423,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -70489,7 +70403,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1425,
+        "id": 1424,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70535,7 +70449,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1426,
+        "id": 1425,
         "material": "wood",
         "snapped": false,
         "name": "Grocery",
@@ -70581,7 +70495,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1427,
+        "id": 1426,
         "material": "wood",
         "snapped": false,
         "name": "Grocery",
@@ -70627,7 +70541,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1428,
+        "id": 1427,
         "material": "wood",
         "snapped": false,
         "name": "Grocery",
@@ -70673,7 +70587,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1429,
+        "id": 1428,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70719,7 +70633,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1430,
+        "id": 1429,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70773,7 +70687,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1431,
+        "id": 1430,
         "material": "brick",
         "snapped": false,
         "floors": 2.5,
@@ -70819,7 +70733,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1432,
+        "id": 1431,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70865,7 +70779,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1433,
+        "id": 1432,
         "material": "brick",
         "snapped": false,
         "floors": 2,
@@ -70919,7 +70833,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1434,
+        "id": 1433,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -70965,7 +70879,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1435,
+        "id": 1434,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -71013,7 +70927,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1436,
+        "id": 1435,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -71059,7 +70973,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1437,
+        "id": 1436,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -71105,7 +71019,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1438,
+        "id": 1437,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -71151,7 +71065,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1439,
+        "id": 1438,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -71196,7 +71110,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1440,
+        "id": 1439,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -71241,7 +71155,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1441,
+        "id": 1440,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -71286,7 +71200,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1442,
+        "id": 1441,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -71332,7 +71246,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1443,
+        "id": 1442,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -71377,7 +71291,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1444,
+        "id": 1443,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -71431,7 +71345,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1445,
+        "id": 1444,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -71481,7 +71395,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1446,
+        "id": 1445,
         "material": "wood",
         "snapped": false,
         "name": "W.C.",
@@ -71529,7 +71443,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1447,
+        "id": 1446,
         "material": "wood",
         "snapped": false,
         "source_file": "McPhillips_1880_Fort_Pelly_Main_Graham.geojson",
@@ -71576,7 +71490,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1448,
+        "id": 1447,
         "material": "wood",
         "snapped": false,
         "source_file": "McPhillips_1880_Fort_Pelly_Main_Graham.geojson",
@@ -71623,7 +71537,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1449,
+        "id": 1448,
         "material": "wood",
         "snapped": false,
         "source_file": "McPhillips_1880_Fort_Pelly_Main_Graham.geojson",
@@ -71670,7 +71584,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1450,
+        "id": 1449,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -71717,7 +71631,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1451,
+        "id": 1450,
         "material": "brick",
         "snapped": false,
         "floors": 3.5,
@@ -71767,7 +71681,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1452,
+        "id": 1451,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -71815,7 +71729,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1453,
+        "id": 1452,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -71863,7 +71777,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1454,
+        "id": 1453,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -71911,7 +71825,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1455,
+        "id": 1454,
         "material": "wood",
         "snapped": false,
         "born": "1879-08-01",
@@ -71959,7 +71873,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1456,
+        "id": 1455,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -72005,7 +71919,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1457,
+        "id": 1456,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -72059,7 +71973,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1458,
+        "id": 1457,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -72105,7 +72019,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1459,
+        "id": 1458,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -72151,7 +72065,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1460,
+        "id": 1459,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -72197,7 +72111,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1461,
+        "id": 1460,
         "type": "walkway",
         "material": "wood",
         "snapped": false,
@@ -72259,7 +72173,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1462,
+        "id": 1461,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -72308,7 +72222,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1463,
+        "id": 1462,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -72357,7 +72271,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1464,
+        "id": 1463,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -72406,7 +72320,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1465,
+        "id": 1464,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -72455,7 +72369,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1466,
+        "id": 1465,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -72502,7 +72416,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1467,
+        "id": 1466,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -72551,7 +72465,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1468,
+        "id": 1467,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -72600,7 +72514,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1469,
+        "id": 1468,
         "material": "log",
         "snapped": false,
         "floors": 1,
@@ -72649,7 +72563,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1470,
+        "id": 1469,
         "material": "log",
         "snapped": false,
         "floors": 2,
@@ -72698,7 +72612,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1471,
+        "id": 1470,
         "type": "fence",
         "material": "unknown",
         "snapped": false,
@@ -72729,7 +72643,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1472,
+        "id": 1471,
         "type": "fence",
         "material": "unknown",
         "snapped": false,
@@ -72760,7 +72674,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1473,
+        "id": 1472,
         "type": "fence",
         "material": "unknown",
         "snapped": false,
@@ -72807,7 +72721,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1474,
+        "id": 1473,
         "material": "wood",
         "snapped": false,
         "floors": 2.5,
@@ -72856,7 +72770,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1475,
+        "id": 1474,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -72905,7 +72819,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1476,
+        "id": 1475,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -72954,7 +72868,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1477,
+        "id": 1476,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -73003,7 +72917,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1478,
+        "id": 1477,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -73052,7 +72966,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1479,
+        "id": 1478,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -73101,7 +73015,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1480,
+        "id": 1479,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -73218,7 +73132,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1481,
+        "id": 1480,
         "material": "wood",
         "snapped": false,
         "floors": 2.5,
@@ -73267,7 +73181,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1482,
+        "id": 1481,
         "material": "wood",
         "snapped": false,
         "floors": 1,
@@ -73316,7 +73230,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1483,
+        "id": 1482,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -73365,7 +73279,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1484,
+        "id": 1483,
         "material": "stone",
         "snapped": false,
         "floors": 1,
@@ -73414,7 +73328,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1485,
+        "id": 1484,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -73479,7 +73393,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1486,
+        "id": 1485,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -73528,7 +73442,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1487,
+        "id": 1486,
         "material": "wood",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -73576,7 +73490,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1488,
+        "id": 1487,
         "material": "wood",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -73639,7 +73553,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1489,
+        "id": 1488,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -73687,7 +73601,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1490,
+        "id": 1489,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -73735,7 +73649,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1491,
+        "id": 1490,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -73815,7 +73729,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1492,
+        "id": 1491,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -73863,7 +73777,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1493,
+        "id": 1492,
         "material": "wood",
         "snapped": false,
         "floors": 1.5,
@@ -73928,7 +73842,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1494,
+        "id": 1493,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -73978,7 +73892,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1495,
+        "id": 1494,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -74205,7 +74119,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1496,
+        "id": 1495,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -74432,7 +74346,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1497,
+        "id": 1496,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -74523,7 +74437,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1498,
+        "id": 1497,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -74750,7 +74664,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1499,
+        "id": 1498,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -74977,7 +74891,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1500,
+        "id": 1499,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -75026,7 +74940,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1501,
+        "id": 1500,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -75075,7 +74989,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1503,
+        "id": 1501,
         "material": "wood",
         "snapped": false,
         "floors": 5,
@@ -75297,7 +75211,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1504,
+        "id": 1502,
         "material": "wood",
         "snapped": false,
         "floors": 2.5,
@@ -75346,7 +75260,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1505,
+        "id": 1503,
         "material": "wood",
         "snapped": false,
         "floors": 2,
@@ -75395,7 +75309,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1506,
+        "id": 1504,
         "type": "fence",
         "material": "unknown",
         "snapped": false,
@@ -75426,7 +75340,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1507,
+        "id": 1505,
         "type": "fence",
         "material": "unknown",
         "snapped": false,
@@ -75457,7 +75371,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1508,
+        "id": 1506,
         "type": "fence",
         "material": "log",
         "snapped": false,
@@ -75514,7 +75428,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1509,
+        "id": 1507,
         "material": "wood",
         "snapped": false,
         "notes": "1880 Building on McPhillips Key",
@@ -75563,7 +75477,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1510,
+        "id": 1508,
         "type": "fence",
         "material": "blue",
         "snapped": false,
@@ -75649,7 +75563,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1511,
+        "id": 1509,
         "type": "fence",
         "material": "blue",
         "snapped": false,
@@ -75719,7 +75633,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1512,
+        "id": 1510,
         "type": "fence",
         "material": "blue",
         "snapped": false,
@@ -75801,7 +75715,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1513,
+        "id": 1511,
         "type": "fence",
         "material": "blue",
         "snapped": false,
@@ -75971,7 +75885,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1514,
+        "id": 1512,
         "material": "stone",
         "snapped": false,
         "floors": 2,
@@ -76020,7 +75934,7 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1515,
+        "id": 1513,
         "material": "stone",
         "snapped": false,
         "floors": 0.1,
@@ -76690,12 +76604,15 @@
     {
       "type": "Feature",
       "properties": {
-        "id": 1520,
+        "id": 1514,
         "material": "unknown",
         "snapped": false,
         "type": "walkway",
         "floors": 0.1,
-        "no_windows": true
+        "no_windows": true,
+        "source_file": "mcphillips_1880.geojson",
+        "import_date": "2026-07-21",
+        "group": "import_mcphillips_1880_20260721"
       },
       "geometry": {
         "type": "Polygon",
@@ -77079,6 +76996,198 @@
         "maxLon": -97.13352139447042,
         "minLat": 49.88663549886843,
         "maxLat": 49.887182181869164
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 1515,
+        "material": "wood",
+        "snapped": false,
+        "born": "1879-08-01",
+        "floors": 1,
+        "name": "Baptist Church Vestibule",
+        "source_file": "McPhillips_1880_Sheet_13.geojson",
+        "import_date": "2026-04-22",
+        "group": "import_McPhillips_1880_Sheet_13_20260422",
+        "roof_type": "gabled"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -97.13834753655586,
+              49.90123765957568
+            ],
+            [
+              -97.13836498585788,
+              49.90121498521013
+            ],
+            [
+              -97.13832237744612,
+              49.9012013827902
+            ],
+            [
+              -97.1383051236691,
+              49.901223803082196
+            ],
+            [
+              -97.13834753655586,
+              49.90123765957568
+            ]
+          ]
+        ]
+      },
+      "_bbox": {
+        "minLon": -97.1383923564693,
+        "maxLon": -97.13825954268191,
+        "minLat": 49.9012013827902,
+        "maxLat": 49.90125196800115
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 1516,
+        "material": "wood",
+        "snapped": false,
+        "born": "1879-08-01",
+        "floors": 1.5,
+        "name": "Baptist Church",
+        "source_file": "McPhillips_1880_Sheet_13.geojson",
+        "import_date": "2026-04-22",
+        "group": "import_McPhillips_1880_Sheet_13_20260422",
+        "roof_type": "gabled"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -97.13827764262525,
+              49.90131457543414
+            ],
+            [
+              -97.13810933900128,
+              49.90126084574852
+            ],
+            [
+              -97.13806922047465,
+              49.90131297746914
+            ],
+            [
+              -97.13823752409856,
+              49.901366707154786
+            ],
+            [
+              -97.13827764262525,
+              49.90131457543414
+            ]
+          ]
+        ]
+      },
+      "_bbox": {
+        "minLon": -97.13827764262525,
+        "maxLon": -97.13806922047465,
+        "minLat": 49.90126084574852,
+        "maxLat": 49.901366707154786
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 1517,
+        "material": "wood",
+        "snapped": false,
+        "born": "1879-08-01",
+        "floors": 1,
+        "name": "Baptist Church",
+        "source_file": "McPhillips_1880_Sheet_13.geojson",
+        "import_date": "2026-04-22",
+        "group": "import_McPhillips_1880_Sheet_13_20260422",
+        "roof_type": "shed"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -97.13824349532393,
+              49.90135894789045
+            ],
+            [
+              -97.1381671638908,
+              49.90133501366879
+            ],
+            [
+              -97.13814572856886,
+              49.901363207817354
+            ],
+            [
+              -97.13822158171115,
+              49.90138742337134
+            ],
+            [
+              -97.13824349532393,
+              49.90135894789045
+            ]
+          ]
+        ]
+      },
+      "_bbox": {
+        "minLon": -97.13824349532393,
+        "maxLon": -97.13814572856886,
+        "minLat": 49.90133501366879,
+        "maxLat": 49.90138742337134
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "id": 1518,
+        "material": "wood",
+        "snapped": false,
+        "born": "1879-08-01",
+        "floors": 2.5,
+        "name": "Baptist Church",
+        "source_file": "McPhillips_1880_Sheet_13.geojson",
+        "import_date": "2026-04-22",
+        "group": "import_McPhillips_1880_Sheet_13_20260422",
+        "roof_type": "gabled"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -97.1383923564693,
+              49.90125196800115
+            ],
+            [
+              -97.13825954268191,
+              49.90120925168956
+            ],
+            [
+              -97.1381671638908,
+              49.90133501366879
+            ],
+            [
+              -97.13829709524012,
+              49.90137575449584
+            ],
+            [
+              -97.1383923564693,
+              49.90125196800115
+            ]
+          ]
+        ]
+      },
+      "_bbox": {
+        "minLon": -97.1383923564693,
+        "maxLon": -97.1381671638908,
+        "minLat": 49.90120925168956,
+        "maxLat": 49.90137575449584
       }
     }
   ]

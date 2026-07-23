@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(py --version)",
+      "Bash(py -c ' *)",
+      "Bash(py add_streetcar_dates.py)",
+      "Bash(grep -n \"TEMP DEBUG\\\\|console.log\\(\\\\`Streetcar\" index.html)",
+      "Bash(pkill -f \"http.server 8791\")",
+      "Bash(pkill -f \"http.server 8792\")",
+      "Bash(awk 'NR==999,NR==1716{print NR\": \"$0}' index.html)",
+      "Bash(awk 'NR==1044,NR==1410{print NR\": \"$0}' index.html)",
+      "Bash(grep -n \"async function buildCity\\\\|const glassVerts=\\\\[\\\\];\\\\|for\\(let i=0;i<total;i++\\){\\\\|const feat=features\\\\[i\\\\],props=feat.properties;\\\\|if\\(i%300===0\\)\" index.html)",
+      "Bash(pkill -f \"http.server 879\")",
+      "Bash(pkill -f \"http.server 8794\")",
+      "Bash(py \"C:\\\\Users\\\\micha\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-micha-OneDrive-Documents-Claude-Pastforward-Postcard-Knowledge-Base-pfviewer\\\\3477505a-7166-43c4-9e1d-5e41ce3fb11f\\\\scratchpad\\\\check_names.py\")",
+      "Bash(pkill -f \"http.server 8795\")",
+      "Bash(pkill -f \"http.server 8796\")",
+      "Bash(pkill -f \"http.server 8797\")",
+      "Bash(pkill -f \"http.server 8798\")",
+      "Bash(pkill -f \"http.server 8799\")",
+      "Bash(pkill -f \"http.server 8800\")",
+      "Bash(pkill -f \"http.server 8801\")"
+    ]
+  }
+}
