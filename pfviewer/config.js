@@ -24,9 +24,9 @@ export const CONFIG = {
   // entries to change what loads — paths are relative to index.html.
   dataFiles: {
     autoload: [
-      './data/mcphillips_1880.geojson',
-      './data/goad_1906.geojson',
-      './data/combined.geojson',
+      './data/mcphillips_1880.geojson',   // ground-truth "as digitized" 1880 view
+      './data/goad_1906.geojson',         // ground-truth "as digitized" 1906 view
+      './data/pastforward_2026.geojson',  // dated growth master (supersedes the old combined.geojson)
       './data/wpg_rivers.geojson',
       './data/wpg_roads_streetcar.geojson',
       './data/wpg_rails_1906.geojson',
@@ -406,7 +406,12 @@ export const CONFIG = {
     trainRailHeadWidth: 0.10, trainRailHeight: 0.20,
     gaugeHalfWidth: 0.7175,
     throughLineBedWidth: 4.0, sidingBedWidth: 2.4,
-    minVisibleYear: 1900,  // rail layer hidden before this year
+    // The freight/passenger rail network is hidden before this year on the
+    // timeline. ~1881 = the CPR main line reaching Winnipeg (approximate — not
+    // a hard historical date; adjust here). NOTE: the full 1906 network is
+    // drawn from this year on, so early rail looks more developed than it
+    // really was — per-segment build dates are a future refinement.
+    minVisibleYear: 1881,
   },
 
   // ── Timeline / date slider ───────────────────────────────────────────
@@ -427,11 +432,13 @@ export const CONFIG = {
   // ── Streetcars ───────────────────────────────────────────────────────
   streetcars: {
     speed: 4.5,              // m/s (~16 km/h)
-    intervalSeconds: 60,     // seconds between cars, each direction — Portage/Main only
-    minorRouteCarsPerDirection: 2, // fixed (length-independent) car count for every other
-                                   // route in data/wpg_roads_streetcar.geojson — the dense
-                                   // per-length formula above would spawn 1000+ cars across
-                                   // all 29 matched historical routes combined (~170km)
+    carSpacingMeters: 400,   // target distance (map units/metres) between cars along a
+                             // route, each direction — car count per direction = route
+                             // length / this value (floored by carsPerDirectionMin below).
+                             // Shorter routes get fewer cars, longer ones get more. Lower
+                             // this for denser traffic; raise it if frame rate suffers
+                             // across all ~29 matched routes (~170km combined).
+    carsPerDirectionMin: 1,  // floor so even the shortest routes still get a car
     laneOffset: 2.5,         // metres from centreline
     electrificationYear: 1891, // horse carts (below) vanish at this year — a global
                                 // "streetcar era begins" cutoff, separate from each
@@ -455,8 +462,53 @@ export const CONFIG = {
     intervalSeconds: 90,
     countPerDirection: 2,
     dimensions: { width: 1.6, height: 1.2, length: 3.0, roadOffsetY: 0.18 },
-    colors: { body: 0x8B5E2A, horse: 0x6B3A1F, wagonRut: 0x6A5A4A },
+    colors: { body: 0x8B5E2A, horse: 0x6B3A1F, ox: 0x9C9484, oxHorn: 0xE8DEC8, wagonRut: 0x6A5A4A },
     routeClips: { Main: { min: 54, max: 260 } },
+    oxChance: 0.35,   // fraction of carts drawn by an ox team instead of a horse
+
+    // Spoked cart wheels — one shared merged geometry, instanced per wheel.
+    // Rotation speed is derived from actual travel speed each tick (not
+    // baked in), so faster carts spin their wheels faster automatically.
+    wheels: {
+      radius: 0.42,
+      tubeThickness: 0.05,   // rim cross-section radius
+      spokeCount: 8,
+      spokeThickness: 0.045, // box cross-section (both axes) of each spoke
+      hubRadius: 0.11,
+      hubLength: 0.20,       // hub cylinder length along the axle
+      color: 0x2A1E14,
+    },
+
+    // Cargo loads — a shared geometry per kind, 1–3 chosen per cart at spawn
+    // time (seeded, so stable across ticks) and stacked on the flatbed.
+    cargo: {
+      maxPerCart: 3,
+      minPerCart: 1,
+      kinds: ['barrel', 'sack', 'crate', 'hayBale'],
+      barrel:  { radius: 0.28, height: 0.55, color: 0x6E4A28 },
+      sack:    { radius: 0.30, color: 0xC2B280 },
+      crate:   { size: 0.5, color: 0x8A6A3E },
+      hayBale: { radius: 0.30, length: 0.65, color: 0xD9B84A },
+    },
+
+    // Seated driver figure + reins running to the horse's head anchor.
+    driver: {
+      torsoColor: 0x3A3428,
+      headColor:  0xC49A6C,
+      armColor:   0x3A3428,
+      reinColor:  0x2A1E14,
+      reinThickness: 0.015,
+    },
+
+    // Occasional road droppings — small fading discs left behind a moving
+    // horse. Pool-based like chimney smoke, so no per-frame allocation.
+    droppings: {
+      poolSize: 24,
+      chancePerSecond: 0.06,  // per moving cart, average one every ~17s
+      life: 6.0,              // seconds visible before fully faded
+      radius: 0.09,
+      color: 0x4A3420,
+    },
   },
 
   // ── Trains ────────────────────────────────────────────────────────

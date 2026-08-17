@@ -170,7 +170,9 @@ canvas{display:block;position:fixed;inset:0;}
   </div>
   <div style="display:flex;align-items:center;gap:10px;width:100%;">
     <span style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1850</span>
+    <button id="year-dec" title="Back one year" style="background:transparent;border:1px solid #3a2810;border-radius:5px;width:26px;height:26px;color:#C8A05A;font-size:0.95rem;line-height:1;cursor:pointer;flex-shrink:0;pointer-events:auto;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;">‹</button>
     <input type="range" id="date-slider" min="0" max="443" step="1" value="228" style="flex:1;accent-color:#C8A05A;cursor:pointer;">
+    <button id="year-inc" title="Forward one year" style="background:transparent;border:1px solid #3a2810;border-radius:5px;width:26px;height:26px;color:#C8A05A;font-size:0.95rem;line-height:1;cursor:pointer;flex-shrink:0;pointer-events:auto;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;">›</button>
     <span style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1960</span>
   </div>
 </div>
@@ -726,6 +728,7 @@ let activeLayer='1906';   // module-scope: read by tickStreetcars for 1880 hide 
 function detectYear(geojson){
   // Check filename hint stored on the geojson object by the loader
   const hint=(geojson._filename||'').toLowerCase();
+  if(hint.includes('pastforward'))return'pastforward'; // dated growth master — its own layer, before the 1880/1906 source_file sniff below
   if(hint.includes('combined'))return'combined';
   // Try source_file property of first named feature
   for(const f of geojson.features){
@@ -1677,14 +1680,18 @@ async function buildCity(geojson){
     const fFloors=feat.properties.floors??1;
     const fHeight=Math.max(fFloors*FLOOR_H, 0.3); // no MIN_H clamp — fences can be short
     const fCol=buildingColour(fMat,feat.properties.uid,fFloors,feat.properties.area_m2);
+    // Lifespan so fences appear/disappear on the timeline like buildings.
+    const _fBorn=parseYearOrSentinel(feat.properties.born,NO_BORN), _fDied=parseYearOrSentinel(feat.properties.died,NO_DIED);
     const lines=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
     for(const line of lines){
       for(let i=0;i<line.length-1;i++){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
-        for(const g of buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol))
+        for(const g of buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol)){
+          tagLifespan(g,_fBorn,_fDied);
           fenceGeos.push(g);
+        }
       }
     }
   }
@@ -1694,9 +1701,10 @@ async function buildCity(geojson){
     for(const g of fenceGeos)g.dispose();
     if(fMerged){
       fMerged.computeVertexNormals();
-      const fMesh=new THREE.Mesh(fMerged,new THREE.MeshPhongMaterial({
+      const fMesh=new THREE.Mesh(fMerged,tagMaterialForLifespan(new THREE.MeshPhongMaterial({
         vertexColors:true,shininess:30,specular:CONFIG.building.fenceSpecular
-      }));
+      })));
+      fMesh.name='fences';
       group.add(fMesh);
       console.log(`Fences: ${fenceGeos.length} geos`);
     }
@@ -2692,11 +2700,14 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:CONFIG.facade.panelSpecular,
   });
+  tagMaterialForLifespan(sharedMat); // facade appears/disappears with its host building
+  const _fBorn=parseYearOrSentinel(props.born,NO_BORN), _fDied=parseYearOrSentinel(props.died,NO_DIED);
   let firstMesh=null;
   for(const e of frontEdges){
     const uA=(e.a.x*fax+e.a.z*faz-projMin)/projSpan;
     const uB=(e.b.x*fax+e.b.z*faz-projMin)/projSpan;
     const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup);
+    tagLifespan(m.geometry,_fBorn,_fDied);
     if(!firstMesh)firstMesh=m;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
@@ -2798,11 +2809,15 @@ async function placeFacadeOnBuilding(info,worldNormal){
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:CONFIG.facade.panelSpecular,
   });
+  tagMaterialForLifespan(sharedMat); // facade appears/disappears with its host building
+  const _fp=info.feat?.properties||{};
+  const _fBorn=parseYearOrSentinel(_fp.born,NO_BORN), _fDied=parseYearOrSentinel(_fp.died,NO_DIED);
   let firstMesh=null;
   for(const e of frontEdges){
     const uA=(e.a.x*fax2+e.a.z*faz2-projMin2)/projSpan2;
     const uB=(e.b.x*fax2+e.b.z*faz2-projMin2)/projSpan2;
     const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup2);
+    tagLifespan(m.geometry,_fBorn,_fDied);
     if(!firstMesh)firstMesh=m;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
@@ -2851,17 +2866,62 @@ function queryBuilding(faceIndex,mesh){
   while(lo<hi){const mid=(lo+hi+1)>>1;cums[mid]<=faceIndex?(lo=mid):(hi=mid-1);}
   return mesh.userData.infos[lo]||null;
 }
-function updateHover(){
+// Lifespan check mirroring the shader discard (born <= viewYear < died): a
+// date-hidden building still has raycast geometry, so without this a building
+// that is no-longer/not-yet there — sitting between the camera and the visible
+// one — would answer the hover query.
+function buildingAliveNow(props){
+  if(!props) return true;
+  const y=buildingYearUniform.value;
+  const b=parseYearOrSentinel(props.born,NO_BORN), d=parseYearOrSentinel(props.died,NO_DIED);
+  return y>=b && y<d;
+}
+// Nearest hovered building that is actually visible at the current date.
+function firstVisibleHitInfo(){
   raycaster.setFromCamera(mouseNDC,camera);
   const hits=raycaster.intersectObjects(buildingMeshes);
+  for(const h of hits){
+    const info=queryBuilding(h.faceIndex,h.object);
+    if(info && buildingAliveNow(info.feat?.properties)) return info;
+  }
+  return null;
+}
+// Yellow footprint outline of the building being reported, so it's unambiguous
+// which one the hover info belongs to. Cached by uid — only rebuilt when the
+// reported building changes, not every frame.
+let _hoverHL=null, _hoverHLKey=null;
+function bldgKey(feat){ const p=feat&&feat.properties; return p?(p.uid||p.pf_uid||p.id||null):null; }
+function setHoverHighlight(feat){
+  const key=bldgKey(feat);
+  if(key===_hoverHLKey) return;
+  _hoverHLKey=key;
+  if(_hoverHL){scene.remove(_hoverHL);_hoverHL.geometry.dispose();_hoverHL.material.dispose();_hoverHL=null;}
+  if(!feat||!feat.geometry) return;
+  const g=feat.geometry;
+  const rings = g.type==='Polygon'?[g.coordinates[0]]:g.type==='MultiPolygon'?g.coordinates.map(p=>p[0]):[];
+  if(!rings.length) return;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  const seg=[];
+  for(const ring of rings){
+    const pts=ring.map(c=>{const[sx,sy]=project(c[0],c[1]);const x=sx+offX,z=-sy+offZ;return[x,sampleTerrainY(x,z)+0.4,z];});
+    for(let i=0;i<pts.length-1;i++) seg.push(pts[i][0],pts[i][1],pts[i][2],pts[i+1][0],pts[i+1][1],pts[i+1][2]);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(seg,3));
+  _hoverHL=new THREE.LineSegments(geo,new THREE.LineBasicMaterial({color:0xffee44,depthTest:false,transparent:true}));
+  _hoverHL.renderOrder=999;
+  scene.add(_hoverHL);
+}
+function updateHover(){
+  const info=firstVisibleHitInfo();
   const panel=document.getElementById('info-panel');
-  if(!hits.length){panel.style.display='none';return;}
-  const info=queryBuilding(hits[0].faceIndex,hits[0].object);
-  if(!info){panel.style.display='none';return;}
-  const hex='#'+MATS[info.material].color.toString(16).padStart(6,'0');
+  if(!info){panel.style.display='none';setHoverHighlight(null);return;}
+  setHoverHighlight(info.feat);
+  const hex='#'+(MATS[info.material]?.color||0x888888).toString(16).padStart(6,'0');
   const label=MATS[info.material]?.label||info.material;
   document.getElementById('info-name').textContent=info.name||'(unnamed building)';
   const props=info.feat?.properties||{};
+  const uid=props.uid||props.pf_uid||props.id;
   document.getElementById('info-rows').innerHTML=[
     `<span class="info-dot" style="background:${hex}"></span>Material: <span>${label}</span>`,
     info.floors!=null?`Floors: <span>${info.floors}</span>`:'',
@@ -2869,7 +2929,7 @@ function updateHover(){
     info.source?`Sheet: <span>${(info.source||'').replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>`:'',
     props.born!=null?`Born: <span>${props.born}</span>`:'',
     props.died!=null?`Died: <span>${props.died}</span>`:'',
-    props.id!=null?`ID: <span>${props.id}</span>`:'',
+    uid!=null?`UID: <span style="font-size:0.82em;word-break:break-all;">${uid}</span>`:'',
   ].filter(Boolean).join('<br>');
   panel.style.display='block';
 }
@@ -2900,7 +2960,7 @@ function enterFPS(){
   document.getElementById('crosshair').style.display=isMobile?'none':'flex';
   document.getElementById('mode-badge').textContent='Walk Mode';
   document.getElementById('fps-hint').style.display='block';
-  document.getElementById('info-panel').style.display='none';
+  document.getElementById('info-panel').style.display='none';setHoverHighlight(null);
 }
 function exitFPS(){
   fpsMode=false;falling=false;fallVelocity=0;
@@ -2975,7 +3035,7 @@ function applyCameraFromURL(){
   document.getElementById('crosshair').style.display=isMobile?'none':'flex';
   document.getElementById('mode-badge').textContent='Walk Mode';
   document.getElementById('fps-hint').style.display='block';
-  document.getElementById('info-panel').style.display='none';
+  document.getElementById('info-panel').style.display='none';setHoverHighlight(null);
   if(isMobile) showTouchControls();
   else{
     try{renderer.domElement.requestPointerLock();}catch(e){}
@@ -3200,18 +3260,15 @@ document.addEventListener('mousemove',e=>{
     // Ctrl+hover: show building ID and name near cursor
     const tip=document.getElementById('bldg-tooltip');
     if(e.ctrlKey&&buildingMeshes.length){
-      raycaster.setFromCamera(mouseNDC,camera);
-      const hits=raycaster.intersectObjects(buildingMeshes);
-      if(hits.length){
-        const info=queryBuilding(hits[0].faceIndex,hits[0].object);
-        if(info){
-          const id=info.feat?.properties?.id??'?';
-          const nm=info.name||'(unnamed)';
-          tip.textContent=`id:${id}  "${nm}"`;
-          tip.style.display='block';
-          tip.style.left=(e.clientX+14)+'px';
-          tip.style.top=(e.clientY-10)+'px';
-        }else{tip.style.display='none';}
+      const info=firstVisibleHitInfo();   // skips date-hidden buildings; updateHover() also highlights it
+      if(info){
+        const p=info.feat?.properties||{};
+        const uid=p.uid||p.pf_uid||p.id||'?';
+        const nm=info.name||'(unnamed)';
+        tip.textContent=`${uid}  "${nm}"`;
+        tip.style.display='block';
+        tip.style.left=(e.clientX+14)+'px';
+        tip.style.top=(e.clientY-10)+'px';
       }else{tip.style.display='none';}
     }else{tip.style.display='none';}
   }
@@ -3428,6 +3485,14 @@ function setCurrentViewDate(date, mode){
   buildingYearUniform.value = date.getFullYear();
 }
 
+// Step the viewed date by whole years (timeline ‹ / › buttons), clamped to range.
+function stepYear(delta){
+  const d=new Date(currentViewDate);
+  const y=Math.max(TIMELINE_MIN_YEAR,Math.min(TIMELINE_MAX_YEAR,d.getFullYear()+delta));
+  d.setFullYear(y);
+  setCurrentViewDate(d, dateResolutionMode);
+}
+
 let dateControlWired=false;
 function initDateControl(){
   document.getElementById('date-control').style.display='flex';
@@ -3453,6 +3518,9 @@ function initDateControl(){
     playBtn.textContent=timelinePlaying?'⏸':'▶';
   });
 
+  document.getElementById('year-dec').addEventListener('click',()=>stepYear(-1));
+  document.getElementById('year-inc').addEventListener('click',()=>stepYear(1));
+
   updateDateUI();
 }
 
@@ -3462,17 +3530,22 @@ function initDateControl(){
 // (easing, per-era pacing, etc.) is settled.
 function tickTimeline(dt){
   if(!timelinePlaying) return;
-  const d=new Date(currentViewDate);
-  d.setDate(d.getDate()+dt*CONFIG.timeline.playSpeedDaysPerSecond);
+  // Advance by adding milliseconds to the raw timestamp — setDate(getDate()+fraction)
+  // is a no-op because getDate() returns an integer and the fractional part never
+  // accumulates across frames.
+  const d=new Date(currentViewDate.getTime()+dt*CONFIG.timeline.playSpeedDaysPerSecond*86400000);
   if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
   setCurrentViewDate(d,dateResolutionMode);
 }
+window._debugTickTimeline=tickTimeline;
+window._debugGetTimelinePlaying=()=>timelinePlaying;
 
 // ── Streetcar traffic system ────────────────────────────────────────
 // Up ≠ N: all waypoints are world XZ (X=east, Z=south).
 
 const STREETCAR_SPEED = CONFIG.streetcars.speed;
-const STREETCAR_INTERVAL = CONFIG.streetcars.intervalSeconds;
+const STREETCAR_CAR_SPACING = CONFIG.streetcars.carSpacingMeters;
+const STREETCAR_MIN_CARS = CONFIG.streetcars.carsPerDirectionMin;
 const STREETCAR_LANE = CONFIG.streetcars.laneOffset;
 
 const ROUTE_CLIPS = {
@@ -3656,44 +3729,294 @@ const CART_LANE     = CONFIG.carts.laneOffset;
 const CART_INTERVAL = CONFIG.carts.intervalSeconds;
 const CART_COUNT    = CONFIG.carts.countPerDirection;
 
-// Cart geometry — simple box body + smaller box for horse
+// Cart body
 const CT_W=CONFIG.carts.dimensions.width, CT_H=CONFIG.carts.dimensions.height, CT_L=CONFIG.carts.dimensions.length;
 const CT_Y_BASE=CONFIG.carts.dimensions.roadOffsetY;
 const CT_BODY_Y=CT_Y_BASE+CT_H*0.5+0.3;  // lifted on wheels
 
 const ctBodyGeo =new THREE.BoxGeometry(CT_W, CT_H, CT_L);
 const ctBodyMat =new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.body,shininess:8});
-const ctHorseGeo=new THREE.BoxGeometry(0.7, 1.2, 2.0);
-const ctHorseMat=new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.horse,shininess:5});
-const ctHeadGeo =new THREE.BoxGeometry(0.35, 0.5, 0.65);
-const ctHeadMat =new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.horse,shininess:5});
 
-function buildCartGroup(){
+// ── Draft animal (horse or ox) geometry — shared across instances ──
+// Body/neck/head are capsules laid along local +Z (forward = away from the
+// cart bed); legs are cylinders pre-translated so their TOP is the local
+// origin, so positioning a leg mesh at a hip/shoulder point and rotating it
+// about X swings the whole leg from that pivot (see tickCarts).
+const ctHorseMat=new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.horse,shininess:5});
+const ctOxMat   =new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.ox,shininess:3});
+const ctHornMat =new THREE.MeshPhongMaterial({color:CONFIG.carts.colors.oxHorn,shininess:20});
+
+const HB_LEN=1.05, HB_R=0.32;                       // body capsule
+const HN_LEN=0.5,  HN_R=0.17;                       // neck capsule
+const HH_LEN=0.42, HH_R=0.13;                       // head capsule
+const HL_LEN=0.72, HL_R_TOP=0.065, HL_R_BOT=0.05;   // leg cylinder
+
+const ctBodyPartGeo=new THREE.CapsuleGeometry(HB_R,HB_LEN,4,8).rotateX(Math.PI/2);
+const ctNeckGeo    =new THREE.CapsuleGeometry(HN_R,HN_LEN,4,8).rotateX(Math.PI/2);
+const ctAHeadGeo   =new THREE.CapsuleGeometry(HH_R,HH_LEN,4,8).rotateX(Math.PI/2);
+const ctEarGeo     =new THREE.ConeGeometry(0.05,0.14,5);
+const ctTailGeo    =new THREE.ConeGeometry(0.05,0.4,5);
+const ctHornGeo    =new THREE.ConeGeometry(0.045,0.32,6);
+const ctLegGeo     =new THREE.CylinderGeometry(HL_R_TOP,HL_R_BOT,HL_LEN,6).translate(0,-HL_LEN/2,0);
+
+const HORSE_Z     = CT_L*0.5+1.15;            // body centre, forward of the bed
+const HORSE_LEG_Y = CT_Y_BASE+HL_LEN;         // hip/shoulder pivot height
+const HORSE_BODY_Y= HORSE_LEG_Y+HB_R*0.55;    // body rests just above the leg tops
+
+function buildAnimalGroup(isOx){
   const group=new THREE.Group();
-  const body=new THREE.Mesh(ctBodyGeo,ctBodyMat);
-  body.position.y=CT_BODY_Y;
-  // Horse positioned in front of cart (+Z in car-local space = forward)
-  const horse=new THREE.Mesh(ctHorseGeo,ctHorseMat);
-  horse.position.set(0, CT_Y_BASE+0.6+0.3, CT_L*0.5+1.1);
-  const head=new THREE.Mesh(ctHeadGeo,ctHeadMat);
-  head.position.set(0, CT_Y_BASE+1.2+0.3, CT_L*0.5+2.0);
-  head.rotation.x=0.25;  // slight downward nose tilt
-  group.add(body,horse,head);
+  const mat=isOx?ctOxMat:ctHorseMat;
+  const scale=isOx?1.08:1.0;
+
+  const body=new THREE.Mesh(ctBodyPartGeo,mat);
+  body.position.set(0,HORSE_BODY_Y,HORSE_Z);
+  body.scale.set(scale,scale,scale);
+
+  const neck=new THREE.Mesh(ctNeckGeo,mat);
+  neck.position.set(0,HORSE_BODY_Y+0.28,HORSE_Z+HB_LEN*0.5+0.10);
+  neck.rotation.x=-0.95;   // tips the forward end up
+
+  const head=new THREE.Mesh(ctAHeadGeo,mat);
+  head.position.set(0,HORSE_BODY_Y+0.60,HORSE_Z+HB_LEN*0.5+0.48);
+  head.rotation.x=-0.30;   // muzzle dipped slightly from the raised neck
+
+  const earL=new THREE.Mesh(ctEarGeo,mat);
+  earL.position.set(-0.09,HORSE_BODY_Y+0.84,HORSE_Z+HB_LEN*0.5+0.40); earL.rotation.z= 0.2;
+  const earR=new THREE.Mesh(ctEarGeo,mat);
+  earR.position.set( 0.09,HORSE_BODY_Y+0.84,HORSE_Z+HB_LEN*0.5+0.40); earR.rotation.z=-0.2;
+
+  const tail=new THREE.Mesh(ctTailGeo,mat);
+  tail.position.set(0,HORSE_BODY_Y+0.05,HORSE_Z-HB_LEN*0.5-0.08);
+  tail.rotation.x=Math.PI*0.42;
+
+  group.add(body,neck,head,earL,earR,tail);
+
+  if(isOx){
+    const hornL=new THREE.Mesh(ctHornGeo,ctHornMat);
+    hornL.position.set(-0.14,HORSE_BODY_Y+0.88,HORSE_Z+HB_LEN*0.5+0.36);
+    hornL.rotation.z= 0.9;
+    const hornR=new THREE.Mesh(ctHornGeo,ctHornMat);
+    hornR.position.set( 0.14,HORSE_BODY_Y+0.88,HORSE_Z+HB_LEN*0.5+0.36);
+    hornR.rotation.z=-0.9;
+    group.add(hornL,hornR);
+  }
+
+  // Legs — front pair near the shoulders, rear pair near the haunches.
+  // Diagonal pairs share a swing phase (front-left/back-right vs.
+  // front-right/back-left), the way a walking quadruped actually moves.
+  const legX=0.20*scale;
+  const legDefs=[
+    {x:-legX, z:HORSE_Z+HB_LEN*0.38, pair:0}, // front-left
+    {x: legX, z:HORSE_Z+HB_LEN*0.38, pair:1}, // front-right
+    {x:-legX, z:HORSE_Z-HB_LEN*0.38, pair:1}, // back-left
+    {x: legX, z:HORSE_Z-HB_LEN*0.38, pair:0}, // back-right
+  ];
+  const legs=legDefs.map(l=>{
+    const leg=new THREE.Mesh(ctLegGeo,mat);
+    leg.position.set(l.x,HORSE_LEG_Y,l.z);
+    leg.userData.pair=l.pair;
+    group.add(leg);
+    return leg;
+  });
+
+  // Head anchor (for reins, computed once at build time) and a rear anchor
+  // object (for dropping spawn points, read every frame via getWorldPosition
+  // like the locomotive smoke-stack anchor).
+  group.userData.headAnchor=new THREE.Vector3(0,HORSE_BODY_Y+0.54,HORSE_Z+HB_LEN*0.5+0.60);
+  const rearAnchor=new THREE.Object3D();
+  rearAnchor.position.set(0,CT_Y_BASE+0.05,HORSE_Z-HB_LEN*0.5-0.15);
+  group.add(rearAnchor);
+  group.userData.rearAnchor=rearAnchor;
+  group.userData.legs=legs;
   return group;
 }
 
+// ── Spoked wheels — one shared merged geometry, instanced per wheel ──
+const CT_WHEEL_CFG=CONFIG.carts.wheels;
+function buildCartWheelGeometry(){
+  const R=CT_WHEEL_CFG.radius, TUBE=CT_WHEEL_CFG.tubeThickness;
+  const parts=[
+    new THREE.TorusGeometry(R-TUBE,TUBE,8,20).rotateY(Math.PI/2),
+    new THREE.CylinderGeometry(CT_WHEEL_CFG.hubRadius,CT_WHEEL_CFG.hubRadius,CT_WHEEL_CFG.hubLength,10).rotateZ(Math.PI/2),
+  ];
+  const spokeLen=R-TUBE-CT_WHEEL_CFG.hubRadius;
+  const spokeBase=new THREE.BoxGeometry(CT_WHEEL_CFG.spokeThickness,spokeLen,CT_WHEEL_CFG.spokeThickness)
+    .translate(0,CT_WHEEL_CFG.hubRadius+spokeLen/2,0);
+  for(let i=0;i<CT_WHEEL_CFG.spokeCount;i++){
+    parts.push(spokeBase.clone().rotateX(i/CT_WHEEL_CFG.spokeCount*Math.PI*2));
+  }
+  const merged=mergeGeometries(parts,false);
+  for(const p of parts) p.dispose();
+  spokeBase.dispose();
+  return merged;
+}
+const ctWheelGeo=buildCartWheelGeometry();
+const ctWheelMat=new THREE.MeshPhongMaterial({color:CT_WHEEL_CFG.color,shininess:8});
+
+function addCartWheels(group){
+  const R=CT_WHEEL_CFG.radius;
+  const wx=CT_W*0.5-0.05, wz=CT_L*0.5-0.35;
+  const positions=[[-wx,wz],[wx,wz],[-wx,-wz],[wx,-wz]];
+  return positions.map(([x,z])=>{
+    const w=new THREE.Mesh(ctWheelGeo,ctWheelMat);
+    w.position.set(x,CT_Y_BASE+R,z);
+    group.add(w);
+    return w;
+  });
+}
+
+// ── Cargo — barrels, sacks, crates, hay bales; 1–3 chosen per cart ──
+const CT_CARGO_CFG=CONFIG.carts.cargo;
+const ctBarrelGeo=new THREE.CylinderGeometry(CT_CARGO_CFG.barrel.radius*0.9,CT_CARGO_CFG.barrel.radius,CT_CARGO_CFG.barrel.height,10);
+const ctBarrelMat=new THREE.MeshPhongMaterial({color:CT_CARGO_CFG.barrel.color,shininess:6});
+const ctSackGeo  =new THREE.SphereGeometry(CT_CARGO_CFG.sack.radius,8,6);
+const ctSackMat  =new THREE.MeshPhongMaterial({color:CT_CARGO_CFG.sack.color,shininess:2});
+const ctCrateGeo =new THREE.BoxGeometry(CT_CARGO_CFG.crate.size,CT_CARGO_CFG.crate.size,CT_CARGO_CFG.crate.size);
+const ctCrateMat =new THREE.MeshPhongMaterial({color:CT_CARGO_CFG.crate.color,shininess:4});
+const ctHayGeo   =new THREE.CylinderGeometry(CT_CARGO_CFG.hayBale.radius,CT_CARGO_CFG.hayBale.radius,CT_CARGO_CFG.hayBale.length,8).rotateZ(Math.PI/2);
+const ctHayMat   =new THREE.MeshPhongMaterial({color:CT_CARGO_CFG.hayBale.color,shininess:2});
+
+const CT_CARGO_GEO   ={barrel:ctBarrelGeo, sack:ctSackGeo,               crate:ctCrateGeo,               hayBale:ctHayGeo};
+const CT_CARGO_MAT   ={barrel:ctBarrelMat, sack:ctSackMat,               crate:ctCrateMat,               hayBale:ctHayMat};
+const CT_CARGO_HALF_H={barrel:CT_CARGO_CFG.barrel.height/2, sack:CT_CARGO_CFG.sack.radius, crate:CT_CARGO_CFG.crate.size/2, hayBale:CT_CARGO_CFG.hayBale.radius};
+
+function addCartCargo(group,seed){
+  const n=CT_CARGO_CFG.minPerCart+Math.floor(seededRand(seed)*(CT_CARGO_CFG.maxPerCart-CT_CARGO_CFG.minPerCart+1));
+  const bedTopY=CT_BODY_Y+CT_H*0.5;
+  const usableL=CT_L*0.72, usableW=CT_W*0.7;
+  const kinds=CT_CARGO_CFG.kinds;
+  for(let i=0;i<n;i++){
+    const kind=kinds[Math.floor(seededRand(seed+i*3+1)*kinds.length)];
+    const mesh=new THREE.Mesh(CT_CARGO_GEO[kind],CT_CARGO_MAT[kind]);
+    const lx=(seededRand(seed+i*3+2)-0.5)*usableW;
+    const lz=(seededRand(seed+i*3+3)-0.5)*usableL;
+    mesh.position.set(lx, bedTopY+CT_CARGO_HALF_H[kind], lz);
+    mesh.rotation.y=seededRand(seed+i*3+4)*Math.PI*2;
+    group.add(mesh);
+  }
+}
+
+// ── Driver/teamster figure + reins to the animal's head ─────────────
+const CT_DRIVER_CFG=CONFIG.carts.driver;
+const ctTorsoGeo=new THREE.CapsuleGeometry(0.16,0.38,4,8);
+const ctTorsoMat=new THREE.MeshPhongMaterial({color:CT_DRIVER_CFG.torsoColor,shininess:2});
+const ctDriverHeadGeo=new THREE.SphereGeometry(0.12,8,6);
+const ctDriverHeadMat=new THREE.MeshPhongMaterial({color:CT_DRIVER_CFG.headColor,shininess:2});
+const ctArmGeo=new THREE.CapsuleGeometry(0.045,0.34,4,6);
+const ctArmMat=new THREE.MeshPhongMaterial({color:CT_DRIVER_CFG.armColor,shininess:2});
+const ctReinMat=new THREE.MeshPhongMaterial({color:CT_DRIVER_CFG.reinColor,shininess:2});
+
+function addCartDriver(group){
+  const seatY=CT_BODY_Y+CT_H*0.5+0.02;
+  const seatZ=CT_L*0.5-0.35;   // near the front of the bed, facing forward (+Z)
+
+  const torso=new THREE.Mesh(ctTorsoGeo,ctTorsoMat);
+  torso.position.set(0,seatY+0.30,seatZ);
+  const head=new THREE.Mesh(ctDriverHeadGeo,ctDriverHeadMat);
+  head.position.set(0,seatY+0.60,seatZ+0.02);
+  const armL=new THREE.Mesh(ctArmGeo,ctArmMat);
+  armL.position.set(-0.18,seatY+0.34,seatZ+0.16); armL.rotation.x=-1.15;
+  const armR=new THREE.Mesh(ctArmGeo,ctArmMat);
+  armR.position.set( 0.18,seatY+0.34,seatZ+0.16); armR.rotation.x=-1.15;
+  group.add(torso,head,armL,armR);
+
+  return{
+    handL:new THREE.Vector3(-0.18,seatY+0.20,seatZ+0.32),
+    handR:new THREE.Vector3( 0.18,seatY+0.20,seatZ+0.32),
+  };
+}
+
+// Static connector mesh between two fixed local points — used for reins,
+// which don't need per-frame updates since the driver and animal are both
+// rigid children of the same cart group.
+function addCartRein(group,p1,p2){
+  const dir=new THREE.Vector3().subVectors(p2,p1);
+  const len=dir.length()||0.01;
+  const mid=new THREE.Vector3().addVectors(p1,p2).multiplyScalar(0.5);
+  const geo=new THREE.CylinderGeometry(CT_DRIVER_CFG.reinThickness,CT_DRIVER_CFG.reinThickness,len,4);
+  const mesh=new THREE.Mesh(geo,ctReinMat);
+  mesh.position.copy(mid);
+  mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir.normalize());
+  group.add(mesh);
+}
+
+function buildCartGroup(seed){
+  const group=new THREE.Group();
+  const body=new THREE.Mesh(ctBodyGeo,ctBodyMat);
+  body.position.y=CT_BODY_Y;
+  group.add(body);
+
+  const isOx=seededRand(seed+0.77)<CONFIG.carts.oxChance;
+  const animal=buildAnimalGroup(isOx);
+  group.add(animal);
+
+  const wheels=addCartWheels(group);
+  addCartCargo(group,seed+3);
+  const{handL,handR}=addCartDriver(group);
+  const headAnchor=animal.userData.headAnchor;
+  addCartRein(group,handL,headAnchor.clone().add(new THREE.Vector3(-0.05,0,0)));
+  addCartRein(group,handR,headAnchor.clone().add(new THREE.Vector3( 0.05,0,0)));
+
+  group.userData.wheels=wheels;
+  group.userData.legs=animal.userData.legs;
+  group.userData.rearAnchor=animal.userData.rearAnchor;
+  return group;
+}
+
+// ── Road droppings — small pool of fading discs left behind moving carts ──
+// Pooled the same way as chimney smoke: pre-built meshes reused round-robin,
+// no per-frame allocation. Flat cone/disc shape, brown, simple opacity fade.
+const CT_DROP_CFG=CONFIG.carts.droppings;
+const ctDropGeo=new THREE.CylinderGeometry(CT_DROP_CFG.radius,CT_DROP_CFG.radius*0.8,0.05,8);
+const dropPool=[];
+let dropPoolNext=0;
+function buildDropPool(){
+  for(let i=0;i<CT_DROP_CFG.poolSize;i++){
+    const mat=new THREE.MeshLambertMaterial({color:CT_DROP_CFG.color,transparent:true,opacity:0});
+    const mesh=new THREE.Mesh(ctDropGeo,mat);
+    mesh.visible=false;
+    scene.add(mesh);
+    dropPool.push({mesh,active:false,age:0});
+  }
+}
+buildDropPool();
+
+function spawnDropping(worldPos){
+  const slot=dropPool[dropPoolNext];
+  dropPoolNext=(dropPoolNext+1)%dropPool.length;
+  slot.active=true; slot.age=0;
+  slot.mesh.position.copy(worldPos);
+  slot.mesh.rotation.y=Math.random()*Math.PI*2;
+  slot.mesh.visible=true;
+  slot.mesh.material.opacity=0.85;
+}
+function tickDroppings(dt){
+  for(const slot of dropPool){
+    if(!slot.active) continue;
+    slot.age+=dt;
+    const f=slot.age/CT_DROP_CFG.life;
+    if(f>=1){slot.active=false;slot.mesh.visible=false;continue;}
+    slot.mesh.material.opacity=0.85*(1-f);
+  }
+}
+
 const cartMeshes=[];
+const _dropVec=new THREE.Vector3();
 
 function spawnCarts(route, count, dir, routeIdx){
   for(let i=0;i<count;i++){
-    const group=buildCartGroup();
-    scene.add(group);
     const seed=(routeIdx+10)*1000+dir*100+i;  // offset seed space from streetcars
+    const group=buildCartGroup(seed);
+    scene.add(group);
     const jitterT=(seededRand(seed)-0.5)*0.4/count;
     const tBase=((i/count)+jitterT+1)%1;
     const tOffset=dir>0?tBase:(tBase+0.5/count)%1;
     const speedMult=0.80+seededRand(seed+0.5)*0.35;
-    cartMeshes.push({mesh:group,route,dir,t:tOffset,speedMult});
+    cartMeshes.push({
+      mesh:group,route,dir,t:tOffset,speedMult,
+      wheelRot:0, legPhase:seededRand(seed+9)*Math.PI*2,
+      dropTimer:1+seededRand(seed+11)*8,
+    });
   }
 }
 
@@ -3779,10 +4102,12 @@ function tickCarts(dt){
   // render that distinction accurately, so this is an accepted simplification.
   const showCarts=currentViewDate.getFullYear()<STREETCAR_MIN_YEAR;
   const _cOffX=CONFIG.scene?.buildingOffsetX??0, _cOffZ=CONFIG.scene?.buildingOffsetZ??0;
+  const wheelR=CT_WHEEL_CFG.radius;
   for(const cart of cartMeshes){
     cart.mesh.visible=showCarts;
     if(!showCarts) continue;
-    const tStep=(CART_SPEED*cart.speedMult*dt)/cart.route.totalLen;
+    const speed=CART_SPEED*cart.speedMult;  // m/s — drives position, wheels, and legs alike
+    const tStep=(speed*dt)/cart.route.totalLen;
     cart.t+=tStep*cart.dir;
     if(cart.t>=1){cart.t=1-(cart.t-1);cart.dir*=-1;}
     else if(cart.t<=0){cart.t=Math.abs(cart.t);cart.dir*=-1;}
@@ -3791,18 +4116,44 @@ function tickCarts(dt){
     const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
     cart.mesh.position.set(ox+_cOffX, sampleTerrainY(ox+_cOffX,oz+_cOffZ), oz+_cOffZ);
     cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
+
+    // Wheels — angular speed = travel speed / radius, so faster carts spin faster.
+    // NOT multiplied by cart.dir: the body itself already flips 180° (above)
+    // to face the true direction of travel whenever dir goes negative, so in
+    // the cart's own local frame it's always rolling "forward" the same way.
+    // Multiplying by dir here double-corrects and spins the wheels backward
+    // on the return leg (e.g. correct heading north, reversed heading south).
+    cart.wheelRot+=(speed/wheelR)*dt;
+    const wheels=cart.mesh.userData.wheels;
+    for(let i=0;i<wheels.length;i++) wheels[i].rotation.x=cart.wheelRot;
+
+    // Legs — diagonal pairs swing together, stride rate scales with speed.
+    cart.legPhase+=(speed/0.9)*dt;
+    for(const leg of cart.mesh.userData.legs){
+      const phase=leg.userData.pair===0?cart.legPhase:cart.legPhase+Math.PI;
+      leg.rotation.x=Math.sin(phase)*0.35;
+    }
+
+    // Road droppings — low-probability timer per cart while moving.
+    cart.dropTimer-=dt;
+    if(cart.dropTimer<=0){
+      cart.dropTimer=(1/CT_DROP_CFG.chancePerSecond)*(0.6+seededRand(performance.now()*0.0011+cart.t)*0.8);
+      cart.mesh.updateMatrixWorld(true);
+      cart.mesh.userData.rearAnchor.getWorldPosition(_dropVec);
+      spawnDropping(_dropVec);
+    }
   }
 }
 
 function initStreetcars(roadGJ){
   // One route per road name tagged with a streetcar_start year (see
-  // add_streetcar_dates.py / data/wpg_roads_streetcar.geojson) — Portage and
-  // Main keep their historically-dense headway (unchanged from before);
-  // every other matched route gets a much sparser fixed car count, since the
-  // 29+ routes combined span well over 100km and the dense per-length
-  // formula would spawn 1000+ additional cars citywide (unplayable frame
-  // rate). Tune via CONFIG.streetcars.minorRouteCarsPerDirection for denser
-  // coverage.
+  // add_streetcar_dates.py / data/wpg_roads_streetcar.geojson). Car count
+  // per direction is proportional to that route's total track length —
+  // route length / CONFIG.streetcars.carSpacingMeters, floored at
+  // carsPerDirectionMin — so shorter routes get fewer cars and longer ones
+  // (Portage, Main) get more, instead of every route getting the same fixed
+  // count. Tune carSpacingMeters if frame rate suffers across all ~29
+  // matched routes (~170km combined).
   //
   // streetcar_start is now tagged per ROAD SEGMENT (a street was often built
   // out in stages, years apart — see add_streetcar_dates.py), not uniformly
@@ -3826,10 +4177,7 @@ function initStreetcars(roadGJ){
   for(const[name,startYear]of routeYears){
     const r=buildRouteWaypoints(roadGJ,name);
     if(!r||r.totalLen<10){console.warn(`Route "${name}" failed`);continue;}
-    const isMajor=name==='Portage'||name==='Main';
-    const carsPerDir=isMajor
-      ? Math.max(2,Math.ceil(r.totalLen/(STREETCAR_SPEED*STREETCAR_INTERVAL)))
-      : CONFIG.streetcars.minorRouteCarsPerDirection;
+    const carsPerDir=Math.max(STREETCAR_MIN_CARS,Math.round(r.totalLen/STREETCAR_CAR_SPACING));
     spawnStreetcars(r,carsPerDir,+1,idx,startYear);
     spawnStreetcars(r,carsPerDir,-1,idx,startYear);
     console.log(`Streetcars on ${name} (from ${startYear}): ${carsPerDir} each direction, ${r.totalLen.toFixed(0)}m`);
@@ -4421,8 +4769,12 @@ function initTrains(geojson){
 }
 
 function tickTrains(dt){
-  const layerYear=parseInt(activeLayer)||9999;
-  const visible=layerYear>=RAIL_MIN_YEAR;
+  // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
+  // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
+  // leaving rails visible in every era. The 1880/1906 layers set a matching
+  // representative date, so date-gating stays correct for them too.
+  const viewYear=(window.currentViewDate||new Date()).getFullYear();
+  const visible=viewYear>=RAIL_MIN_YEAR;
   if(railBedMesh) railBedMesh.visible=visible;
   if(railRailLineMesh) railRailLineMesh.visible=visible;
   for(const train of trainConsists){
@@ -4518,6 +4870,7 @@ function startLoop(){
     }else{orbit.update();updateHover();}
     tickStreetcars(dt);
     tickCarts(dt);
+    tickDroppings(dt);
     tickTimeline(dt);
     tickTrains(dt);
     tickTrainAudio(dt);
@@ -4545,7 +4898,8 @@ function buildLayerBar(){
   const has1880    = layerGroups.some(lg=>lg.year==='1880');
   const has1906    = layerGroups.some(lg=>lg.year==='1906');
   const hasCombined= layerGroups.some(lg=>lg.year==='combined');
-  const hasMultiple= (has1880&&has1906)||((has1880||has1906)&&hasCombined)||hasCombined;
+  const hasPastforward = layerGroups.some(lg=>lg.year==='pastforward');
+  const hasMultiple= (has1880&&has1906)||((has1880||has1906)&&hasCombined)||hasCombined||hasPastforward;
 
   bar.innerHTML='';
   bar.style.display='flex';
@@ -4554,8 +4908,9 @@ function buildLayerBar(){
   const activeStyle=`background:#C8A05A;color:#09080a;`;
   const inactiveStyle=`background:transparent;color:#5a4830;`;
 
-  // Default active layer: 1906 if present, else 1880, else combined
-  activeLayer = has1906?'1906': has1880?'1880':'combined';
+  // Default active layer: the dated growth master if present (so the date
+  // slider grows the city on first load), else 1906, else 1880, else combined.
+  activeLayer = hasPastforward?'pastforward': has1906?'1906': has1880?'1880':'combined';
 
   function applyVisibility(){
     for(const lg of layerGroups){
@@ -4581,6 +4936,7 @@ function buildLayerBar(){
   if(has1880)     defs.push({layer:'1880',    label:'1880'});
   if(has1906)     defs.push({layer:'1906',    label:'1906'});
   if(has1880&&has1906) defs.push({layer:'all',label:'1880 & 1906'});
+  if(hasPastforward) defs.push({layer:'pastforward',label:'Pastforward'});
   if(hasCombined) defs.push({layer:'combined',label:'Combined'});
 
   for(const{layer,label}of defs){

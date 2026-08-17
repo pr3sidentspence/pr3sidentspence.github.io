@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>repro</title></head>
+<body>
+<div id="date-control" style="display:none;">
+  <button id="timeline-play-btn">▶</button>
+  <div id="date-display"></div>
+  <input id="date-slider" type="range">
+  <input id="date-picker" type="date">
+</div>
+<div id="layer-bar" style="display:none;"></div>
+<div id="log"></div>
+<script type="module">
+const CONFIG = { timeline: { minYear: 1850, maxYear: 1960, startDate: '1906-07-01', playSpeedDaysPerSecond: 45 } };
+const TIMELINE_MIN_YEAR = CONFIG.timeline.minYear;
+const TIMELINE_MAX_YEAR = CONFIG.timeline.maxYear;
+let dateResolutionMode = 'quarter';
+
+function parseLocalISODate(iso){ const [y,m,d]=iso.split('-').map(Number); return new Date(y,m-1,d); }
+function dateToQuarterUnit(date){
+  const q  = Math.floor(date.getMonth()/3);
+  const yr = Math.max(TIMELINE_MIN_YEAR, Math.min(TIMELINE_MAX_YEAR, date.getFullYear()));
+  return (yr-TIMELINE_MIN_YEAR)*4 + q;
+}
+function isoLocal(date){
+  const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+function formatDateLabel(date, mode){
+  if(mode==='quarter'){
+    const QUARTER_SEASON_NAMES=['Winter','Spring','Summer','Fall'];
+    return `${QUARTER_SEASON_NAMES[Math.floor(date.getMonth()/3)]} ${date.getFullYear()}`;
+  }
+  return date.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+}
+
+let currentViewDate = parseLocalISODate(CONFIG.timeline.startDate);
+window.currentViewDate = currentViewDate;
+
+function updateDateUI(){
+  const label=document.getElementById('date-display');
+  if(label) label.textContent=formatDateLabel(currentViewDate,dateResolutionMode);
+  const slider=document.getElementById('date-slider');
+  if(slider) slider.value=String(dateToQuarterUnit(currentViewDate));
+  const picker=document.getElementById('date-picker');
+  if(picker){
+    const iso=isoLocal(currentViewDate);
+    if(picker.value!==iso) picker.value=iso;
+  }
+}
+
+function setCurrentViewDate(date, mode){
+  currentViewDate=date;
+  window.currentViewDate=date;
+  if(mode) dateResolutionMode=mode;
+  updateDateUI();
+}
+
+let dateControlWired=false;
+function initDateControl(){
+  document.getElementById('date-control').style.display='flex';
+  if(dateControlWired) { updateDateUI(); return; }
+  dateControlWired=true;
+
+  const slider=document.getElementById('date-slider');
+  slider.min='0'; slider.max=String((TIMELINE_MAX_YEAR-TIMELINE_MIN_YEAR)*4+3);
+  slider.addEventListener('input',()=>{
+    // quarterUnitToDate omitted for brevity in repro
+  });
+
+  const picker=document.getElementById('date-picker');
+  picker.min=`${TIMELINE_MIN_YEAR}-01-01`; picker.max=`${TIMELINE_MAX_YEAR}-12-31`;
+  picker.addEventListener('input',()=>{
+    if(!picker.value)return;
+    setCurrentViewDate(parseLocalISODate(picker.value),'day');
+  });
+
+  const playBtn=document.getElementById('timeline-play-btn');
+  playBtn.addEventListener('click',()=>{
+    timelinePlaying=!timelinePlaying;
+    playBtn.textContent=timelinePlaying?'⏸':'▶';
+    log('click -> timelinePlaying='+timelinePlaying);
+  });
+
+  updateDateUI();
+}
+
+let timelinePlaying = false;
+function tickTimeline(dt){
+  if(!timelinePlaying) return;
+  const d=new Date(currentViewDate);
+  d.setDate(d.getDate()+dt*CONFIG.timeline.playSpeedDaysPerSecond);
+  if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
+  setCurrentViewDate(d,dateResolutionMode);
+}
+
+function log(msg){ document.getElementById('log').textContent += msg+'\n'; console.log(msg); }
+
+// Simulate layer-bar click for "1880"
+window.simulateLayerClick1880 = function(){
+  const LAYER_REPRESENTATIVE_DATE = { '1880': [1880,0,1], '1906': [1906,6,1] };
+  const repDate=LAYER_REPRESENTATIVE_DATE['1880'];
+  setCurrentViewDate(new Date(...repDate),'day');
+  log('after 1880 click: currentViewDate='+currentViewDate+' mode='+dateResolutionMode);
+};
+
+initDateControl();
+window.tickTimeline = tickTimeline;
+window.getState = ()=>({timelinePlaying, currentViewDate: currentViewDate.toString(), dateResolutionMode});
+
+let lastTime=performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min((now-lastTime)*0.001,0.1);lastTime=now;
+  tickTimeline(dt);
+}
+requestAnimationFrame(loop);
+
+log('init complete');
+</script>
+</body></html>

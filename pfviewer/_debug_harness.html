@@ -1,0 +1,90 @@
+<!doctype html>
+<html><body>
+<div id="date-control" style="display:none"></div>
+<button id="timeline-play-btn"></button>
+<div id="date-display"></div>
+<input type="date" id="date-picker">
+<input type="range" id="date-slider" min="0" max="443" value="228">
+<script>
+const CONFIG = { timeline: { minYear:1850, maxYear:1960, startDate:'1906-07-01', playSpeedDaysPerSecond:45 } };
+
+const TIMELINE_MIN_YEAR = CONFIG.timeline.minYear;
+const TIMELINE_MAX_YEAR = CONFIG.timeline.maxYear;
+const QUARTER_SEASON_NAMES = ['Winter','Spring','Summer','Fall'];
+
+function parseLocalISODate(iso){
+  const[y,m,d]=iso.split('-').map(Number);
+  return new Date(y,(m||1)-1,d||1);
+}
+
+let currentViewDate = parseLocalISODate(CONFIG.timeline.startDate);
+window.currentViewDate = currentViewDate;
+let dateResolutionMode = 'quarter';
+let timelinePlaying = false;
+
+function dateToQuarterUnit(date){
+  const q  = Math.floor(date.getMonth()/3);
+  const yr = Math.max(TIMELINE_MIN_YEAR, Math.min(TIMELINE_MAX_YEAR, date.getFullYear()));
+  return (yr-TIMELINE_MIN_YEAR)*4 + q;
+}
+function isoLocal(date){
+  const y=date.getFullYear(), m=String(date.getMonth()+1).padStart(2,'0'), d=String(date.getDate()).padStart(2,'0');
+  return `${y}-${m}-${d}`;
+}
+function formatDateLabel(date, mode){
+  if(mode==='quarter'){
+    return `${QUARTER_SEASON_NAMES[Math.floor(date.getMonth()/3)]} ${date.getFullYear()}`;
+  }
+  return date.toLocaleDateString('en-US',{month:'long',day:'numeric',year:'numeric'});
+}
+function updateDateUI(){
+  const label=document.getElementById('date-display');
+  if(label) label.textContent=formatDateLabel(currentViewDate,dateResolutionMode);
+  const slider=document.getElementById('date-slider');
+  if(slider) slider.value=String(dateToQuarterUnit(currentViewDate));
+  const picker=document.getElementById('date-picker');
+  if(picker){
+    const iso=isoLocal(currentViewDate);
+    if(picker.value!==iso) picker.value=iso;
+  }
+}
+function setCurrentViewDate(date, mode){
+  currentViewDate=date;
+  window.currentViewDate=date;
+  if(mode) dateResolutionMode=mode;
+  updateDateUI();
+}
+
+let dateControlWired=false;
+function initDateControl(){
+  document.getElementById('date-control').style.display='flex';
+  if(dateControlWired) { updateDateUI(); return; }
+  dateControlWired=true;
+  const playBtn=document.getElementById('timeline-play-btn');
+  playBtn.addEventListener('click',()=>{
+    timelinePlaying=!timelinePlaying;
+    playBtn.textContent=timelinePlaying?'pause':'play';
+  });
+  updateDateUI();
+}
+
+function tickTimeline(dt){
+  if(!timelinePlaying) return;
+  const d=new Date(currentViewDate);
+  d.setDate(d.getDate()+dt*CONFIG.timeline.playSpeedDaysPerSecond);
+  if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
+  setCurrentViewDate(d,dateResolutionMode);
+}
+
+// layer bar equivalent
+const LAYER_REPRESENTATIVE_DATE = { '1880': [1880,0,1], '1906': [1906,6,1] };
+function clickLayerButton(layer){
+  const repDate=LAYER_REPRESENTATIVE_DATE[layer];
+  if(repDate) setCurrentViewDate(new Date(...repDate),'day');
+}
+
+window._api = { initDateControl, tickTimeline, clickLayerButton, setCurrentViewDate,
+  getState: ()=>({currentViewDate: currentViewDate.toISOString(), dateResolutionMode, timelinePlaying}) };
+initDateControl();
+</script>
+</body></html>
