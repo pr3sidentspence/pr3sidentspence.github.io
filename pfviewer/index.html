@@ -39,7 +39,7 @@ canvas{display:block;position:fixed;inset:0;}
 #fps-hint{display:none;color:#5a4030;}
 #stat-bar{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;}
 #build-ts{position:fixed;bottom:12px;right:14px;font-size:0.6rem;color:#2a1e0e;letter-spacing:0.08em;opacity:0.5;pointer-events:none;z-index:5;}
-#info-panel{position:fixed;bottom:60px;right:18px;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;display:none;}
+#info-panel{position:fixed;bottom:60px;right:18px;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;display:none;z-index:11;}
 .info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
 .info-row{font-size:0.78rem;color:#5a4830;line-height:1.9;}
 .info-row span{color:#a08050;}
@@ -129,7 +129,8 @@ canvas{display:block;position:fixed;inset:0;}
   </div>
   <div id="controls-hint">
     <b>Orbit:</b> drag · scroll to zoom<br>
-    <span class="key">F</span>&nbsp; Walk mode &nbsp;&nbsp;<span class="key">hover</span> building info<br>
+    <span class="key">F</span>&nbsp; Walk mode &nbsp;&nbsp;<span class="key">Ctrl</span>+hover building info<br>
+    <span class="key">H</span>&nbsp; Home view &nbsp;&nbsp;<span class="key">M</span>&nbsp; Minimap<br>
     <span class="key">C</span>&nbsp; Copy camera link<br>
     <span id="fps-hint">
       <span class="key">W A S D</span> Move &nbsp;<span class="key">Mouse</span> Look<br>
@@ -140,7 +141,7 @@ canvas{display:block;position:fixed;inset:0;}
   <div id="stat-bar"></div>
   <div id="build-ts">v4 · 2026-06-07 00:04 UTC</div>
   <div id="bldg-tooltip" style="display:none;position:fixed;pointer-events:none;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:5px;padding:5px 10px;font-size:0.68rem;color:#C8A05A;letter-spacing:0.08em;z-index:20;white-space:nowrap;"></div>
-  <div id="minimap-wrap" style="display:none;position:fixed;bottom:70px;right:14px;width:200px;height:200px;border:1px solid #2a1e0e;border-radius:6px;overflow:hidden;z-index:10;background:rgba(9,8,10,0.85);">
+  <div id="minimap-wrap" style="display:none;position:fixed;bottom:70px;right:14px;width:200px;height:200px;border-radius:6px;overflow:hidden;z-index:10;pointer-events:auto;">
     <canvas id="minimap" width="200" height="200" style="width:200px;height:200px;cursor:crosshair;"></canvas>
   </div>
   <button id="minimap-btn" style="display:none;position:fixed;top:18px;right:18px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#8a7040;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">⊞ Map</button>
@@ -1211,12 +1212,14 @@ async function buildCity(geojson){
           const shapeInner=shapeOuter.map(([x,y])=>[sCx+(x-sCx)*ELEV_STEP_SCALE, sCy+(y-sCy)*ELEV_STEP_SCALE]);
 
           // Lower body
+          let _elevTris=0;
           const loShape=new THREE.Shape();
           loShape.moveTo(shapeOuter[0][0],shapeOuter[0][1]);
           for(let j=1;j<shapeOuter.length;j++) loShape.lineTo(shapeOuter[j][0],shapeOuter[j][1]);
           try{
             const loGeom=new THREE.ExtrudeGeometry(loShape,{depth:lowerH,bevelEnabled:false});
             loGeom.rotateX(-Math.PI/2); loGeom.translate(0,buildingBaseY,0); applyVertexColour(loGeom,bldgCol); wallGeos[mat].push(loGeom);
+            _elevTris+=loGeom.index?loGeom.index.count/3:loGeom.attributes.position.count/3;
           }catch(e){console.warn('elevator lower body failed',props.id,e.message);}
 
           // Shoulder shelf (annular ring at lowerH)
@@ -1231,6 +1234,7 @@ async function buildCity(geojson){
             const shelfGeom=new THREE.ExtrudeGeometry(shelfShape,{depth:0.15,bevelEnabled:false});
             shelfGeom.rotateX(-Math.PI/2); shelfGeom.translate(0,buildingBaseY+lowerH,0);
             applyVertexColour(shelfGeom,bldgCol); wallGeos[mat].push(shelfGeom);
+            _elevTris+=shelfGeom.index?shelfGeom.index.count/3:shelfGeom.attributes.position.count/3;
           }catch(e){/* skip degenerate shelf */}
 
           // Upper cupola
@@ -1241,6 +1245,7 @@ async function buildCity(geojson){
             const upGeom=new THREE.ExtrudeGeometry(upShape,{depth:upperH,bevelEnabled:false});
             upGeom.rotateX(-Math.PI/2); upGeom.translate(0,buildingBaseY+lowerH,0);
             applyVertexColour(upGeom,bldgCol); wallGeos[mat].push(upGeom);
+            _elevTris+=upGeom.index?upGeom.index.count/3:upGeom.attributes.position.count/3;
           }catch(e){console.warn('elevator cupola failed',props.id,e.message);}
 
           // Steep peaked roof on inner footprint
@@ -1254,6 +1259,11 @@ async function buildCity(geojson){
           let emcx=0,emcz=0;
           for(const[x,y] of shapeOuter){emcx+=x;emcz+=(-y);}
           emcx/=shapeOuter.length;emcz/=shapeOuter.length;
+          // wallCums must stay aligned 1:1 with wallInfos — the three geometries
+          // above contributed real triangles to wallGeos[mat], so their combined
+          // count needs its own cums entry or every later hover in this material's
+          // merged mesh resolves to the wrong building (see issue: hover names wrong).
+          wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+_elevTris);
           wallInfos[mat].push({name:props.name||null,floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:emcx,cz:emcz});
           continue;  // skip normal wall creation for elevator
         }
@@ -1290,10 +1300,19 @@ async function buildCity(geojson){
         wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
         wallGeos[mat].push(wallGeom);
       }
-      // mcx,mcz already computed above; register for mini-map and facade index
+      // mcx,mcz already computed above; register for road generation (all buildings, incl. lumber/walkway)
       buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
       buildingCentroids.get(year).push({cx:mcx,cz:mcz});
-      wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
+      // wallInfos must only gain an entry when this building actually landed in
+      // wallGeos[mat] (the branch above) — lumber/walkway buildings go into
+      // their own separate meshes (lumberWallGeos/walkwayWallGeos) with no
+      // cums/infos of their own and are never added to buildingMeshes, so an
+      // entry pushed for them here would have no matching wallCums range,
+      // shifting every subsequent building in this material's hover lookup by
+      // one (same bug class as the elevator/dormer fixes above).
+      if(!isLumberYard&&!isWalkway){
+        wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
+      }
       matCounts[mat]++;
       // Track glass vert start so we can apply buildingBaseY to window Y coords after geometry is built
       const _glassStart=glassVerts.length;
@@ -1385,6 +1404,7 @@ async function buildCity(geojson){
           const usableP=primaryLen-1.6;  // margin from corners
           if(usableP>DORMER_W){
             const dormerCount=Math.max(1,Math.min(CONFIG.dormers.maxPerBuilding,Math.round(primaryLen/CONFIG.dormers.spacingMetres)));
+            let _dormerTris=0;
             for(let d=0;d<dormerCount;d++){
               const t=((d+0.5)/dormerCount)*primaryLen;
               const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
@@ -1392,10 +1412,17 @@ async function buildCity(geojson){
               // Glass vert fix below then adds buildingBaseY once — no double-offset.
               // Returned geoms are translated by buildingBaseY here.
               const{wallGeom:dWG,gableGeom:dGG,roofGeom:dRG}=buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,bldgCol);
-              if(dWG){dWG.translate(0,buildingBaseY,0);wallGeos[mat].push(dWG);}
-              if(dGG){dGG.translate(0,buildingBaseY,0);wallGeos[mat].push(dGG);}
+              if(dWG){dWG.translate(0,buildingBaseY,0);wallGeos[mat].push(dWG);_dormerTris+=dWG.index?dWG.index.count/3:dWG.attributes.position.count/3;}
+              if(dGG){dGG.translate(0,buildingBaseY,0);wallGeos[mat].push(dGG);_dormerTris+=dGG.index?dGG.index.count/3:dGG.attributes.position.count/3;}
               if(dRG){dRG.translate(0,buildingBaseY,0);roofGeos[mat].push(dRG);}
             }
+            // dWG/dGG landed in wallGeos[mat] AFTER this building's wallCums entry
+            // was already recorded (base wall only, above) — widen that entry so
+            // the hover binary-search boundary still matches the merged mesh.
+            // Same class of bug as the elevator fix; dormers are far more common
+            // (any peaked-roof building with a half floor), so this is the likely
+            // main cause of persistently wrong hover names.
+            if(_dormerTris>0) wallCums[mat][wallCums[mat].length-1]+=_dormerTris;
           }
         }
       }
@@ -2465,7 +2492,21 @@ function drawMinimap(){
     ctx.fillStyle=col;ctx.fillRect(cx-1.5,cz-1.5,3,3);
   }
   const[camX,camZ]=minimapW2C(camera.position.x,camera.position.z);
-  const hdg=fpsMode?yaw:Math.atan2(camera.position.x-orbit.target.x,camera.position.z-orbit.target.z)+Math.PI;
+  // Forward direction in world XZ, per mode. FPS: fwd = Ry(yaw)·(0,0,−1) =
+  // (−sin yaw, −cos yaw) (same derivation the start-position code uses for
+  // azimuth→yaw, further down in this file).
+  // Orbit: forward = target − camera (the direction the view is actually facing).
+  const[fwdX,fwdZ]=fpsMode
+    ?[-Math.sin(yaw),-Math.cos(yaw)]
+    :[orbit.target.x-camera.position.x,orbit.target.z-camera.position.z];
+  // World Z is south, but canvas Y (and this map's cz) increases downward —
+  // i.e. canvas-down already IS south, so converting a world forward vector to
+  // a compass bearing (0=north/up, clockwise-positive, matching ctx.rotate's
+  // clockwise-positive convention) needs atan2(east, −south) = atan2(fwdX,−fwdZ).
+  // The previous formula omitted that negation in both modes (by a different
+  // amount in each), which mirrored the arrow left/right and made it jump 180°
+  // between Orbit and Walk mode.
+  const hdg=Math.atan2(fwdX,-fwdZ);
   ctx.save();ctx.translate(camX,camZ);ctx.rotate(hdg);
   ctx.fillStyle=CONFIG.minimap.headingColor;ctx.beginPath();ctx.moveTo(0,-8);ctx.lineTo(-5,6);ctx.lineTo(5,6);ctx.closePath();ctx.fill();ctx.restore();
   ctx.strokeStyle=CONFIG.minimap.crosshairColor;ctx.lineWidth=0.5;
@@ -5524,30 +5565,45 @@ renderer.render(scene,camera);
 // Runs immediately. Silently skips 404s (file:// or missing files).
 // If any files found: hides drop zone, loads, starts scene.
 // If nothing found: drop zone stays for manual loading.
+//
+// The drop zone is hidden (and the loading screen shown) BEFORE the fetch
+// loop starts, not after. Otherwise the drop-box — the only visible,
+// tappable thing on the page — sits there for as long as the fetch+parse
+// of tens of MB of GeoJSON takes. On mobile that's long enough that an
+// impatient tap opens the native file-browse dialog, sometimes more than
+// once before the scene finally loads.
 (async()=>{
+  document.getElementById('drop-zone').style.display='none';
+  document.getElementById('loading').style.display='flex';
+  setProgress(0,'Checking for data…');await tick();
+
   const found=[];
-  for(const url of AUTOLOAD){
+  for(let i=0;i<AUTOLOAD.length;i++){
+    const url=AUTOLOAD[i];
     try{
+      setProgress(Math.round(i/AUTOLOAD.length*35),`Fetching ${url.split('/').pop()}…`);await tick();
       const res=await fetch(url+'?v='+Date.now());
       if(!res.ok) continue;
       const gj=await res.json();
       if(gj.features?.length) found.push({url,gj});
     }catch(e){}
   }
-  if(found.length===0) return;
-
-  document.getElementById('drop-zone').style.display='none';
-  document.getElementById('loading').style.display='flex';
+  if(found.length===0){
+    document.getElementById('loading').style.display='none';
+    document.getElementById('drop-zone').style.display='flex';
+    return;
+  }
 
   // Apply real LiDAR DEM FIRST so sampleTerrainY returns correct heights
   // when buildCity() and buildRoads() run below.  Roads/rails rebuild inside
   // applyDEM() is a no-op here (they haven't loaded yet) but will be called
   // correctly when they load in the loop below using DEM heights.
-  setProgress(5,'Loading terrain…');await tick();
+  setProgress(35,'Loading terrain…');await tick();
   await applyDEM();
 
-  for(const{url,gj}of found){
-    setProgress(10,`Loading ${url.split('/').pop()}…`);await tick();
+  for(let i=0;i<found.length;i++){
+    const{url,gj}=found[i];
+    setProgress(40+Math.round(i/found.length*60),`Loading ${url.split('/').pop()}…`);await tick();
     gj._filename=url;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water')        await buildWater(gj);
