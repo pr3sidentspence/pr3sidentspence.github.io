@@ -368,6 +368,75 @@ function setTimeOfDay(t){
 // a proper channel.  Up ≠ N: X=east, Y=up, Z=south.
 const groundMat=new THREE.MeshLambertMaterial({color:CONFIG.scene.ground.summerColor});
 groundMatRef=groundMat;
+// Riverbank dirt: fragment colour fades grass → dirt below a world-Y line
+// (CONFIG.terrain.bankDirt). uBankDirtStrength is zeroed in winter.
+const _gc=CONFIG.terrain.groundCover;
+const groundCoverUniforms={
+  uGcGrassAlt:{value:new THREE.Color(_gc.grassAlt)},
+  uGcGrassDry:{value:new THREE.Color(_gc.grassDry)},
+  uGcDryAmount:{value:_gc.dryAmount},
+  uGcMottle:{value:_gc.mottle},
+  uGcYardDirt:{value:new THREE.Color(_gc.yardDirt)},
+  uGcCoreDirt:{value:new THREE.Color(_gc.coreDirt)},
+  uGcFadeYears:{value:_gc.fadeYears},
+  uGcStrength:{value:1},           // 0 in winter
+  uGcTex:{value:null},             // density map, see buildGroundCover()
+  uGcHasTex:{value:0},
+  uGcMin:{value:new THREE.Vector2()},
+  uGcSize:{value:new THREE.Vector2(1,1)},
+};
+const bankDirtUniforms={
+  uBankDirtColor:{value:new THREE.Color(CONFIG.terrain.bankDirt.color)},
+  uBankDirtTop:{value:CONFIG.water.startY+CONFIG.terrain.bankDirt.aboveWater},
+  uBankDirtBlend:{value:CONFIG.terrain.bankDirt.blend},
+  uBankDirtJitter:{value:CONFIG.terrain.bankDirt.jitter},
+  uBankDirtStrength:{value:1},
+};
+groundMat.onBeforeCompile=shader=>{
+  Object.assign(shader.uniforms,bankDirtUniforms,groundCoverUniforms);
+  shader.uniforms.uGcYear=buildingYearUniform;   // shared with the building born/died discard (declared later in the module, so bound here)
+  shader.vertexShader='varying vec3 vBankWorld;\n'+shader.vertexShader
+    .replace('#include <project_vertex>','#include <project_vertex>\n  vBankWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');
+  shader.fragmentShader=`uniform vec3 uBankDirtColor;
+uniform float uBankDirtTop,uBankDirtBlend,uBankDirtJitter,uBankDirtStrength;
+uniform vec3 uGcGrassAlt,uGcGrassDry,uGcYardDirt,uGcCoreDirt;
+uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear;
+uniform sampler2D uGcTex;
+uniform vec2 uGcMin,uGcSize;
+varying vec3 vBankWorld;
+float gcHash(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
+  return mix(mix(gcHash(i),gcHash(i+vec2(1,0)),u.x),mix(gcHash(i+vec2(0,1)),gcHash(i+vec2(1,1)),u.x),u.y);}
+`+shader.fragmentShader
+    .replace('#include <color_fragment>',`#include <color_fragment>
+  {
+    // ── Summer ground cover (see CONFIG.terrain.groundCover) ──
+    vec2 wp=vBankWorld.xz;
+    float nBig=gcNoise(wp/420.)*.65+gcNoise(wp/170.+7.3)*.35;
+    float nMid=gcNoise(wp/60.+3.1);
+    float nSm=gcNoise(wp/15.+11.7);
+    float nFine=gcNoise(wp/4.+5.9);
+    float camD=distance(cameraPosition,vBankWorld);
+    vec3 g=mix(diffuseColor.rgb,uGcGrassAlt,smoothstep(.3,.7,nBig));
+    g=mix(g,uGcGrassDry,smoothstep(.58,.82,nBig*.45+nMid*.55)*uGcDryAmount);
+    g*=1.+uGcMottle*(nSm*2.-1.);
+    g*=mix(1.,.9+.2*nFine,1.-smoothstep(40.,220.,camD));   // fine grain near camera only (avoids shimmer)
+    if(uGcHasTex>.5){
+      // R = year yard coverage reached, G = year core coverage reached (byte = year-1800)
+      vec2 yrs=texture2D(uGcTex,(wp-uGcMin)/uGcSize).rg*255.+1800.;
+      float yard=clamp((uGcYear-yrs.x)/uGcFadeYears,0.,1.);
+      float core=clamp((uGcYear-yrs.y)/uGcFadeYears,0.,1.);
+      float patchy=smoothstep(.3,.7,nSm*.55+nFine*.45);
+      g=mix(g,uGcYardDirt,yard*(.3+.55*patchy));
+      g=mix(g,uGcCoreDirt,core*(.7+.3*patchy));
+    }
+    diffuseColor.rgb=mix(diffuseColor.rgb,g,uGcStrength);
+  }
+  float bankTop=uBankDirtTop+(sin(vBankWorld.x*0.13)+sin(vBankWorld.z*0.17+1.3))*0.5*uBankDirtJitter;
+  float bankF=1.0-smoothstep(bankTop-uBankDirtBlend,bankTop,vBankWorld.y);
+  diffuseColor.rgb=mix(diffuseColor.rgb,uBankDirtColor,bankF*uBankDirtStrength);`);
+};
+groundMat.customProgramCacheKey=()=>'bankDirt';
 const _tSegs = CONFIG.terrain?.segments ?? 300;
 const _tGeo  = new THREE.PlaneGeometry(12000, 12000, _tSegs, _tSegs);
 _tGeo.rotateX(-Math.PI / 2);           // vertices now in world XZ; Y is height
@@ -722,7 +791,7 @@ const layerGroups = [];   // [{year, group, label}]
 // 1880 layers: sparse settlement, 1km radius.
 // 1906 layers: dense city, 3km radius. Both: use largest.
 let roadDrawRadius = 0;   // set by buildCity based on detected year; 0 = not yet set
-const buildingCentroids = new Map(); // year→[{cx,cz}] — populated by buildCity, used by buildRoads
+const buildingCentroids = new Map(); // year→[{cx,cz,born,died,area}] — populated by buildCity, used by buildRoads
 window._buildingCentroids = buildingCentroids;
 let activeLayer='1906';   // module-scope: read by tickStreetcars for 1880 hide logic
 
@@ -793,6 +862,16 @@ function insetRing(pts, dist) {
 // Vertex colours baked into merged geometry — one draw call per material,
 // but each building gets a unique hue sampled from a material-appropriate palette.
 // Hash source: props.uid (stable) → deterministic colour per building.
+
+// Footprint area (m²) of a lon/lat ring via the local projection (shoelace).
+function ringAreaM2(ring){
+  let a=0;
+  for(let j=0;j<ring.length-1;j++){
+    const[x1,y1]=project(ring[j][0],ring[j][1]),[x2,y2]=project(ring[j+1][0],ring[j+1][1]);
+    a+=x1*y2-x2*y1;
+  }
+  return Math.abs(a)/2;
+}
 
 function simpleHash(str){
   let h=2166136261;
@@ -866,6 +945,238 @@ function applyVertexColour(geom, hexCol){
   const cols=new Float32Array(n*3);
   for(let i=0;i<n;i++){cols[i*3]=r;cols[i*3+1]=g;cols[i*3+2]=b;}
   geom.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+}
+
+// ── Bridges ────────────────────────────────────────────────────────
+// Builds a bridge from a rectangular footprint (world XZ corner list,
+// unclosed). Local frame: u = along the long side (the span), v = across,
+// y = up. Two styles, both with deck + stringers + masonry abutments:
+//  • through-truss — footprint crosses water (ground under the span dips
+//    below the default water level) and isn't timber. Pratt panels, Parker
+//    (camelback) top chord on long spans, overhead lateral bracing, stone
+//    piers between spans.
+//  • trestle — everything else (the timber rail bridge, the Main St subway):
+//    lattice railings + braced bents on footings.
+// Returns {geom, deck} — geom is one non-indexed geometry with vertex colours
+// baked; deck describes the deck plane for bridgeDeckY(). Returns null if
+// the footprint isn't a 4-corner rectangle or is shorter than
+// CONFIG.bridges.minSpan (caller keeps the slab).
+const _brY=new THREE.Vector3(0,1,0), _brZ=new THREE.Vector3(0,0,1);
+function buildBridgeGeometry(pts,mat){
+  const B=CONFIG.bridges;
+  if(pts.length!==4) return null;
+  const e0=[pts[1][0]-pts[0][0],pts[1][1]-pts[0][1]], e1=[pts[2][0]-pts[1][0],pts[2][1]-pts[1][1]];
+  const l0=Math.hypot(...e0), l1=Math.hypot(...e1);
+  const L=Math.max(l0,l1), W=Math.min(l0,l1);
+  if(L<B.minSpan||W<1) return null;
+  const ue=l0>=l1?e0:e1, ul=Math.max(l0,l1);
+  const U=new THREE.Vector3(ue[0]/ul,0,ue[1]/ul);
+  const V=new THREE.Vector3(-U.z,0,U.x);   // U×Y — keeps the basis right-handed
+  const cx=pts.reduce((s,p)=>s+p[0],0)/4, cz=pts.reduce((s,p)=>s+p[1],0)/4;
+  const toW=(u,y,v)=>new THREE.Vector3(cx+u*U.x+v*V.x, y, cz+u*U.z+v*V.z);
+  const ground=(u,v)=>{const p=toW(u,0,v);return sampleTerrainY(p.x,p.z);};
+
+  // Deck elevation: level with the higher bank end, and clear of whatever is
+  // underneath (the water surface over a river, the lowest ground otherwise).
+  const endA=ground(-L/2+1,0), endB=ground(L/2-1,0);
+  let minG=Infinity;
+  for(let u=-L/2;u<=L/2;u+=2) minG=Math.min(minG,ground(u,0));
+  const waterY=CONFIG.water.startY;
+  const overWater=minG<waterY;
+  const isWood=String(mat).includes('wood')||mat==='lumber';
+  const style=overWater&&!isWood?'truss':'trestle';
+  const underside0=B.deckThickness+B.girderDepth;
+  const deckTop=Math.max(endA,endB,(overWater?waterY:minG)+B.minClearance+underside0);
+  const girderBot=deckTop-underside0;
+
+  const memberCol=isWood?B.colors.timber:B.colors.steel;
+  const geos=[];
+  const basis=new THREE.Matrix4().makeBasis(U,_brY,V);
+  // Axis-aligned box in the local frame
+  const box=(u,y,v,lu,ly,lv,col)=>{
+    const g=new THREE.BoxGeometry(lu,ly,lv).toNonIndexed();
+    g.applyMatrix4(basis.clone().setPosition(toW(u,y,v)));
+    applyVertexColour(g,col);geos.push(g);
+  };
+  // Square-section member between two local points
+  const beam=(a,b,t,col=memberCol)=>{
+    const A=toW(...a), Bp=toW(...b), d=Bp.clone().sub(A), len=d.length();
+    if(len<0.05) return;
+    const g=new THREE.BoxGeometry(t,t,len).toNonIndexed();
+    const q=new THREE.Quaternion().setFromUnitVectors(_brZ,d.normalize());
+    g.applyMatrix4(new THREE.Matrix4().compose(A.add(Bp).multiplyScalar(0.5),q,new THREE.Vector3(1,1,1)));
+    applyVertexColour(g,col);geos.push(g);
+  };
+
+  // Deck + longitudinal stringers (edges, plus interior ones on wide decks)
+  box(0,deckTop-B.deckThickness/2,0,L,B.deckThickness,W,B.colors.deck);
+  const nG=Math.max(2,Math.ceil(W/5)+1);
+  for(let i=0;i<nG;i++){
+    const v=-W/2+0.25+(W-0.5)*i/(nG-1);
+    box(0,girderBot+B.girderDepth/2,v,L,B.girderDepth,0.4,memberCol);
+  }
+
+  // Abutments at both ends — solid masonry from below grade up to the girders
+  for(const s of[-1,1]){
+    const u=s*(L/2-B.abutmentLength/2);
+    const g=Math.min(ground(u,-W/2),ground(u,W/2),ground(u,0))-1;
+    const h=girderBot-g;
+    if(h>0.1) box(u,g+h/2,0,B.abutmentLength,h,W+1,B.colors.stone);
+  }
+  const inner=L-2*B.abutmentLength;
+
+  if(style==='truss'){
+    const T=B.truss;
+    // Spans between stone piers
+    const nSpans=Math.max(1,Math.ceil(inner/T.maxSpan));
+    const spanLen=inner/nSpans;
+    for(let si=1;si<nSpans;si++){
+      const u=-inner/2+spanLen*si;
+      const g=Math.min(ground(u,-W/2),ground(u,0),ground(u,W/2))-1;
+      box(u,(g+girderBot)/2,0,T.pierThickness,girderBot-g,W+2,B.colors.stone);
+    }
+    const H=Math.min(T.maxHeight,Math.max(T.minHeight,spanLen/T.heightRatio));
+    let n=Math.max(4,Math.round(spanLen/T.panelLength));
+    if(n%2) n++;
+    const yB=deckTop-0.2;
+    const camel=spanLen>=T.camelbackSpan;
+    // Top-chord height at panel point i (Parker curve on long spans)
+    const topY=i=>yB+(camel?H*(0.72+0.28*Math.sin(Math.PI*i/n)):H);
+    const overhead=W<=T.maxOverheadWidth;
+    for(let si=0;si<nSpans;si++){
+      const uA=-inner/2+spanLen*si, p=spanLen/n;
+      const uAt=i=>uA+p*i;
+      for(const side of[-1,1]){
+        const v=side*(W/2);
+        beam([uAt(0),yB,v],[uAt(n),yB,v],T.chordSize);                           // bottom chord
+        for(let i=1;i<n-1;i++) beam([uAt(i),topY(i),v],[uAt(i+1),topY(i+1),v],T.chordSize); // top chord
+        beam([uAt(0),yB,v],[uAt(1),topY(1),v],T.chordSize);                       // inclined end posts
+        beam([uAt(n),yB,v],[uAt(n-1),topY(n-1),v],T.chordSize);
+        for(let i=1;i<n;i++) beam([uAt(i),yB,v],[uAt(i),topY(i),v],T.verticalSize); // verticals
+        // Pratt diagonals — slope down toward midspan
+        for(let i=1;i<n-1;i++){
+          if(i<n/2) beam([uAt(i),topY(i),v],[uAt(i+1),yB,v],T.diagonalSize);
+          else      beam([uAt(i),yB,v],[uAt(i+1),topY(i+1),v],T.diagonalSize);
+        }
+      }
+      if(overhead){
+        // Top lateral struts + X-bracing between the two trusses, portal struts at the ends
+        for(let i=1;i<n;i++){
+          beam([uAt(i),topY(i),-W/2],[uAt(i),topY(i),W/2],T.lateralSize);
+          if(i<n-1){
+            beam([uAt(i),topY(i),-W/2],[uAt(i+1),topY(i+1),W/2],T.lateralSize*0.7);
+            beam([uAt(i),topY(i),W/2],[uAt(i+1),topY(i+1),-W/2],T.lateralSize*0.7);
+          }
+        }
+        for(const [i0,i1] of[[0,1],[n,n-1]]){
+          const f=0.7, uP=uAt(i0)+(uAt(i1)-uAt(i0))*f, yP=yB+(topY(i1)-yB)*f;
+          beam([uP,yP,-W/2],[uP,yP,W/2],T.lateralSize);
+        }
+      }
+      // Floor beams under the deck at each panel point
+      for(let i=0;i<=n;i++) beam([uAt(i),girderBot,-W/2],[uAt(i),girderBot,W/2],T.lateralSize*1.5);
+    }
+  }else{
+    // Lattice railings: posts, top rail, zig-zag diagonals
+    const nP=Math.max(2,Math.round(L/B.railingPostSpacing)+1);
+    const rTop=deckTop+B.railingHeight;
+    for(const side of[-1,1]){
+      const v=side*(W/2-B.railSize);
+      beam([-L/2,rTop,v],[L/2,rTop,v],B.railSize*1.4);
+      beam([-L/2,deckTop+0.15,v],[L/2,deckTop+0.15,v],B.railSize);
+      for(let i=0;i<nP;i++){
+        const u=-L/2+L*i/(nP-1);
+        beam([u,deckTop,v],[u,rTop,v],B.railSize*1.4);
+        if(i<nP-1){
+          const u2=-L/2+L*(i+1)/(nP-1);
+          const up=i%2===0;
+          beam([u,up?deckTop+0.15:rTop,v],[u2,up?rTop:deckTop+0.15,v],B.railSize*0.7);
+        }
+      }
+    }
+
+    // Bents — legs across the width, horizontal struts + X-bracing per level
+    const nBays=Math.max(1,Math.ceil(inner/B.bentSpacing));
+    const nLegs=Math.max(2,Math.ceil((W-0.6)/B.maxLegSpacing)+1);
+    for(let bi=1;bi<nBays;bi++){
+      const u=-inner/2+inner*bi/nBays;
+      const legs=[];
+      for(let li=0;li<nLegs;li++){
+        const vTop=-(W/2-0.3)+(W-0.6)*li/(nLegs-1);
+        const h=girderBot-ground(u,vTop);
+        if(h<1) continue;
+        const splay=li===0?-1:li===nLegs-1?1:0;
+        const vBot=vTop+splay*h*B.batter;
+        const gyB=ground(u,vBot);
+        legs.push({vTop,vBot,gy:gyB});
+        beam([u,gyB,vBot],[u,girderBot,vTop],B.legSize);
+        box(u,gyB+0.2,vBot,1.2,1.4,1.2,B.colors.stone);   // footing, partly buried
+      }
+      if(legs.length<2) continue;
+      // Bracing levels measured down from the girders to the highest footing
+      const floor=Math.max(...legs.map(l=>l.gy))+0.8;
+      const span=girderBot-floor;
+      const nLv=Math.max(1,Math.ceil(span/B.braceLevel));
+      const vAt=(l,y)=>l.vBot+(l.vTop-l.vBot)*(y-l.gy)/(girderBot-l.gy);
+      for(let k=0;k<=nLv;k++){
+        const y=girderBot-span*k/nLv;
+        for(let li=0;li<legs.length-1;li++){
+          const a=legs[li], b=legs[li+1];
+          beam([u,y,vAt(a,y)],[u,y,vAt(b,y)],B.braceSize);
+          if(k<nLv){
+            const y2=girderBot-span*(k+1)/nLv;
+            beam([u,y,vAt(a,y)],[u,y2,vAt(b,y2)],B.braceSize);
+            beam([u,y2,vAt(a,y2)],[u,y,vAt(b,y)],B.braceSize);
+          }
+        }
+      }
+    }
+  }
+
+  const merged=mergeGeometries(geos,false);
+  for(const g of geos) g.dispose();
+  if(!merged) return null;
+  return {geom:merged, style, deck:{cx,cz,ux:U.x,uz:U.z,halfL:L/2,halfW:W/2,deckTop}};
+}
+
+// Deck registry — filled by buildCity (bridges load before roads/rails), read
+// by bridgeDeckY() so roads, rails, streetcars, carts and trains ride over
+// the deck instead of following the terrain down into the channel.
+const bridgeDecks=[];   // {layer,cx,cz,ux,uz,halfL,halfW,deckTop}
+// Deck-top height at building-frame (x,z) for something travelling along
+// (dx,dz), or -Infinity if not on a deck. Only counts when the direction runs
+// with the span (so Main St passing UNDER the subway bridge stays on the
+// ground), and extends past each end as a short ramp down to the banks.
+function bridgeDeckY(x,z,dx,dz){
+  let best=-Infinity;
+  const dl=Math.hypot(dx,dz)||1, B=CONFIG.bridges;
+  for(const b of bridgeDecks){
+    if(!(activeLayer==='all'||activeLayer==='combined'||activeLayer===b.layer)) continue;
+    const rx=x-b.cx, rz=z-b.cz;
+    const v=-rx*b.uz+rz*b.ux;
+    if(Math.abs(v)>b.halfW+1) continue;
+    const over=Math.abs(rx*b.ux+rz*b.uz)-b.halfL;
+    if(over>B.rampLength) continue;
+    if(Math.abs(dx*b.ux+dz*b.uz)/dl<B.alignCos) continue;
+    const y=over<=0?b.deckTop:b.deckTop-over*B.rampGrade;
+    if(y>best) best=y;
+  }
+  return best;
+}
+// Terrain height, or the bridge deck if (x,z) is on one heading along its span.
+function surfaceY(x,z,dx,dz){
+  const t=sampleTerrainY(x,z);
+  if(!bridgeDecks.length) return t;
+  const d=bridgeDeckY(x,z,dx,dz);
+  return d>t?d:t;
+}
+// Vehicles: route coords are building-frame, terrain is sampled in world frame
+// (offset added) as before; yaw comes from sampleRoute (dir = sin/cos yaw).
+function vehicleY(ox,oz,offX,offZ,yaw){
+  const t=sampleTerrainY(ox+offX,oz+offZ);
+  if(!bridgeDecks.length) return t;
+  const d=bridgeDeckY(ox,oz,Math.sin(yaw),Math.cos(yaw));
+  return d>t?d:t;
 }
 
 // ── Procedural windows ─────────────────────────────────────────────
@@ -1117,6 +1428,7 @@ async function buildCity(geojson){
   group.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   scene.add(group);
   layerGroups.push({year,group,geojson});
+  if(geojson.attribution) dataAttributions.add(geojson.attribution);
   const yearRadius = year==='1880' ? 1000 : 3000;
   roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
 
@@ -1188,6 +1500,27 @@ async function buildCity(geojson){
       const _tStep=Math.max(1,Math.floor(_nPts/4));
       for(let j=0;j<_nPts;j+=_tStep){const[sx,sy]=project(outer[j][0],outer[j][1]);_tSum+=sampleTerrainY(sx,-sy);_tN++;}
       const buildingBaseY=_tSum/_tN;
+
+      // ── Bridge: open steel truss / trestle instead of a solid slab ──
+      // Same bookkeeping as the elevator below: one merged geometry → one
+      // wallCums/wallInfos entry so hover lookups stay aligned.
+      if(props.type==='bridge'){
+        const pts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return[sx,-sy];});
+        const br=buildBridgeGeometry(pts,mat);
+        if(br){
+          const tg=br.geom, tris=tg.attributes.position.count/3;
+          bridgeDecks.push({layer:year,...br.deck});
+          console.log(`Bridge (${br.style}): "${props.name||props.id}" ${tris} tris, deck ${br.deck.deckTop.toFixed(1)}m`);
+          wallGeos[mat].push(tg);
+          wallCums[mat].push(wallCums[mat][wallCums[mat].length-1]+tris);
+          wallInfos[mat].push({name:props.name||null,floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
+          matCounts[mat]++;
+          buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
+          buildingCentroids.get(year).push({cx:mcx,cz:mcz,born:_lifeBorn,died:_lifeDied,area:ringAreaM2(outer)});
+          if(RIVER_STRUCTURE_RE.test(props.name||'')) riverStructures.push({x:mcx,z:mcz});
+          continue;
+        }
+      }
 
       // ── Grain elevator: multi-stage geometry (lower body + shoulder + cupola + roof) ──
       {
@@ -1302,7 +1635,8 @@ async function buildCity(geojson){
       }
       // mcx,mcz already computed above; register for road generation (all buildings, incl. lumber/walkway)
       buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
-      buildingCentroids.get(year).push({cx:mcx,cz:mcz});
+      buildingCentroids.get(year).push({cx:mcx,cz:mcz,born:_lifeBorn,died:_lifeDied,area:ringAreaM2(outer)});
+          if(RIVER_STRUCTURE_RE.test(props.name||'')) riverStructures.push({x:mcx,z:mcz});
       // wallInfos must only gain an entry when this building actually landed in
       // wallGeos[mat] (the branch above) — lumber/walkway buildings go into
       // their own separate meshes (lumberWallGeos/walkwayWallGeos) with no
@@ -1579,10 +1913,59 @@ async function buildCity(geojson){
   // Up ≠ N: all geometry in world XZ (X=east, Z=south).
   // Fence style varies by material:
   //   stone/brick → solid masonry wall
-  //   wood        → white picket fence (alternating pickets + rail)
+  //   wood/unknown → white picket fence (pointed pickets on two rails, posts) —
+  //                  unknown is the untagged residential lot-line fencing
   //   iron/wood_industrial → rough horizontal rail fence
   //   log         → log corral (stacked horizontal rail logs)
-  //   unknown     → thin generic wall
+
+  // Slightly varied white per fence so a street of fences isn't one flat tone.
+  function picketColour(key){
+    const P=CONFIG.fences.picket;
+    const j=1-((simpleHash(String(key??''))%1000)/1000)*P.whitenessJitter;
+    const c=new THREE.Color(P.color).multiplyScalar(j);
+    return c.getHex();
+  }
+  // One segment's worth of pickets written straight into a single geometry —
+  // ~75k pickets per layer makes a BoxGeometry-per-picket far too slow/heavy.
+  // Each picket is a pointed board: front + back pentagon faces (6 tris), no
+  // sides (22 mm thick; invisible past a few metres). Pitch = width*(1+gapRatio).
+  // Each picket's base follows the terrain at its own position.
+  function buildPicketRun(x1,z1,x2,z2,P,col){
+    const dx=x2-x1,dz=z2-z1,len=Math.hypot(dx,dz);
+    const ax=dx/len,az=dz/len;         // along
+    const nx=-az,nz=ax;                // across (front face normal)
+    const w=P.width, hw=w/2, ht=P.thickness/2, H=P.height, sh=H-hw;
+    const pitch=w*(1+P.gapRatio);
+    const n=Math.max(1,Math.floor((len-w)/pitch)+1);
+    const start=(len-((n-1)*pitch+w))/2+hw;   // centre the run on the segment
+    const pos=new Float32Array(n*18*3), nor=new Float32Array(n*18*3);
+    let o=0;
+    const r=((col>>16)&255)/255,g=((col>>8)&255)/255,b=(col&255)/255;
+    const put=(x,y,z,sx,sz)=>{pos[o]=x;pos[o+1]=y;pos[o+2]=z;nor[o]=sx;nor[o+1]=0;nor[o+2]=sz;o+=3;};
+    for(let i=0;i<n;i++){
+      const t=start+i*pitch;
+      const px=x1+ax*t, pz=z1+az*t;
+      const y0=sampleTerrainY(px,pz);
+      for(const s of[1,-1]){
+        const fx=px+nx*ht*s, fz=pz+nz*ht*s;
+        const Lx=fx-ax*hw,Lz=fz-az*hw, Rx=fx+ax*hw,Rz=fz+az*hw;
+        const sx=nx*s,sz=nz*s;
+        // Winding CCW seen from the face's own side: front (s=1) L→R→…, back reversed
+        const quad=s===1
+          ?[[Lx,y0,Lz],[Rx,y0,Rz],[Rx,y0+sh,Rz], [Lx,y0,Lz],[Rx,y0+sh,Rz],[Lx,y0+sh,Lz], [Lx,y0+sh,Lz],[Rx,y0+sh,Rz],[fx,y0+H,fz]]
+          :[[Rx,y0,Rz],[Lx,y0,Lz],[Lx,y0+sh,Lz], [Rx,y0,Rz],[Lx,y0+sh,Lz],[Rx,y0+sh,Rz], [Rx,y0+sh,Rz],[Lx,y0+sh,Lz],[fx,y0+H,fz]];
+        for(const v of quad) put(v[0],v[1],v[2],sx,sz);
+      }
+    }
+    const geom=new THREE.BufferGeometry();
+    geom.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    geom.setAttribute('normal',new THREE.BufferAttribute(nor,3));
+    geom.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(n*18*2),2));
+    const cols=new Float32Array(n*18*3);
+    for(let k=0;k<n*18;k++){cols[k*3]=r;cols[k*3+1]=g;cols[k*3+2]=b;}
+    geom.setAttribute('color',new THREE.BufferAttribute(cols,3));
+    return geom;
+  }
 
   function buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol){
     const geos=[];
@@ -1607,19 +1990,22 @@ async function buildCity(geojson){
       geos.push(g);
     }
 
-    const isWoodFence=fMatRaw==='wood'||fMatRaw==='wood_residential';
+    const isWoodFence=fMatRaw==='wood'||fMatRaw==='wood_residential'||fMat==='unknown';
     const isIronFence=fMatRaw==='iron'||fMatRaw==='wood_industrial';
 
     if(isWoodFence){
-      const picketW=CONFIG.fences.picket.width, spacing=CONFIG.fences.picket.spacing;
-      const n=Math.max(1,Math.floor(segLen/spacing));
-      const col=CONFIG.fences.picket.color;
-      for(let i=0;i<=n;i++){
-        const along=(i/n - 0.5)*segLen;
-        box(picketW,fHeight,picketW, along,0,0,col);
+      const P=CONFIG.fences.picket;
+      const col=fCol;   // picket white with per-fence jitter (see caller)
+      const baseY=sampleTerrainY(cx,cz);
+      // Posts at the ends and every postSpacing, rails on the back face
+      const nPosts=Math.max(1,Math.ceil(segLen/P.postSpacing));
+      for(let k=0;k<=nPosts;k++){
+        const along=(k/nPosts-0.5)*segLen;
+        box(P.postSize,P.height+0.05,P.postSize, along,sampleTerrainY(cx+Math.sin(yaw)*along,cz+Math.cos(yaw)*along),P.postSize/2+P.thickness/2,col);   // +across = behind the picket faces
       }
-      box(0.04,0.07,segLen, 0,fHeight*0.72,0,col);
-      box(0.04,0.07,segLen, 0,fHeight*0.38,0,col);
+      for(const rh of P.railHeights)
+        box(P.railSize[0],P.railSize[1],segLen, 0,baseY+P.height*rh,P.thickness/2+P.railSize[0]/2,col);
+      geos.push(buildPicketRun(x1,z1,x2,z2,P,col));
 
     }else if(isIronFence){
       const rails=Math.max(2,Math.round(fHeight/0.5));
@@ -1706,7 +2092,9 @@ async function buildCity(geojson){
     const fMat=MATS[fMatRaw]?fMatRaw:'unknown';
     const fFloors=feat.properties.floors??1;
     const fHeight=Math.max(fFloors*FLOOR_H, 0.3); // no MIN_H clamp — fences can be short
-    const fCol=buildingColour(fMat,feat.properties.uid,fFloors,feat.properties.area_m2);
+    const isPicket=fMatRaw==='wood'||fMatRaw==='wood_residential'||fMat==='unknown';
+    const fCol=isPicket?picketColour(feat.properties.uid??feat.properties.id)
+                       :buildingColour(fMat,feat.properties.uid,fFloors,feat.properties.area_m2);
     // Lifespan so fences appear/disappear on the timeline like buildings.
     const _fBorn=parseYearOrSentinel(feat.properties.born,NO_BORN), _fDied=parseYearOrSentinel(feat.properties.died,NO_DIED);
     const lines=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
@@ -1903,8 +2291,75 @@ async function buildCity(geojson){
   return total;
 }
 
+// ── Ground-cover density map ───────────────────────────────────────
+// Per texel: the year the building-footprint coverage within `radius`
+// first reached yardCoverage (R) and coreCoverage (G), from born dates
+// (demolitions ignored). Stored as year-1800 in a byte; 0 = always, 255 =
+// never. Linear filtering blends it in space, and the shader compares with
+// the live timeline year so yards wear to dirt as the city grows.
+// Built from the active layer's centroids — called from buildRoads(), which
+// already reruns on every layer change / DEM load.
+let groundCoverTex=null;
+function buildGroundCover(){
+  const GC=CONFIG.terrain.groundCover, R=GC.radius, R2=R*R, circ=Math.PI*R2;
+  const cents=[];
+  for(const[yr,cs]of buildingCentroids)
+    if(activeLayer==='all'||activeLayer==='combined'||activeLayer===yr) for(const c of cs) cents.push(c);
+  if(!cents.length) return;
+  let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+  for(const c of cents){minX=Math.min(minX,c.cx);maxX=Math.max(maxX,c.cx);minZ=Math.min(minZ,c.cz);maxZ=Math.max(maxZ,c.cz);}
+  const M=R*2.5; minX-=M;minZ-=M;maxX+=M;maxZ+=M;
+  const step=Math.max(GC.texelMetres,(maxX-minX)/1024,(maxZ-minZ)/1024);
+  const nx=Math.ceil((maxX-minX)/step), nz=Math.ceil((maxZ-minZ)/step);
+  const grid=new Map();
+  for(const c of cents){
+    const k=`${Math.floor(c.cx/R)},${Math.floor(c.cz/R)}`;
+    if(!grid.has(k))grid.set(k,[]);
+    grid.get(k).push(c);
+  }
+  const data=new Uint8Array(nx*nz*4);
+  const yardA=GC.yardCoverage*circ, coreA=GC.coreCoverage*circ;
+  const near=[];
+  const enc=y=>y<=1800?0:Math.min(254,Math.round(y-1800));
+  for(let j=0;j<nz;j++){
+    const z=minZ+(j+0.5)*step, gz=Math.floor(z/R);
+    for(let i=0;i<nx;i++){
+      const x=minX+(i+0.5)*step, gx=Math.floor(x/R);
+      near.length=0;
+      for(let a=-1;a<=1;a++)for(let b=-1;b<=1;b++){
+        const cell=grid.get(`${gx+a},${gz+b}`);
+        if(cell) for(const c of cell) if((c.cx-x)**2+(c.cz-z)**2<R2) near.push(c);
+      }
+      let yY=255,yC=255;
+      if(near.length){
+        near.sort((p,q)=>p.born-q.born);
+        let acc=0;
+        for(const c of near){
+          acc+=c.area||100;
+          if(yY===255&&acc>=yardA) yY=enc(c.born);
+          if(acc>=coreA){yC=enc(c.born);break;}
+        }
+      }
+      const o=(j*nx+i)*4;
+      data[o]=yY;data[o+1]=yC;data[o+3]=255;
+    }
+  }
+  if(groundCoverTex) groundCoverTex.dispose();
+  groundCoverTex=new THREE.DataTexture(data,nx,nz,THREE.RGBAFormat);
+  groundCoverTex.magFilter=THREE.LinearFilter;groundCoverTex.minFilter=THREE.LinearFilter;
+  groundCoverTex.needsUpdate=true;
+  window._groundCoverTex=groundCoverTex;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  groundCoverUniforms.uGcTex.value=groundCoverTex;
+  groundCoverUniforms.uGcHasTex.value=1;
+  groundCoverUniforms.uGcMin.value.set(minX+offX,minZ+offZ);
+  groundCoverUniforms.uGcSize.value.set(nx*step,nz*step);
+  console.log(`Ground cover: ${nx}×${nz} @ ${step.toFixed(1)}m from ${cents.length} buildings`);
+}
+
 // ── Road surface ───────────────────────────────────────────────────
 async function buildRoads(geojson){
+  buildGroundCover();
   setProgress(88,'Building road network…');await tick();
   // Dispose previous road mesh if rebuilding for layer change
   if(roadMatRef){
@@ -1916,7 +2371,7 @@ async function buildRoads(geojson){
   for(const{mesh}of streetcarRailMeshes){mesh.geometry.dispose();scene.remove(mesh);}
   streetcarRailMeshes=[];
   if(cartTrackMesh){cartTrackMesh.geometry.dispose();scene.remove(cartTrackMesh);cartTrackMesh=null;}
-  const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[];
+  const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[], life=[];
 
   // ── Road filtering: skip roads with no nearby buildings ────────────
   // Always render: Main, Portage, Broadway, Higgins (historic arterials).
@@ -1941,31 +2396,42 @@ async function buildRoads(geojson){
   console.log(`buildRoads: activeLayer='${activeLayer}', keys=[${[...buildingCentroids.keys()]}], activeCents=${activeCents.length}`);
   const CENT_CELL = ROAD_NEAR_M;
   const centGrid  = new Map();
-  for(const{cx,cz}of activeCents){
-    const k=`${Math.floor(cx/CENT_CELL)},${Math.floor(cz/CENT_CELL)}`;
+  for(const c of activeCents){
+    const k=`${Math.floor(c.cx/CENT_CELL)},${Math.floor(c.cz/CENT_CELL)}`;
     if(!centGrid.has(k))centGrid.set(k,[]);
-    centGrid.get(k).push({cx,cz});
+    centGrid.get(k).push(c);
   }
   console.log(`buildRoads: ${activeCents.length} active centroids, ${centGrid.size} grid cells`);
-  function hasBuildingNear(x,z){
+  // Returns the [born,died) span during which at least one nearby building
+  // exists — earliest born to latest died — or null if none are near. The
+  // span is tagged onto the road vertices (aLifespan) so the same shader
+  // discard that hides buildings also hides roads until something is built
+  // beside them. Min/max is a slight over-approximation: a gap between one
+  // building's demolition and the next one's construction still shows road.
+  function nearbyLifespan(x,z){
     const gcx=Math.floor(x/CENT_CELL),gcz=Math.floor(z/CENT_CELL);
+    let born=Infinity,died=-Infinity;
     for(let ci=-1;ci<=1;ci++){
       for(let cj=-1;cj<=1;cj++){
         const cell=centGrid.get(`${gcx+ci},${gcz+cj}`);
         if(!cell)continue;
-        for(const{cx,cz}of cell){
-          if((cx-x)**2+(cz-z)**2<ROAD_NEAR_M2)return true;
+        for(const c of cell){
+          if((c.cx-x)**2+(c.cz-z)**2<ROAD_NEAR_M2){
+            if(c.born<born)born=c.born;
+            if(c.died>died)died=c.died;
+          }
         }
       }
     }
-    return false;
+    return born===Infinity?null:[born,died];
   }
   // Per-segment visibility: each segment tested independently so only the
   // portion of a road near buildings renders. No name-level caching.
-  function isSegmentVisible(stName,mx,mz){
-    if(isNever(stName))return false;
-    if(isAlways(stName))return true;
-    return hasBuildingNear(mx,mz);
+  const ALWAYS_SPAN=[NO_BORN,NO_DIED];
+  function segmentLifespan(stName,mx,mz){
+    if(isNever(stName))return null;
+    if(isAlways(stName))return ALWAYS_SPAN;
+    return nearbyLifespan(mx,mz);
   }
 
   for(const feat of geojson.features){
@@ -1988,7 +2454,8 @@ async function buildRoads(geojson){
         if(len<0.1)continue;
         // Per-segment building proximity check (Up ≠ N: midpoint in world XZ)
         const mx=(x1+x2)/2, mz=(z1+z2)/2;
-        if(!isSegmentVisible(stName,mx,mz))continue;
+        const span=segmentLifespan(stName,mx,mz);
+        if(!span)continue;
         const pxu=(-dz/len),pzu=(dx/len);
         // Lift road slightly above terrain; use each chunk's own mean so the
         // quad sits flush rather than twisting on sloped ground.
@@ -2006,7 +2473,7 @@ async function buildRoads(geojson){
           const ct0=c/chunks, ct1=(c+1)/chunks;
           const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
           const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
-          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+ROAD_LIFT;
+          const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+ROAD_LIFT;
           for(const[tA,tB]of strips){
             const ax1=cx1+pxu*tA*(w*0.5), az1=cz1+pzu*tA*(w*0.5);
             const bx1=cx1+pxu*tB*(w*0.5), bz1=cz1+pzu*tB*(w*0.5);
@@ -2015,6 +2482,7 @@ async function buildRoads(geojson){
             // 6 verts: two triangles per strip quad
             pos.push(ax1,y,az1, ax2,y,az2, bx1,y,bz1,
                      ax2,y,az2, bx2,y,bz2, bx1,y,bz1);
+            for(let v=0;v<6;v++)life.push(span[0],span[1]);
             // Vertex colours: lerp dry→wet based on lateral position
         // MeshLambertMaterial: target sRGB ~0x55 edge (dark charcoal), ~0x30 centre (dark mud).
         // Under scene lighting (~1.42x at noon): linear = pow(sRGB/255,2.2)/1.42
@@ -2037,17 +2505,19 @@ async function buildRoads(geojson){
   const geom=new THREE.BufferGeometry();
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(life,2));
   roadColBuf=geom.attributes.color;  // stored for winter/summer swap
   geom.computeVertexNormals();
   roadMatRef=new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   roadMatRef.receiveShadow=true;
+  tagMaterialForLifespan(roadMatRef);  // hide segments until a nearby building is born
   const roadMesh=new THREE.Mesh(geom,roadMatRef);
   roadMesh.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
   roadMesh.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   roadMesh.receiveShadow=true;scene.add(roadMesh);
 
   // Cart tracks — two narrow ruts per segment, visible in winter only
-  const trackPos=[];
+  const trackPos=[], trackLife=[];
   const TW=0.18,TG=0.55;   // track width, half-gauge
   for(const feat of geojson.features){
     const stName=feat.properties.st_name||'';
@@ -2060,14 +2530,15 @@ async function buildRoads(geojson){
         if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
-        if(!isSegmentVisible(stName,(x1+x2)/2,(z1+z2)/2))continue;
+        const span=segmentLifespan(stName,(x1+x2)/2,(z1+z2)/2);
+        if(!span)continue;
         const px=(-dz/len),pz=(dx/len);
         const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
         for(let c=0;c<chunks;c++){
           const ct0=c/chunks, ct1=(c+1)/chunks;
           const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
           const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
-          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+0.20;
+          const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+0.20;
           // Two ruts (left and right of centre)
           for(const sign of[-1,1]){
             const ox=px*sign*TG,oz=pz*sign*TG;
@@ -2076,6 +2547,7 @@ async function buildRoads(geojson){
               cx1+ox+hx,y,cz1+oz+hz,  cx2+ox+hx,y,cz2+oz+hz,  cx1+ox-hx,y,cz1+oz-hz,
               cx2+ox+hx,y,cz2+oz+hz,  cx2+ox-hx,y,cz2+oz-hz,  cx1+ox-hx,y,cz1+oz-hz
             );
+            for(let v=0;v<6;v++)trackLife.push(span[0],span[1]);
           }
         }
       }
@@ -2084,10 +2556,11 @@ async function buildRoads(geojson){
   if(trackPos.length>0){
     const tGeom=new THREE.BufferGeometry();
     tGeom.setAttribute('position',new THREE.Float32BufferAttribute(trackPos,3));
+    tGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(trackLife,2));
     tGeom.computeVertexNormals();
-    cartTrackMesh=new THREE.Mesh(tGeom,new THREE.MeshLambertMaterial({
+    cartTrackMesh=new THREE.Mesh(tGeom,tagMaterialForLifespan(new THREE.MeshLambertMaterial({
       color:CONFIG.carts.colors.wagonRut,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3
-    }));
+    })));
     cartTrackMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
     cartTrackMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     cartTrackMesh.visible=false;   // hidden in summer
@@ -2132,7 +2605,7 @@ async function buildRoads(geojson){
           const ct0=c/chunks, ct1=(c+1)/chunks;
           const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
           const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
-          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+0.18+RAIL_H;
+          const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+0.18+RAIL_H;
           // Two track lanes (one per direction), each with two rails
           for(const laneSign of[-1,1]){          // -1=one dir, +1=other
             const lx=px*RAIL_LANE*laneSign;
@@ -2193,6 +2666,11 @@ const WATER_BASE = CONFIG.water.baseY;   // −3.0: flood plane Y at slider=0
 
 // World-space polygon rings for PiP terrain depression (accumulated across calls).
 let _riverPolygons = [];
+const riverRings = [];   // every river polygon ring (world XZ, offset applied) — see buildWater
+// Named river-edge structures (boat houses, landings, docks…) — filled by
+// buildCity, kept clear of riverbank trees.
+const RIVER_STRUCTURE_RE=/boat ?house|landing|dock|pier|wharf|ferry/i;
+const riverStructures=[];   // {x,z} building frame
 let _terrainBaseY  = null;
 let _demLoaded     = false; // true once real LiDAR DEM applied — disables PiP terrain override
 
@@ -2202,6 +2680,86 @@ let channelMatRef = null;
 let creekMesh     = null;   // flat water-coloured creek ribbons
 let creekMatRef   = null;
 let waterMesh     = null;   // flood plane
+// ── Confluence plume (CONFIG.water.confluence) ─────────────────────
+// Fragment-shader fake of the Assiniboine's lighter water staying separate
+// along the Red's west bank before mixing out. Distance to a short polyline
+// gives a band whose width grows and strength fades downstream; animated
+// noise drifting along the path breaks the edge up so it reads as flow.
+// Inside the band: slight colour shift + stronger/broader specular.
+const PLUME_N=6;
+const plumeUniforms={
+  uPlumePts:{value:Array.from({length:PLUME_N},()=>new THREE.Vector2())},
+  uPlumeLen:{value:1},
+  uPlumeW:{value:new THREE.Vector2()},
+  uPlumeEdge:{value:0},
+  uPlumeColor:{value:new THREE.Color()},
+  uPlumeMix:{value:0},
+  uPlumeSpec:{value:1},
+  uPlumeShine:{value:1},
+  uPlumeFlow:{value:0},
+  uPlumeTime:{value:0},
+  uPlumeStrength:{value:1},   // 0 in winter (ice)
+};
+function installConfluencePlume(mat, offZ){
+  const C=CONFIG.water.confluence;
+  if(!C) return;
+  const pts=C.path.slice(0,PLUME_N);
+  while(pts.length<PLUME_N) pts.push(pts[pts.length-1]);
+  let len=0;
+  pts.forEach(([lon,lat],i)=>{
+    const[sx,sy]=project(lon,lat);
+    plumeUniforms.uPlumePts.value[i].set(sx,-sy+offZ);
+    if(i) len+=plumeUniforms.uPlumePts.value[i].distanceTo(plumeUniforms.uPlumePts.value[i-1]);
+  });
+  plumeUniforms.uPlumeLen.value=len;
+  plumeUniforms.uPlumeW.value.set(C.widthStart,C.widthEnd);
+  plumeUniforms.uPlumeEdge.value=C.edgeNoise;
+  plumeUniforms.uPlumeColor.value.set(C.color);
+  plumeUniforms.uPlumeMix.value=C.colorMix;
+  plumeUniforms.uPlumeSpec.value=C.specularMult;
+  plumeUniforms.uPlumeShine.value=C.shininessMult;
+  plumeUniforms.uPlumeFlow.value=C.flowSpeed;
+  mat.onBeforeCompile=shader=>{
+    Object.assign(shader.uniforms,plumeUniforms);
+    shader.vertexShader='varying vec3 vPlumeWorld;\n'+shader.vertexShader
+      .replace('#include <project_vertex>','#include <project_vertex>\n  vPlumeWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    shader.fragmentShader=`#define PLUME_N ${PLUME_N}
+uniform vec2 uPlumePts[PLUME_N];
+uniform vec2 uPlumeW;
+uniform vec3 uPlumeColor;
+uniform float uPlumeLen,uPlumeEdge,uPlumeMix,uPlumeSpec,uPlumeShine,uPlumeFlow,uPlumeTime,uPlumeStrength;
+varying vec3 vPlumeWorld;
+float plHash(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+float plNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
+  return mix(mix(plHash(i),plHash(i+vec2(1,0)),u.x),mix(plHash(i+vec2(0,1)),plHash(i+vec2(1,1)),u.x),u.y);}
+float plumeMask(){
+  vec2 p=vPlumeWorld.xz;
+  float best=1e9,along=0.,acc=0.;
+  for(int i=0;i<PLUME_N-1;i++){
+    vec2 a=uPlumePts[i],b=uPlumePts[i+1],ab=b-a;
+    float l=length(ab);
+    if(l<.01) continue;
+    float t=clamp(dot(p-a,ab)/(l*l),0.,1.);
+    float d=distance(p,a+ab*t);
+    if(d<best){best=d;along=acc+t*l;}
+    acc+=l;
+  }
+  float s=along/uPlumeLen;                                // 0 at mouth → 1 at Esplanade Riel
+  // Noise coordinates drift downstream along the path (flow), plus a slow cross-drift
+  vec2 q=vec2(along-uPlumeTime*uPlumeFlow,best)/22.;
+  float n=plNoise(q)*.65+plNoise(q*2.3+4.1)*.35;
+  float w=mix(uPlumeW.x,uPlumeW.y,s)*.5+(n-.5)*2.*uPlumeEdge;
+  float band=1.-smoothstep(w*.55,w,best);
+  float fade=1.-smoothstep(.45,1.,s);                     // mixed out by the end of the path
+  float streak=.75+.25*plNoise(vec2(along-uPlumeTime*uPlumeFlow*1.3,best*3.)/9.);
+  return band*fade*streak*uPlumeStrength;
+}
+`+shader.fragmentShader
+      .replace('#include <color_fragment>','#include <color_fragment>\n  float plume=plumeMask();\n  diffuseColor.rgb=mix(diffuseColor.rgb,uPlumeColor,plume*uPlumeMix);')
+      .replace('#include <lights_phong_fragment>','#include <lights_phong_fragment>\n  material.specularColor*=mix(1.,uPlumeSpec,plume);\n  material.specularShininess*=mix(1.,uPlumeShine,plume);');
+  };
+  mat.customProgramCacheKey=()=>'confluencePlume';
+}
 let waterMatRef   = null;
 
 // Accumulated vertex arrays (rebuilt into meshes on every buildWater call).
@@ -2222,6 +2780,152 @@ function pointInPolygon(px, pz, ring){
   return inside;
 }
 
+
+// ── Riverbank trees ────────────────────────────────────────────────
+// See CONFIG.trees. Three crown archetypes (vase = elm, round = ash/maple,
+// tall = cottonwood), each an InstancedMesh pair: wood (trunk + limbs, always
+// shown) and crown (blobs, hidden in winter so the bare limbs read as winter
+// trees). Crown blobs are low-poly icosahedra with radial normals so they
+// shade round; ~60–80 tris per crown keeps a few thousand trees cheap.
+let riverTreeMeshes=[];   // {mesh, crown:bool}
+function _treeArchetype(shape){
+  // [x,y,z,r] blobs for the crown; limbs run from the trunk top to each blob
+  const A={
+    vase:  {trunkH:5.5, trunkR:0.38, blobs:[[2.4,10,0,3.0],[-1.2,10.5,2.1,3.0],[-1.2,10.2,-2.1,3.0],[0,12.3,0,2.8]]},
+    round: {trunkH:3.2, trunkR:0.26, blobs:[[0.8,6.5,0.3,2.8],[-0.8,7.2,-0.4,2.6]]},
+    tall:  {trunkH:6.5, trunkR:0.45, blobs:[[0.5,10,0.4,3.4],[-0.6,13,-0.3,3.1],[0.2,15.8,0.1,2.4]]},
+  }[shape];
+  const wood=[], crown=[];
+  const trunk=new THREE.CylinderGeometry(A.trunkR*0.75,A.trunkR,A.trunkH,6,1,true).toNonIndexed();
+  trunk.translate(0,A.trunkH/2,0); wood.push(trunk);
+  const top=new THREE.Vector3(0,A.trunkH,0), up=new THREE.Vector3(0,1,0);
+  for(const[x,y,z,r]of A.blobs){
+    const tip=new THREE.Vector3(x*0.8,y-r*0.2,z*0.8), d=tip.clone().sub(top), len=d.length();
+    const limb=new THREE.CylinderGeometry(A.trunkR*0.25,A.trunkR*0.55,len,5,1,true).toNonIndexed();
+    limb.translate(0,len/2,0);
+    limb.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(up,d.normalize()));
+    limb.translate(top.x,top.y,top.z); wood.push(limb);
+    const b=new THREE.IcosahedronGeometry(r,0);
+    const pa=b.attributes.position, na=b.attributes.normal;
+    for(let i=0;i<pa.count;i++){                       // radial normals → smooth-looking blob
+      const v=new THREE.Vector3(pa.getX(i),pa.getY(i),pa.getZ(i)).normalize();
+      na.setXYZ(i,v.x,v.y,v.z);
+    }
+    b.scale(1,0.8,1); b.translate(x,y,z); crown.push(b);
+  }
+  return {wood:mergeGeometries(wood,false), crown:mergeGeometries(crown,false)};
+}
+
+function buildRiverTrees(){
+  for(const{mesh}of riverTreeMeshes){scene.remove(mesh);mesh.geometry.dispose();}
+  riverTreeMeshes=[];
+  const T=CONFIG.trees;
+  if(!T||!riverRings.length) return;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  const waterMin=CONFIG.water.startY+T.minAboveWater;
+  const R2max=T.maxRadius*T.maxRadius;
+  // Seeded RNG so the forest is the same every load
+  let seed=1234567;
+  const rnd=()=>{seed=(seed*1664525+1013904223)>>>0;return seed/4294967296;};
+
+  // ── Exclusion grid (building frame): circles of {x,z,r} ──
+  const CELL=30, ex=new Map();
+  const addEx=(x,z,r)=>{
+    const x0=Math.floor((x-r)/CELL),x1=Math.floor((x+r)/CELL),z0=Math.floor((z-r)/CELL),z1=Math.floor((z+r)/CELL);
+    for(let i=x0;i<=x1;i++)for(let j=z0;j<=z1;j++){const k=i+','+j;if(!ex.has(k))ex.set(k,[]);ex.get(k).push(x,z,r);}
+  };
+  const blocked=(x,z)=>{
+    const c=ex.get(Math.floor(x/CELL)+','+Math.floor(z/CELL));
+    if(!c) return false;
+    for(let i=0;i<c.length;i+=3) if((c[i]-x)**2+(c[i+1]-z)**2<c[i+2]*c[i+2]) return true;
+    return false;
+  };
+  for(const[,cs]of buildingCentroids) for(const c of cs) addEx(c.cx,c.cz,Math.sqrt(c.area||100)*0.6+T.clearBuilding);
+  const addLines=(gj,halfW)=>{
+    if(!gj) return;
+    for(const f of gj.features){
+      const hw=halfW(f.properties);
+      const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates:[f.geometry.coordinates];
+      for(const line of lines) for(let i=0;i<line.length-1;i++){
+        const[ax,ay]=project(line[i][0],line[i][1]),[bx,by]=project(line[i+1][0],line[i+1][1]);
+        const len=Math.hypot(bx-ax,by-ay), n=Math.max(1,Math.ceil(len/(hw*0.8+1)));
+        for(let k=0;k<=n;k++){const t=k/n;addEx(ax+(bx-ax)*t,-(ay+(by-ay)*t),hw);}
+      }
+    }
+  };
+  addLines(roadGeojson,p=>(ROAD_W[p.st_type]??9)+T.clearRoad);
+  addLines(railGeojson,()=>3+T.clearRail);
+  for(const b of bridgeDecks){
+    const n=Math.ceil(b.halfL*2/10);
+    for(let k=0;k<=n;k++){const u=-b.halfL+2*b.halfL*k/n;addEx(b.cx+b.ux*u,b.cz+b.uz*u,b.halfW+T.clearBridge);}
+  }
+  for(const s of riverStructures) addEx(s.x,s.z,T.clearRiverStructure);
+  for(const[lon,lat,r]of T.ferries){const[sx,sy]=project(lon,lat);addEx(sx,-sy,r);}
+
+  // ── Walk the banks ──
+  const inWater=(x,z)=>riverRings.some(r=>pointInPolygon(x,z,r));
+  const wTot=T.species.reduce((a,s)=>a+s.weight,0);
+  const placed={vase:[],round:[],tall:[]};
+  for(const ring of riverRings){
+    for(let i=0;i<ring.length-1;i++){
+      const a=ring[i],b=ring[i+1];
+      const dx=b.x-a.x,dz=b.z-a.z,len=Math.hypot(dx,dz);
+      if(len<0.5) continue;
+      const nx=-dz/len,nz=dx/len;
+      const n=Math.max(1,Math.round(len/T.spacing));
+      for(let k=0;k<n;k++){
+        const t=(k+rnd())/n, bx=a.x+dx*t, bz=a.z+dz*t;
+        if(bx*bx+bz*bz>R2max) continue;
+        // Outward = whichever normal side isn't water
+        const side=inWater(bx+nx*3,bz+nz*3)?-1:1;
+        for(const row of T.rows){
+          if(rnd()>row.chance) continue;
+          const x=bx+nx*side*row.offset+(rnd()-0.5)*2*T.jitter;
+          const z=bz+nz*side*row.offset+(rnd()-0.5)*2*T.jitter;
+          if(inWater(x,z)) continue;
+          const y=sampleTerrainY(x,z);
+          if(y<waterMin) continue;
+          if(blocked(x-offX,z-offZ)) continue;
+          let pick=rnd()*wTot, sp=T.species[0];
+          for(const s of T.species){if((pick-=s.weight)<=0){sp=s;break;}}
+          const sc=sp.scale[0]+rnd()*(sp.scale[1]-sp.scale[0]);
+          placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc,col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
+        }
+      }
+    }
+  }
+
+  // ── Instanced meshes ──
+  const barkMat=new THREE.MeshLambertMaterial({color:T.barkColor});
+  const crownMat=new THREE.MeshLambertMaterial({color:0xFFFFFF});
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), sv=new THREE.Vector3(), pv=new THREE.Vector3(), col=new THREE.Color();
+  let total=0;
+  for(const shape of Object.keys(placed)){
+    const list=placed[shape];
+    if(!list.length) continue;
+    const g=_treeArchetype(shape);
+    const wood=new THREE.InstancedMesh(g.wood,barkMat,list.length);
+    const crown=new THREE.InstancedMesh(g.crown,crownMat,list.length);
+    list.forEach((t,i)=>{
+      q.setFromAxisAngle(_brY,t.rot);
+      sv.set(t.sc,t.sc*(0.9+0.2*((i*7919)%100)/100),t.sc);
+      m.compose(pv.set(t.x,t.y,t.z),q,sv);
+      wood.setMatrixAt(i,m); crown.setMatrixAt(i,m);
+      crown.setColorAt(i,col.set(t.col));
+    });
+    for(const mesh of[wood,crown]){
+      mesh.castShadow=true; mesh.receiveShadow=true;
+      mesh.instanceMatrix.needsUpdate=true;
+      mesh.computeBoundingSphere();
+      scene.add(mesh);
+    }
+    crown.instanceColor.needsUpdate=true;
+    crown.visible=!winterMode;
+    riverTreeMeshes.push({mesh:wood,crown:false},{mesh:crown,crown:true});
+    total+=list.length;
+  }
+  console.log(`River trees: ${total} (vase ${placed.vase.length}, round ${placed.round.length}, tall ${placed.tall.length})`);
+}
 
 // ── Terrain depression ───────────────────────────────────────────────────────
 // Hard-cuts terrain vertices inside any river polygon to -channelDepth.
@@ -2370,6 +3074,7 @@ async function buildWater(geojson){
       depthWrite:  false,
       side:        THREE.FrontSide,
     });
+    installConfluencePlume(waterMatRef, waterOffZ);
     waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
     waterMesh.position.y = WATER_BASE;
     scene.add(waterMesh);
@@ -2406,6 +3111,12 @@ async function buildWater(geojson){
     });
   }
 
+  // River outlines for riverbank trees / anything else that needs the water's
+  // edge. Stored here (with the registration offset) because the early return
+  // below skips the _riverPolygons accumulation now that there are no
+  // channel walls (LiDAR terrain).
+  for(const ring of newRings) riverRings.push(ring.map(p=>({x:p.x,z:p.z+waterOffZ})));
+
   if(wallPos.length === 0 && creekPos.length === 0) return;
 
   // ── Apply registration offset (worldZ shift) ─────────────────────────────
@@ -2434,6 +3145,9 @@ async function buildWater(geojson){
         color: CONFIG.scene.ground.summerColor,
         side:  THREE.DoubleSide,
       });
+      // Same riverbank dirt blend as the terrain
+      channelMatRef.onBeforeCompile=groundMat.onBeforeCompile;
+      channelMatRef.customProgramCacheKey=groundMat.customProgramCacheKey;
     }
     channelMesh = new THREE.Mesh(wallGeo, channelMatRef);
     scene.add(channelMesh);
@@ -4125,7 +4839,7 @@ function initCarts(roadGJ){
     const ox=x+px*CART_LANE*(cart.dir>0?1:-1);
     const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
     const _cOffX=CONFIG.scene?.buildingOffsetX??0, _cOffZ=CONFIG.scene?.buildingOffsetZ??0;
-    cart.mesh.position.set(ox+_cOffX, sampleTerrainY(ox+_cOffX,oz+_cOffZ), oz+_cOffZ);
+    cart.mesh.position.set(ox+_cOffX, vehicleY(ox,oz,_cOffX,_cOffZ,yaw), oz+_cOffZ);
     cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
     cart.mesh.visible=false;
   }
@@ -4155,7 +4869,7 @@ function tickCarts(dt){
     const{x,z,yaw,px,pz}=sampleRoute(cart.route,cart.t);
     const ox=x+px*CART_LANE*(cart.dir>0?1:-1);
     const oz=z+pz*CART_LANE*(cart.dir>0?1:-1);
-    cart.mesh.position.set(ox+_cOffX, sampleTerrainY(ox+_cOffX,oz+_cOffZ), oz+_cOffZ);
+    cart.mesh.position.set(ox+_cOffX, vehicleY(ox,oz,_cOffX,_cOffZ,yaw), oz+_cOffZ);
     cart.mesh.rotation.y=cart.dir>0?yaw:yaw+Math.PI;
 
     // Wheels — angular speed = travel speed / radius, so faster carts spin faster.
@@ -4244,7 +4958,7 @@ function tickStreetcars(dt){
     const oz=z+pz*STREETCAR_LANE*(car.dir>0?1:-1);
     // Position the group at road level — internal geometry already offset by SC_Y_BASE
     const _scOffX=CONFIG.scene?.buildingOffsetX??0, _scOffZ=CONFIG.scene?.buildingOffsetZ??0;
-    car.mesh.position.set(ox+_scOffX, sampleTerrainY(ox+_scOffX,oz+_scOffZ), oz+_scOffZ);
+    car.mesh.position.set(ox+_scOffX, vehicleY(ox,oz,_scOffX,_scOffZ,yaw), oz+_scOffZ);
     car.mesh.rotation.y=car.dir>0?yaw:yaw+Math.PI;
     car.bellTimer-=dt;
     if(car.bellTimer<=0){
@@ -4333,7 +5047,7 @@ function buildRailTracks(geojson){
           const ct0=cN/chunks, ct1=(cN+1)/chunks;
           const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
           const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
-          const y=(sampleTerrainY(cx1,cz1)+sampleTerrainY(cx2,cz2))*0.5+0.16;
+          const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+0.16;
           bedPos.push(cx1+hx,y,cz1+hz, cx2+hx,y,cz2+hz, cx1-hx,y,cz1-hz,
                       cx2+hx,y,cz2+hz, cx2-hx,y,cz2-hz, cx1-hx,y,cz1-hz);
           for(let k=0;k<6;k++) bedCol.push(c,c*0.86,c*0.74);
@@ -4846,12 +5560,12 @@ function tickTrains(dt){
 
     const head=sampleRoute(train.route,train.t);
     const _trOffX=CONFIG.scene?.buildingOffsetX??0, _trOffZ=CONFIG.scene?.buildingOffsetZ??0;
-    train.loco.position.set(head.x+_trOffX, sampleTerrainY(head.x+_trOffX,head.z+_trOffZ), head.z+_trOffZ);
+    train.loco.position.set(head.x+_trOffX, vehicleY(head.x,head.z,_trOffX,_trOffZ,head.yaw), head.z+_trOffZ);
     train.loco.rotation.y=train.dir>0?head.yaw:head.yaw+Math.PI;
     for(let i=0;i<train.cars.length;i++){
       const ct=train.t-train.dir*(train.headOffsetT+i*train.carSpacingT);
       const samp=sampleRoute(train.route,ct);
-      train.cars[i].position.set(samp.x+_trOffX, sampleTerrainY(samp.x+_trOffX,samp.z+_trOffZ), samp.z+_trOffZ);
+      train.cars[i].position.set(samp.x+_trOffX, vehicleY(samp.x,samp.z,_trOffX,_trOffZ,samp.yaw), samp.z+_trOffZ);
       train.cars[i].rotation.y=train.dir>0?samp.yaw:samp.yaw+Math.PI;
     }
 
@@ -4916,6 +5630,7 @@ function startLoop(){
     tickTrains(dt);
     tickTrainAudio(dt);
     tickChimneySmoke(dt);
+    plumeUniforms.uPlumeTime.value=now*0.001;
     renderer.render(scene,camera);
   drawMinimap();
   }
@@ -4927,9 +5642,17 @@ let totalBuildings=0,roadsLoaded=false,roadGeojson=null;
 function showToast(msg){const t=document.getElementById('live-toast');if(!t)return;if(msg){t.textContent=msg;t.style.display='block';}else t.style.display='none';}
 function isImage(f){return f.type.startsWith('image/')||/\.(jpe?g|png|webp)$/i.test(f.name);}
 function isGeoJSON(f){return f.type==='application/json'||/\.(geojson|json)$/i.test(f.name);}
+// Top-level `attribution` strings from loaded GeoJSON — licence credits (e.g. OSM/ODbL) shown under the stat bar.
+const dataAttributions=new Set();
 function updateStatBar(){
   const sb=document.getElementById('stat-bar');if(!sb)return;
   sb.textContent=`${totalBuildings.toLocaleString()} buildings`+(roadsLoaded?' · road network':'')+' · Winnipeg · Goad\'s & McPhillips';
+  if(dataAttributions.size){
+    const a=document.createElement('div');
+    a.style.cssText='color:#8a7050;margin-top:3px;letter-spacing:0.04em;';
+    a.textContent=[...dataAttributions].join(' · ');
+    sb.appendChild(a);
+  }
 }
 
 function buildLayerBar(){
@@ -4951,11 +5674,19 @@ function buildLayerBar(){
 
   // Default active layer: the dated growth master if present (so the date
   // slider grows the city on first load), else 1906, else 1880, else combined.
-  activeLayer = hasPastforward?'pastforward': has1906?'1906': has1880?'1880':'combined';
+  // Kept as-is when this is re-run after a live drop and the current choice is still loaded.
+  const loadedLayers = {'1880':has1880,'1906':has1906,'all':has1880&&has1906,'pastforward':hasPastforward,'combined':hasCombined};
+  if(!loadedLayers[activeLayer])
+    activeLayer = hasPastforward?'pastforward': has1906?'1906': has1880?'1880':'combined';
+
+  // Layers detectYear() couldn't name (e.g. a live-dropped "Layer 7") are
+  // overlays: always visible on top of whichever layer is active.
+  const NAMED_LAYERS = new Set(['1880','1906','combined','pastforward']);
 
   function applyVisibility(){
     for(const lg of layerGroups){
-      if(activeLayer==='all')       lg.group.visible = lg.year==='1880'||lg.year==='1906';
+      if(!NAMED_LAYERS.has(lg.year)) lg.group.visible = true;
+      else if(activeLayer==='all')  lg.group.visible = lg.year==='1880'||lg.year==='1906';
       else if(activeLayer==='combined') lg.group.visible = lg.year==='combined';
       else                          lg.group.visible = lg.year===activeLayer;
     }
@@ -4993,7 +5724,7 @@ function buildLayerBar(){
   // running over the 1880 buildings. "1880 & 1906" and "Combined" aren't a
   // single point in time, so clicking those leaves the date untouched.
   const LAYER_REPRESENTATIVE_DATE = { '1880': [1880,0,1], '1906': [1906,6,1] };
-  bar.addEventListener('click',e=>{
+  bar.onclick=e=>{  // onclick, not addEventListener — buildLayerBar re-runs on every live drop
     const btn=e.target.closest('button');if(!btn)return;
     activeLayer=btn.dataset.layer;
     applyVisibility();
@@ -5002,7 +5733,7 @@ function buildLayerBar(){
     for(const b of bar.querySelectorAll('button')){
       b.style.cssText=btnStyle+(b.dataset.layer===activeLayer?activeStyle:inactiveStyle);
     }
-  });
+  };
 }
 
 function toggleWinter(){
@@ -5012,6 +5743,10 @@ function toggleWinter(){
 
   // Ground
   if(groundMatRef)  groundMatRef.color.setHex(winterMode?CONFIG.scene.ground.winterColor:CONFIG.scene.ground.summerColor);
+  bankDirtUniforms.uBankDirtStrength.value=winterMode?0:1;
+  groundCoverUniforms.uGcStrength.value=winterMode?0:1;
+  plumeUniforms.uPlumeStrength.value=winterMode?0:1;
+  for(const t of riverTreeMeshes) if(t.crown) t.mesh.visible=!winterMode;   // bare elms in winter
   // Channel walls match ground colour
   if(channelMatRef) channelMatRef.color.setHex(winterMode?CONFIG.scene.ground.winterColor:CONFIG.scene.ground.summerColor);
   // Creek ribbons match water/ice colour
@@ -5497,6 +6232,7 @@ async function loadFiles(fileList){
   if(roadGJ){roadGeojson=roadGJ;await buildRoads(roadGJ);initStreetcars(roadGJ);initCarts(roadGJ);}
   if(railGJ){railGeojson=railGJ;buildRailTracks(railGJ);initTrains(railGJ);railsLoaded=true;}
   if(waterGJ)await buildWater(waterGJ);
+  buildRiverTrees();   // needs buildings, roads, rails and water all loaded
   totalBuildings+=n;if(roadGJ)roadsLoaded=true;
   buildLayerBar();
   // Apply any facades dropped at initial load
@@ -5612,6 +6348,7 @@ renderer.render(scene,camera);
     else if(kind==='rail')   { railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
 
+  buildRiverTrees();   // needs buildings, roads, rails and water all loaded
   setProgress(100,'Done.');await tick();
   document.getElementById('loading').style.display='none';
   document.getElementById('hud').style.display='block';

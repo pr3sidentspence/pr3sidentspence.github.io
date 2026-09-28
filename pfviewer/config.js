@@ -26,7 +26,9 @@ export const CONFIG = {
     autoload: [
       './data/mcphillips_1880.geojson',   // ground-truth "as digitized" 1880 view
       './data/goad_1906.geojson',         // ground-truth "as digitized" 1906 view
-      './data/pastforward_2026.geojson',  // dated growth master (supersedes the old combined.geojson)
+      './data/pastforward_2026_assessment.geojson',  // growth master + assessment/heritage dates (matching/merge_assessment.py) — no OSM data
+      './data/pastforward_2026_osm.geojson',         // new pre-1907 buildings with OSM footprints — ODbL, kept as a separate database
+      // './data/pastforward_2026.geojson',  // dated growth master without assessment data (no OSM) — swap back by un-commenting
       './data/wpg_rivers.geojson',
       './data/wpg_roads_streetcar.geojson',
       './data/wpg_rails_1906.geojson',
@@ -284,7 +286,14 @@ export const CONFIG = {
 
   // ── Fences ──────────────────────────────────────────────────────────
   fences: {
-    picket: { color: 0xEEEEE0, width: 0.12, spacing: 0.22 },
+    // White picket — used for wood fences and the (residential) unknown-material
+    // ones. Gap between pickets = width * gapRatio. Height is fixed (the
+    // feature's floors value is ignored) — these are ~1 m garden fences.
+    picket: {
+      color: 0xEEEEE0, width: 0.09, gapRatio: 0.5, thickness: 0.022, height: 1.0,
+      postSpacing: 2.4, postSize: 0.1, railHeights: [0.22, 0.72], railSize: [0.04, 0.08],
+      whitenessJitter: 0.06,   // per-fence brightness variation (weathered paint)
+    },
     iron:   { postColor: 0x554433, railColor: 0x665544 },
     log:    { postColor: 0x7A5C3A, railColor: 0x8A6845, postSpacing: 2.0, leanRadians: 0.30 },
   },
@@ -368,6 +377,30 @@ export const CONFIG = {
     noiseBaseY: 0.0,        // baseline Y for terrain surface (buildings sit at y=0)
     channelDepth: 5.5,      // metres the channel floor sits below bank level (y=0)
     channelBlendWidth: 160, // metres from river CENTERLINE to flat prairie (covers bank + slope)
+    // Bare riverbank: terrain below (water.startY + aboveWater) fades from
+    // grass to dirt over `blend` metres. Tied to the INITIAL water level, not
+    // the flood slider. `jitter` wobbles the line so it isn't a contour ring.
+    // Summer only — banks go to snow with the rest of the ground in winter.
+    bankDirt: { color: 0x3F3427, aboveWater: 3.0, blend: 1.5, jitter: 0.4 },
+    // Summer ground cover — breaks the flat green up (shader, no textures).
+    // Base grass tone is scene.ground.summerColor; noise at a few scales mixes
+    // in a second green, dry straw patches and brightness mottling. Around
+    // buildings, a density map (footprint coverage within `radius`, per year
+    // using born dates) fades grass to trampled yard dirt, then bare packed
+    // mud/cinder in the dense core. Off in winter.
+    groundCover: {
+      grassAlt:  0x3A5220,   // second green mixed in at ~400 m patch scale
+      grassDry:  0x6E6A3A,   // late-summer straw / dry prairie grass patches
+      dryAmount: 0.55,       // 0 = no straw patches
+      mottle:    0.22,       // ± brightness variation at ~15 m scale
+      yardDirt:  0x544B33,   // trampled yards / lanes: patchy with grass
+      coreDirt:  0x4E4538,   // packed mud, cinders, manure — dense downtown
+      radius: 40,            // metres — neighbourhood for footprint coverage
+      yardCoverage: 0.10,    // footprint fraction where yards start going to dirt
+      coreCoverage: 0.35,    // footprint fraction treated as dense core
+      fadeYears: 4,          // years for a spot to wear from grass to dirt
+      texelMetres: 10,       // density-map resolution (capped at 1024 texels/side)
+    },
   },
 
   // ── Water ───────────────────────────────────────────────────────────
@@ -382,6 +415,20 @@ export const CONFIG = {
     // Set low enough that the plane starts fully inside the channel at rest.
     baseY:  -10.0,   // flood plane Y at slider=0 (fully dry / below channel)
     startY:  -5.8,   // default water level on page load (inside channel, not overbank)
+    // Assiniboine → Red confluence plume (faked in the water shader). The
+    // lighter, siltier Assiniboine water hugs the Red's west bank heading
+    // north and has mixed out by Esplanade Riel. Path is lon/lat (modern, like
+    // the river data — offsetZ below is applied to it too), mouth → downstream.
+    // Width/strength interpolate start → end along the path. Summer only.
+    confluence: {
+      path: [[-97.1292,49.8858],[-97.1277,49.8864],[-97.1266,49.8875],[-97.1263,49.8890],[-97.1267,49.8903],[-97.1274,49.8910]],
+      widthStart: 60, widthEnd: 120,   // metres, full plume width
+      edgeNoise: 18,                    // metres of wobble on the plume edge
+      color: 0x8A6A45,                  // Assiniboine water — a touch lighter/tanner than the Red
+      colorMix: 0.35,                   // how far toward `color` at full strength (subtle)
+      specularMult: 1.8, shininessMult: 0.55,  // siltier water: broader, brighter sheen
+      flowSpeed: 0.35,                  // m/s the edge noise drifts downstream
+    },
     riverHalfWidth: 120, creekHalfWidth: 8,
     widths: { brownsCreek: 3, redRiver: 220, assiniboineRiver: 85, seineRiver: 22 },
     // Brown's Creek: a small clear prairie creek — no glacial silt, no Red River brown.
@@ -412,6 +459,79 @@ export const CONFIG = {
     // drawn from this year on, so early rail looks more developed than it
     // really was — per-segment build dates are a future refinement.
     minVisibleYear: 1881,
+  },
+
+  // ── Bridges (type:'bridge' features) ─────────────────────────────────
+  // Rectangular bridge footprints with a long side ≥ minSpan are drawn as
+  // open structures instead of solid slabs: a steel through-truss when the
+  // span crosses water (ground under it dips below water.startY) and isn't
+  // timber, otherwise a trestle (lattice railings + braced bents on
+  // footings). Shorter ones (e.g. the little Ogilvie mill connectors) keep
+  // the old slab. Roads/rails/vehicles heading along a bridge's span ride on
+  // its deck (see bridgeDeckY in index.html).
+  bridges: {
+    truss: {
+      maxSpan: 60,          // metres between stone piers
+      pierThickness: 3,
+      panelLength: 7,       // target panel width; rounded to an even panel count per span
+      heightRatio: 7,       // truss height ≈ span / heightRatio, clamped below
+      minHeight: 5, maxHeight: 9,
+      camelbackSpan: 45,    // spans at least this long get a curved (Parker) top chord
+      maxOverheadWidth: 16, // wider decks skip overhead lateral bracing (would look absurd)
+      chordSize: 0.45, verticalSize: 0.3, diagonalSize: 0.22, lateralSize: 0.16,
+    },
+    rampLength: 40,         // metres past each deck end over which roads/rails ease back to grade
+    rampGrade: 0.04,        // 1:25 approach slope
+    alignCos: 0.8,          // |cos| between travel direction and span to count as "on" the bridge (~37°)
+    minSpan: 15,            // metres — long side below this → plain slab
+    bentSpacing: 12,        // metres between trestle bents along the span
+    maxLegSpacing: 6,       // metres between legs across a bent (wide decks get more legs)
+    braceLevel: 4,          // metres between horizontal bracing levels on a bent
+    minClearance: 4.5,      // deck underside at least this far above the lowest ground under it
+    deckThickness: 0.35,
+    girderDepth: 1.0,
+    railingHeight: 1.1, railingPostSpacing: 2.5,
+    legSize: 0.35, braceSize: 0.14, railSize: 0.1,
+    batter: 0.08,           // outer-leg splay per metre of leg height
+    abutmentLength: 3,
+    colors: {
+      steel: 0x2f3438,      // dark painted steel
+      timber: 0x5b4632,     // members for wood-material bridges
+      deck: 0x4a4540,
+      stone: 0x8a8378,      // abutments + footings
+    },
+  },
+
+  // ── Riverbank trees ──────────────────────────────────────────────────
+  // Instanced trees in a thin band just outside the river polygons (the
+  // riparian elm/ash/maple/cottonwood fringe). Rows are offsets from the
+  // water's edge; each row has its own chance of a tree at each station, so
+  // the band averages ~2–3 deep. Kept clear of buildings, roads, rails,
+  // bridges, named river structures (boat houses, landings, docks, piers,
+  // wharves) and the ferry landings below. Crowns hide in winter.
+  trees: {
+    spacing: 9,                 // metres between stations along the bank
+    rows: [ { offset: 6, chance: 0.9 }, { offset: 14, chance: 0.7 }, { offset: 23, chance: 0.4 } ],
+    jitter: 3,                  // metres of random scatter per tree
+    maxRadius: 3500,            // only within this distance of the scene origin
+    minAboveWater: 0.8,         // tree base must be at least this far above water.startY
+    clearBuilding: 4, clearRoad: 3, clearRail: 4, clearBridge: 25, clearRiverStructure: 60,
+    // Historic ferry landings to keep clear [lon, lat, radius m] — APPROXIMATE
+    // positions from written accounts, adjust against the Goad sheets:
+    ferries: [
+      [-97.1293, 49.8923, 70],  // Winnipeg–St. Boniface steam ferry, west landing (foot of Notre Dame E / Pioneer) — until 1882
+      [-97.1253, 49.8916, 70],  //   …east landing (Provencher)
+      [-97.1340, 49.8862, 60],  // Assiniboine pontoon crossing near Upper Fort Garry (early 1870s), north side
+      [-97.1330, 49.8843, 60],  //   …south side
+    ],
+    species: [                  // weight = share of trees; shape = crown archetype
+      { name: 'American elm',   weight: 0.55, shape: 'vase',  scale: [0.85, 1.2] },
+      { name: 'green ash',      weight: 0.15, shape: 'round', scale: [0.8, 1.1] },
+      { name: 'Manitoba maple', weight: 0.15, shape: 'round', scale: [0.7, 1.0] },
+      { name: 'cottonwood',     weight: 0.15, shape: 'tall',  scale: [0.9, 1.25] },
+    ],
+    crownColors: [0x2E4A1C, 0x365421, 0x2A4418, 0x3D5A26, 0x33501F],
+    barkColor: 0x4A4036,
   },
 
   // ── Timeline / date slider ───────────────────────────────────────────

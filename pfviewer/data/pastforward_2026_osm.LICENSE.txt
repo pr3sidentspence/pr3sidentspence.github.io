@@ -1,0 +1,22 @@
+pastforward_2026_osm.geojson
+============================
+
+This database is made available under the Open Database License (ODbL) 1.0:
+https://opendatacommons.org/licenses/odbl/1-0/
+
+It contains:
+
+  - Building footprints © OpenStreetMap contributors, available under the ODbL.
+    https://www.openstreetmap.org/copyright
+    (the source way/relation of each footprint is in "osm_id")
+
+  - Information licensed under the Open Government Licence – Winnipeg:
+      * Assessment Parcels (data.winnipeg.ca dataset d4mq-wa44)
+      * Historical Resources (data.winnipeg.ca dataset ptpx-kgiu)
+    https://data.winnipeg.ca/stories/s/rwzh-4ijx
+
+It is an independent database, published alongside (not merged into)
+pastforward_2026_assessment.geojson and the other PastForward data files, which
+contain no OpenStreetMap data and are not covered by this licence.
+
+Built by matching/merge_assessment.py.
