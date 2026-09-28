@@ -202,6 +202,23 @@ import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG }          from './config.js';
 
+// ── Low-memory (mobile) profile ─────────────────────────────────────
+// Phones lose the WebGL context (white canvas + sad-face icon) when the GPU
+// runs out of memory. On touch devices CONFIG.mobile is deep-merged over
+// CONFIG before anything reads it: coarser terrain (the DEM is resampled to
+// fit), one layer's building files, smaller shadows, lower pixel ratio.
+// ?profile=mobile forces it (testing on desktop); ?profile=desktop skips it.
+const _profile=new URLSearchParams(location.search).get('profile');
+const lowMemProfile=_profile==='mobile'||(_profile!=='desktop'&&isMobile);
+if(lowMemProfile&&CONFIG.mobile){
+  const merge=(dst,src)=>{for(const k in src){
+    if(src[k]&&typeof src[k]==='object'&&!Array.isArray(src[k])&&dst[k]&&typeof dst[k]==='object') merge(dst[k],src[k]);
+    else dst[k]=src[k];
+  }};
+  merge(CONFIG,CONFIG.mobile);
+  console.log('📱 Low-memory profile active (CONFIG.mobile applied)');
+}
+
 // ═══════════════════════════════════════════════════════════════════════
 // COORDINATE SYSTEM — Up ≠ N
 //   World X = East  (+lon → +X)
@@ -243,6 +260,14 @@ const ROAD_W = CONFIG.roadWidths;
 // ── Renderer ───────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, CONFIG.camera.pixelRatioCap));
+renderer.domElement.addEventListener('webglcontextlost',e=>{
+  e.preventDefault();
+  const d=document.createElement('div');
+  d.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;background:#09080a;color:#C8A05A;font-family:Georgia,serif;font-size:0.9rem;line-height:1.5;z-index:999;';
+  d.innerHTML='The 3D view ran out of graphics memory on this device.<br>Try closing other tabs and reloading'+(lowMemProfile?'.':', or add <b>?profile=mobile</b> to the address.');
+  document.body.appendChild(d);
+  console.error('WebGL context lost',lowMemProfile?'(low-memory profile)':'');
+});
 renderer.setSize(innerWidth, innerHeight);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
@@ -557,11 +582,25 @@ async function applyDEM(){
 
     const tPos = terrainMesh.geometry.attributes.position;
     const N    = tPos.count;  // should be VERTS*VERTS = 90601
-    if(heights.length !== N){
-      console.warn(`DEM size mismatch: ${heights.length} vs ${N} vertices`);
+    const T = Math.round(Math.sqrt(N)), S = meta.verts;
+    if(heights.length !== S*S || T*T !== N){
+      console.warn(`DEM size mismatch: ${heights.length} vs ${S}² / terrain ${N}`);
       return;
     }
-    for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
+    if(S === T){
+      for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
+    }else{
+      // Terrain is coarser/finer than the DEM (low-memory profile): bilinear resample
+      for(let iz = 0; iz < T; iz++){
+        const fz = iz*(S-1)/(T-1), z0 = Math.min(S-2, Math.floor(fz)), tz = fz-z0;
+        for(let ix = 0; ix < T; ix++){
+          const fx = ix*(S-1)/(T-1), x0 = Math.min(S-2, Math.floor(fx)), tx = fx-x0;
+          const a = heights[z0*S+x0], b = heights[z0*S+x0+1], c = heights[(z0+1)*S+x0], d = heights[(z0+1)*S+x0+1];
+          tPos.setY(iz*T+ix, (a+(b-a)*tx)+((c+(d-c)*tx)-(a+(b-a)*tx))*tz);
+        }
+      }
+      console.log(`🗺 DEM resampled ${S}² → ${T}² for this terrain`);
+    }
     tPos.needsUpdate = true;
     terrainMesh.geometry.computeVertexNormals();
 
@@ -6652,7 +6691,9 @@ function buildLayerBar(){
   const has1906    = layerGroups.some(lg=>lg.year==='1906');
   const hasCombined= layerGroups.some(lg=>lg.year==='combined');
   const hasPastforward = layerGroups.some(lg=>lg.year==='pastforward');
-  const hasMultiple= (has1880&&has1906)||((has1880||has1906)&&hasCombined)||hasCombined||hasPastforward;
+  // Snapshot layers not loaded yet — offered as "+ 1880" etc. (advanced mode only, via CSS)
+  const optional=(CONFIG.dataFiles.optionalLayers||[]).filter(o=>!layerGroups.some(lg=>lg.year===o.label));
+  const hasMultiple= (has1880&&has1906)||((has1880||has1906)&&hasCombined)||hasCombined||hasPastforward||optional.length>0;
 
   bar.innerHTML='';
   bar.style.display='flex';
@@ -6706,6 +6747,12 @@ function buildLayerBar(){
     btn.style.cssText=btnStyle+(activeLayer===layer?activeStyle:inactiveStyle);
     bar.appendChild(btn);
   }
+  for(const o of optional){
+    const btn=document.createElement('button');
+    btn.textContent='+ '+o.label; btn.dataset.load=o.file; btn.title=`Load the ${o.label} layer`;
+    btn.style.cssText=btnStyle+inactiveStyle+'border:1px dashed #3a2810;';
+    bar.appendChild(btn);
+  }
 
   // Single-year layers get a representative date so date-driven systems
   // (streetcars, carts, building born/died) match what you're looking at —
@@ -6715,6 +6762,15 @@ function buildLayerBar(){
   const LAYER_REPRESENTATIVE_DATE = { '1880': [1880,0,1], '1906': [1906,6,1] };
   bar.onclick=e=>{  // onclick, not addEventListener — buildLayerBar re-runs on every live drop
     const btn=e.target.closest('button');if(!btn)return;
+    if(btn.dataset.load){   // optional snapshot layer: fetch + live-load, then the bar rebuilds itself
+      if(btn.disabled) return;
+      btn.disabled=true; btn.textContent='Loading…';
+      fetch(btn.dataset.load).then(r=>{if(!r.ok)throw new Error(r.status);return r.blob();})
+        .then(b=>liveLoad([new File([b],btn.dataset.load.split('/').pop(),{type:'application/json'})]))
+        .then(()=>showToast(null))
+        .catch(err=>{showToast(`Couldn't load ${btn.dataset.load}: ${err.message}`);btn.disabled=false;});
+      return;
+    }
     activeLayer=btn.dataset.layer;
     applyVisibility();
     const repDate=LAYER_REPRESENTATIVE_DATE[activeLayer];

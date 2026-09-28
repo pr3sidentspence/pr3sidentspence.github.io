@@ -24,14 +24,18 @@ export const CONFIG = {
   // entries to change what loads — paths are relative to index.html.
   dataFiles: {
     autoload: [
-      './data/mcphillips_1880.geojson',   // ground-truth "as digitized" 1880 view
-      './data/goad_1906.geojson',         // ground-truth "as digitized" 1906 view
       './data/pastforward_2026_assessment.geojson',  // growth master + assessment/heritage dates (matching/merge_assessment.py) — no OSM data
       './data/pastforward_2026_osm.geojson',         // new pre-1907 buildings with OSM footprints — ODbL, kept as a separate database
       // './data/pastforward_2026.geojson',  // dated growth master without assessment data (no OSM) — swap back by un-commenting
       './data/wpg_rivers.geojson',
       './data/wpg_roads_streetcar.geojson',
       './data/wpg_rails_1906.geojson',
+    ],
+    // Snapshot layers NOT loaded at start (memory — phones lose the WebGL
+    // context). Offered as "+ 1880" / "+ 1906" in the advanced (Ctrl+A) layer bar.
+    optionalLayers: [
+      { label: '1880', file: './data/mcphillips_1880.geojson' },   // ground-truth "as digitized" 1880 view
+      { label: '1906', file: './data/goad_1906.geojson' },         // ground-truth "as digitized" 1906 view
     ],
     facadeConfig: './data/facades.json',
     // Per-building phase overrides (storey additions, fires…) keyed by uid — see applyBuildingHistory
@@ -862,6 +866,17 @@ export const CONFIG = {
       //   startDelayMs: 12000,
       // },
     },
+  },
+
+  // ── Low-memory (mobile) profile ──────────────────────────────────────
+  // Deep-merged over this config on touch devices (or ?profile=mobile);
+  // ?profile=desktop skips it. Same shape as the settings it overrides.
+  mobile: {
+    terrain:  { segments: 400 },                 // 30 m grid instead of 10 m (DEM is resampled)
+    camera:   { pixelRatioCap: 1.25 },
+    lighting: { sun: { shadowMapSize: 1024 } },
+    trees:    { spacing: 14 },
+    seasons:  { floeCount: 200 },
   },
 
   // ── Minimap ─────────────────────────────────────────────────────────
