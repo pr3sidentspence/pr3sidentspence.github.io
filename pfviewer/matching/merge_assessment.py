@@ -41,6 +41,7 @@ Rules:
 import os
 import re
 import json
+from geojson_io import dump_geojson_lines   # one feature per line (editor/diff friendly)
 import uuid
 import argparse
 from collections import defaultdict
@@ -467,12 +468,12 @@ def main():
     assert not any('osm_id' in f['properties'] for f in out)
 
     with open(a.out, 'w') as f:
-        json.dump({'type': 'FeatureCollection', 'attribution': ATTRIBUTION, 'features': out}, f, separators=(',', ':'))
+        dump_geojson_lines({'type': 'FeatureCollection', 'attribution': ATTRIBUTION, 'features': out}, f)
     with open(a.out_osm, 'w') as f:
-        json.dump({'type': 'FeatureCollection', 'attribution': ATTRIBUTION_OSM, 'license': LICENSE_OSM,
-                   'osm_retrieved': osm.get('retrieved'), 'features': out_osm}, f, separators=(',', ':'))
+        dump_geojson_lines({'type': 'FeatureCollection', 'attribution': ATTRIBUTION_OSM, 'license': LICENSE_OSM,
+                            'osm_retrieved': osm.get('retrieved'), 'features': out_osm}, f)
     with open(A('assessment_review.geojson'), 'w') as f:
-        json.dump({'type': 'FeatureCollection', 'features': review}, f)
+        dump_geojson_lines({'type': 'FeatureCollection', 'features': review}, f)
     print(f'{len(out)} features -> {a.out}')
     print(f'{len(out_osm)} OSM-footprint features (ODbL) -> {a.out_osm}')
     print(f'{len(review)} held for review -> {A("assessment_review.geojson")}')

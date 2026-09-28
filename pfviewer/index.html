@@ -1870,9 +1870,10 @@ function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat,
 // entries for that year first, or they'll leak/duplicate on every rebuild).
 // ── Building history overrides (data/building_history.json) ─────────
 // Kept outside the generated GeoJSON (merge_assessment.py rewrites that).
-// Keyed by feature uid; each entry's `phases` replace the one feature with
-// several — same footprint, each phase's props merged over the original —
-// e.g. a storey addition (base_floors) with its own born/died.
+// Keyed by feature uid. `set` merges property corrections onto the feature
+// (e.g. a fixed born date); `phases` replace the one feature with several —
+// same footprint, each phase's props merged over the original — e.g. a
+// storey addition (base_floors) with its own born/died.
 let _buildingHistory=null;
 async function loadBuildingHistory(){
   if(_buildingHistory) return _buildingHistory;
@@ -1891,11 +1892,14 @@ async function applyBuildingHistory(geojson){
   let n=0;
   geojson.features=geojson.features.flatMap(f=>{
     const h=H[f.properties?.uid];
-    if(!h?.phases) return [f];
+    if(!h) return [f];
     n++;
-    return h.phases.map((ph,i)=>({...f,properties:{...f.properties,...ph,uid:`${f.properties.uid}#${i}`}}));
+    // `set`: plain property corrections merged onto the feature
+    const base=h.set?{...f,properties:{...f.properties,...h.set}}:f;
+    if(!h.phases) return [base];
+    return h.phases.map((ph,i)=>({...base,properties:{...base.properties,...ph,uid:`${f.properties.uid}#${i}`}}));
   });
-  if(n) console.log(`Building history: ${n} building(s) split into phases`);
+  if(n) console.log(`Building history: ${n} building(s) corrected / split into phases`);
 }
 
 async function buildCity(geojson){

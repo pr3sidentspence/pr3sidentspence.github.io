@@ -22,6 +22,7 @@ a known fire, etc.) and is left untouched.
 
 import os
 import json
+from geojson_io import dump_geojson_lines   # one feature per line (editor/diff friendly)
 import argparse
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'data')
@@ -80,7 +81,7 @@ def main():
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, 'w', encoding='utf-8') as f:
-        json.dump(fc, f)
+        dump_geojson_lines(fc, f)
 
     print(f"no_match 1880 features: {len(no_match_ids)}")
     print(f"  corrected died estimate: {corrected}")

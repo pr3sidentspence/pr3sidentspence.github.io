@@ -1,5 +1,5 @@
 {
-  "_format": "buildings: { <feature uid>: { name, sources[], notes, phases: [ {props merged over the original feature} ] } }. Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder).",
+  "_format": "buildings: { <feature uid>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). Survives merge_assessment.py regenerating the GeoJSON.",
   "buildings": {
     "76e52ce7-2b91-4411-ad15-e526e36f7087": {
       "name": "Leland Hotel",
@@ -13,19 +13,52 @@
         {
           "phase": "original building (storeys 1–2)",
           "floors": 2,
-          "born": "1884-06-01", "construction_months": 12,
-          "died": "1999-01-15", "died_by": "fire",
+          "born": "1884-06-01",
+          "construction_months": 12,
+          "died": "1999-01-15",
+          "died_by": "fire",
           "parapet": false,
-          "date_precision": { "born": "year", "died": "month" }
+          "date_precision": {
+            "born": "year",
+            "died": "month"
+          }
         },
         {
           "phase": "1892 addition (storeys 3–6.5)",
-          "base_floors": 2, "floors": 6.5,
-          "born": "1892-10-01", "construction_months": 8,
-          "died": "1913-07-01", "died_by": "fire",
-          "date_precision": { "born": "year", "died": "year" }
+          "base_floors": 2,
+          "floors": 6.5,
+          "born": "1892-10-01",
+          "construction_months": 8,
+          "died": "1913-07-01",
+          "died_by": "fire",
+          "date_precision": {
+            "born": "year",
+            "died": "year"
+          }
         }
       ]
+    },
+    "cd99f622-2cd3-4d84-9127-164afa7786ba": {
+      "name": "R.A. Rogers Co. ltd.: Cold Storage Warehouse AND Crescent Creamery AND Offices",
+      "notes": "Built 1901, not 1865 (the pipeline's 1880-match date). Corrected by hand 2026-09-28.",
+      "set": {
+        "born": "1901-01-01",
+        "born_basis": "manual_correction"
+      },
+      "date_precision": {
+        "born": "year"
+      }
+    },
+    "e5959936-7299-45d4-ab37-07a96bc9a0c0": {
+      "name": "R.A. Rogers Co. ltd.: Cold Storage Warehouse AND Crescent Creamery AND Offices",
+      "notes": "Built 1901, not 1865 (the pipeline's 1880-match date). Corrected by hand 2026-09-28.",
+      "set": {
+        "born": "1901-01-01",
+        "born_basis": "manual_correction"
+      },
+      "date_precision": {
+        "born": "year"
+      }
     }
   }
 }

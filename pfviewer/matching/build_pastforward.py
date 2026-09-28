@@ -54,6 +54,7 @@ Usage:
 import os
 import glob
 import json
+from geojson_io import dump_geojson_lines   # one feature per line (editor/diff friendly)
 import argparse
 import hashlib
 
@@ -497,7 +498,7 @@ def main():
     out = {'type': 'FeatureCollection', 'features': out_features}
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, 'w', encoding='utf-8') as f:
-        json.dump(out, f)
+        dump_geojson_lines(out, f)
 
     print(f'Wrote {len(out_features)} features -> {args.out}')
     print(f"  cohorts:  matched={stats['matched']}  1880_only={stats['1880_only']}  1906_only={stats['1906_only']}  other={stats['other']}")

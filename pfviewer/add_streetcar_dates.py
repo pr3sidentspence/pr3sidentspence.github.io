@@ -31,6 +31,9 @@ Known simplifications (see ROUTES below for details):
 """
 
 import json
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'matching'))
+from geojson_io import dump_geojson_lines   # one feature per line (editor/diff friendly)
 import math
 from pathlib import Path
 from collections import defaultdict, deque
@@ -460,7 +463,7 @@ for idx, feat in enumerate(roads['features']):
         matched += 1
 
 with open(OUTPUT_PATH, 'w', encoding='utf-8') as f:
-    json.dump(roads, f, ensure_ascii=False)
+    dump_geojson_lines(roads, f, ensure_ascii=False)
 
 print(f'{matched}/{len(roads["features"])} features matched to a streetcar route.')
 print(f'Wrote {OUTPUT_PATH}')
