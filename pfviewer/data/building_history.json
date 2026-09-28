@@ -1,0 +1,31 @@
+{
+  "_format": "buildings: { <feature uid>: { name, sources[], notes, phases: [ {props merged over the original feature} ] } }. Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder).",
+  "buildings": {
+    "76e52ce7-2b91-4411-ad15-e526e36f7087": {
+      "name": "Leland Hotel",
+      "address": "218 William Avenue",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/lelandhotel.shtml",
+        "https://www.archiseek.com/1883-leland-hotel-winnipeg/"
+      ],
+      "notes": "Built 1883–1884 (Barber & Barber). Four storeys added 1892 (to six; Goad 1906 shows 6.5). The added storeys were gutted by fire in 1913 and removed rather than rebuilt. The remaining lower building was destroyed by arson in January 1999. Exact months unknown except January 1999.",
+      "phases": [
+        {
+          "phase": "original building (storeys 1–2)",
+          "floors": 2,
+          "born": "1884-06-01", "construction_months": 12,
+          "died": "1999-01-15", "died_by": "fire",
+          "parapet": false,
+          "date_precision": { "born": "year", "died": "month" }
+        },
+        {
+          "phase": "1892 addition (storeys 3–6.5)",
+          "base_floors": 2, "floors": 6.5,
+          "born": "1892-10-01", "construction_months": 8,
+          "died": "1913-07-01", "died_by": "fire",
+          "date_precision": { "born": "year", "died": "year" }
+        }
+      ]
+    }
+  }
+}

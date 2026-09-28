@@ -34,6 +34,8 @@ export const CONFIG = {
       './data/wpg_rails_1906.geojson',
     ],
     facadeConfig: './data/facades.json',
+    // Per-building phase overrides (storey additions, fires…) keyed by uid — see applyBuildingHistory
+    buildingHistory: './data/building_history.json',
     facadeImageDir: './images/',
     // Building-material stems that get an auto-loaded bump/texture map
     // (looked for at `./data/bump_<stem>.png`).
@@ -46,6 +48,7 @@ export const CONFIG = {
     timeOfDay: 0.42,
     // Start in winter (snow) mode?
     winterMode: false,
+    layer: 'pastforward',   // layer shown on load: 'pastforward' | '1906' | '1880' | 'all' | 'combined' (falls back if not loaded)
     // Initial camera position and look-at target, in world metres.
     // (World X=east, Y=up, Z=south — see coordinate-system note in index.html.)
     cameraPosition: { x: 600, y: 450, z: 900 },
@@ -151,6 +154,7 @@ export const CONFIG = {
     },
     // Road vertex-colour gradient: edge = dry/snowy shoulder, centre = wet/mud
     // wheel-rut tracks. Each is an [r,g,b] byte triple (0-255).
+    roadFade: [1800, 3200],  // metres from camera: roads full → gone (only the most distant roads alias and z-fight)
     roadColors: {
       summerEdge: [18, 17, 15], summerCentre: [5, 5, 4],
       winterEdge: [245, 246, 250], winterCentre: [32, 28, 24],
@@ -158,7 +162,8 @@ export const CONFIG = {
   },
 
   // Time-of-day keyframes the sky/fog/sun smoothly blend between.
-  // Each entry: [t (0..1, where the day cycle runs 04:00–22:00),
+  // Each entry: [day phase (0..1: sunrise ≈ 0.10, sunset ≈ 0.90 — stretched to
+  //              the date's real sunrise/sunset, see lighting.solarNoonClock),
   //              skyColor, fogColor, sunColor, sunIntensity, ambientIntensity]
   skyKeyframes: [
     [0.00, 0x0A0510, 0x0A0510, 0xFF6020, 0.00, 0.04], // pre-dawn
@@ -174,6 +179,12 @@ export const CONFIG = {
   ],
 
   lighting: {
+    // Sun follows the real clock: solar noon in local standard time (CST) at
+    // Winnipeg's longitude, 97.14°W → 12:00 + 7.14°×4 min ≈ 12:29. Sky
+    // keyframes above are stretched to each date's actual sunrise→sunset,
+    // with twilightHours of dusk/dawn either side.
+    solarNoonClock: 12.48,
+    twilightHours: 1.5,
     hemisphere: { skyColor: 0x88C0E8, groundColor: 0x3A5A20, intensity: 0.55 },
     ambient:    { color: 0xffffff, intensity: 0.12 },
     sun: {
@@ -344,26 +355,42 @@ export const CONFIG = {
     ],
     winterMultiplier: 1.80,   // heating load roughly doubles smoke in winter
     summerMultiplier: 0.70,   // hot months — industrial/cooking only
-    // LOD distance thresholds (horizontal XZ distance from camera to world origin).
-    // < nearDist: per-chimney sprites, up to maxNearEmitters active.
-    // > farDist:  city-wide haze sprites only, individual smoke hidden.
+    // LOD. Per-chimney puffs come from the nearest in-view chimneys within
+    // farDist (3D metres from the camera); the count tapers from
+    // maxNearEmitters as the camera climbs from nearDist to farDist above
+    // the ground. The city haze layers cover everything beyond.
     nearDist: 150,
-    farDist:  520,
+    farDist:  900,
     maxNearEmitters: 50,
-    // City-wide haze mode (far view) — flat horizontal smoke layers.
-    // Each layer is a PlaneGeometry lying flat so it reads as a blanket of
-    // haze from the zoomed-out camera angle, not a billboarded orb.
-    // Up≠N: positions are [worldX, worldZ].
+    // City-wide coal/wood smoke haze — a few stacked horizontal shader layers
+    // over the whole city (see buildCityHaze in index.html). Intensity comes
+    // from a source map: building footprint coverage within `radius`, per
+    // year from born dates (so no smoke before the city exists), plus rail
+    // sidings (yards) from rail.minVisibleYear. Each fragment looks `reach`
+    // metres upwind, so smoke streams downwind of dense areas; wind-advected
+    // noise breaks it into drifting wisps. Scaled by the chimney
+    // time-of-day × heating multiplier. Fades out near the camera.
     cityHaze: {
-      positions: [[-270,210],[-160,310],[50,-20],[160,-120],[-80,80],[20,200],
-                  [-220,80],[120,260],[-40,-110],[230,130],[-300,340],[70,110]],
-      baseY:   22,         // metres above ground — haze hugs rooftops
-      yRange:   6,         // ± vertical wander; layers stay fairly flat
-      scale: [220, 380],   // plane diameter in metres
-      scaleZ:  0.55,       // depth:width ratio — gives an elliptical footprint
-      opacity: [0.38, 0.58],
-      life:    28,         // seconds before respawn
-      drift:   0.9,        // horizontal wander speed (m/s)
+      wind: [1, 0],          // direction smoke travels, world XZ (+X = east): west → east
+      windSpeed: 14,         // m/s the wisps drift (faster than real so it reads as motion)
+      evolve: 0.025,         // how fast wisps change shape as they travel
+      radius: 100,           // metres — neighbourhood for source coverage
+      thresholds: [0.03, 0.08, 0.16, 0.30],   // coverage fractions → 4 intensity steps
+      yardWeight: 45,        // m² of "building" per metre of siding track (locomotive smoke)
+      texelMetres: 20,
+      layers: [              // height (m), opacity scale, upwind reach (m)
+        { y: 16, opacity: 1.0,  reach: 350, speed: 0.8 },   // speed: × windSpeed — upper layers faster (parallax)
+        { y: 30, opacity: 0.75, reach: 600, speed: 1.1 },
+        { y: 48, opacity: 0.5,  reach: 950, speed: 1.5 },
+      ],
+      strength: 3,         // overall opacity at full density & multiplier 1
+      maxAlpha: 0.65,
+      color: 0x57534B,       // sooty warm grey — the shaded underside, seen from below against the sky
+      colorAbove: 0x8A7F6C,  // seen from above over bare ground: brownish coal smoke, lighter than the dark roofs
+      colorAboveSnow: 0x3E3830,   // seen from above over snow: dark soot (blended by the season's snow cover)
+      aboveBoost: 0.15,       // opacity multiplier when seen from above (<1: looking down through all layers stacks up fast)
+      fadeYears: 3,          // a source ramps up over this many years after its buildings appear
+      nearFade: [40, 220],   // metres from camera: transparent → full
     },
   },
 
@@ -414,7 +441,23 @@ export const CONFIG = {
     // With real LiDAR DEM: Red River valley floor is ~3–5m below bank level.
     // Set low enough that the plane starts fully inside the channel at rest.
     baseY:  -10.0,   // flood plane Y at slider=0 (fully dry / below channel)
-    startY:  -5.8,   // default water level on page load (inside channel, not overbank)
+    startY:  -5.8,   // reference ("normal") river level, world Y — date levels below are relative to this
+    // River level by date. levelAt(date) = historical record if one is near
+    // the date, else the fake seasonal curve below; the flood slider adds a
+    // manual offset on top. Everything that floats (boats, floes) follows.
+    levels: {
+      // Fake seasonal curve, metres relative to startY: low under the ice,
+      // quick rise at break-up to the spring high, then a straight decline to
+      // the lowest level just before freeze-up. ['MM-DD', metres].
+      seasonal: [['04-14', -0.8], ['04-22', 2.5], ['11-25', -0.8]],
+      yearVariation: 0.35,     // ± fraction on the spring rise, seeded by year (same year → same level)
+      // Optional real data, loaded if present. Format:
+      //   { "datum": "relative" | "asl" | "james_ft", "records": [["1913-04-28", 12.4], ...] }
+      //   relative: metres vs startY · asl: metres above sea level (via the DEM's refElev)
+      //   james_ft: feet on the James Avenue gauge (datum 727.57 ft ASL — verify before relying on it)
+      historyFile: './data/water_levels.json',
+      maxGapDays: 45,          // interpolate between records at most this far apart; else fall back to seasonal
+    },
     // Assiniboine → Red confluence plume (faked in the water shader). The
     // lighter, siltier Assiniboine water hugs the Red's west bank heading
     // north and has mixed out by Esplanade Riel. Path is lon/lat (modern, like
@@ -502,6 +545,100 @@ export const CONFIG = {
     },
   },
 
+  // ── River steamboats ─────────────────────────────────────────────────
+  // Sternwheelers plying the Red/Assiniboine, with stack smoke and a foam +
+  // Kelvin-arm wake. One roaming boat at most; `presence` is the fraction of
+  // time one is on the river for a given year (linear between keyframes):
+  // first boat 1859 (Anson Northup), ~50% through the 1860s, ~90% at the
+  // 1872–78 peak, collapsing after the Pembina Branch rail link (Dec 1878)
+  // and CPR (1881), then occasional Assiniboine freight / excursion boats.
+  // Only while the river is open (CONFIG.seasons ice/floes). One boat is
+  // always moored at the Steamboat Landing south of Upper Fort Garry while
+  // presence > 0 (frozen in over winter, no smoke).
+  steamboats: {
+    presence: [[1858,0],[1859,0.5],[1869,0.5],[1872,0.9],[1878,0.9],[1879,0.5],[1882,0.3],[1886,0.12],[1905,0.08],[1912,0.04],[1913,0]],
+    // Share of trips that come down the Assiniboine (then continue down the
+    // Red) rather than running the Red — Assiniboine boom 1879–85 (to Portage/Brandon).
+    assiniboineShare: [[1859,0.15],[1878,0.2],[1879,0.55],[1885,0.55],[1887,0.3]],
+    speed: { upstream: 3.0, downstream: 4.2 },   // m/s; the Red flows north, the Assiniboine east
+    draft: 0.45,                                 // metres of hull below the waterline
+    dock: { lon: -97.13226, lat: 49.88590, heading: 90 },   // moored against the landing's T-head; heading ° (0=N, 90=E)
+    colors: { hull: 0xE6E0CE, cabin: 0xF1EDE1, roof: 0x6B6255, trim: 0x3A3530, stack: 0x1E1C1A, wheel: 0x8B2A1E },
+    wake: { length: 160, foamColor: 0xD9D2BF, foamAlpha: 0.45, armAlpha: 0.28, armAngleDeg: 19.5 },
+    smokeTint: 0x8C8883,                         // wood-fired: greyer than the locomotives
+    // River centrelines (lon/lat, modern river data — water offsetZ applied),
+    // derived by marching perpendicular cross-sections of wpg_rivers.geojson.
+    // Index order is downstream (Red south→north; Assiniboine west→Forks).
+    routes: {
+      red: [
+        [-97.11365,49.8682], [-97.11344,49.86909], [-97.11443,49.86988], [-97.11548,49.87036], [-97.11664,49.87068], [-97.11784,49.87092],
+        [-97.11908,49.87105], [-97.12033,49.8711], [-97.12159,49.87113], [-97.12284,49.87106], [-97.12408,49.87095], [-97.12533,49.87084],
+        [-97.12656,49.87068], [-97.12779,49.87053], [-97.12902,49.87035], [-97.13025,49.87019], [-97.13149,49.87008], [-97.13275,49.87009],
+        [-97.13398,49.87026], [-97.13513,49.8706], [-97.13614,49.8711], [-97.13683,49.87179], [-97.1372,49.87257], [-97.13749,49.87336],
+        [-97.1374,49.87418], [-97.13726,49.87498], [-97.13702,49.87578], [-97.13661,49.87654], [-97.13617,49.8773], [-97.13563,49.87803],
+        [-97.13502,49.87874], [-97.13427,49.87939], [-97.13347,49.88001], [-97.13277,49.88068], [-97.13206,49.88135], [-97.1313,49.882],
+        [-97.13053,49.88263], [-97.12972,49.88325], [-97.12893,49.88388], [-97.12819,49.88454], [-97.12748,49.8852], [-97.1268,49.88588],
+        [-97.12607,49.88654], [-97.12567,49.88732], [-97.12563,49.88813], [-97.12574,49.88894], [-97.12597,49.88974], [-97.12651,49.89048],
+        [-97.1272,49.89115], [-97.1278,49.89186], [-97.12832,49.8926], [-97.12892,49.89331], [-97.12955,49.89401], [-97.13016,49.89472],
+        [-97.13073,49.89544], [-97.13119,49.8962], [-97.13139,49.897], [-97.13121,49.89781], [-97.13072,49.89856], [-97.12991,49.89919],
+        [-97.1289,49.89967], [-97.1278,49.90007], [-97.12667,49.90043], [-97.12546,49.90066], [-97.12425,49.90086], [-97.12298,49.90084],
+        [-97.12173,49.90075], [-97.12048,49.90069], [-97.11923,49.90063], [-97.11798,49.90056], [-97.11673,49.90049], [-97.11548,49.90042],
+        [-97.11423,49.90036], [-97.11297,49.90034], [-97.11173,49.90051], [-97.11054,49.90077], [-97.10953,49.90127], [-97.10889,49.90199],
+        [-97.10864,49.90279], [-97.10885,49.90362], [-97.10967,49.90429], [-97.11077,49.90471], [-97.1119,49.90507], [-97.1131,49.90531],
+        [-97.11424,49.90566], [-97.11538,49.906], [-97.11649,49.90637], [-97.11751,49.90685], [-97.11852,49.90733], [-97.11952,49.90782],
+        [-97.1205,49.90832], [-97.12147,49.90884], [-97.12243,49.90936], [-97.1234,49.90987], [-97.12434,49.91041], [-97.12522,49.91098],
+        [-97.12592,49.91166], [-97.12645,49.9124], [-97.12664,49.9132], [-97.12703,49.914], [-97.12702,49.91482], [-97.12725,49.91508],
+      ],
+      assiniboine: [
+        [-97.1695,49.87645], [-97.16837,49.87704], [-97.1673,49.87746], [-97.16626,49.87792], [-97.16516,49.87831], [-97.16402,49.87864],
+        [-97.16271,49.87851], [-97.16157,49.87815], [-97.16068,49.87756], [-97.16008,49.87684], [-97.15956,49.87611], [-97.15895,49.8754],
+        [-97.15828,49.87472], [-97.15737,49.87415], [-97.1562,49.87383], [-97.15493,49.87378], [-97.15373,49.87407], [-97.15277,49.87461],
+        [-97.15239,49.87541], [-97.1527,49.87622], [-97.15298,49.87701], [-97.15342,49.87777], [-97.15418,49.87842], [-97.15486,49.87911],
+        [-97.15501,49.87993], [-97.15449,49.8807], [-97.15341,49.88116], [-97.15228,49.88151], [-97.15106,49.88172], [-97.14979,49.8817],
+        [-97.14854,49.88176], [-97.14729,49.88182], [-97.14604,49.88187], [-97.14479,49.88199], [-97.14358,49.88219], [-97.14238,49.88244],
+        [-97.14123,49.88277], [-97.14019,49.88323], [-97.13917,49.8837], [-97.13816,49.88417], [-97.13711,49.88461], [-97.136,49.885],
+        [-97.13486,49.88533], [-97.13365,49.88557], [-97.1324,49.8857], [-97.13116,49.88583], [-97.1299,49.88576], [-97.12863,49.88576],
+      ],
+    },
+  },
+
+  // ── Construction / demolition / fire ─────────────────────────────────
+  // Buildings with a born date go up over [born − duration, born] (so they
+  // are finished on their born date): walls, windows and roof rise bottom → top.
+  // Small wood buildings show stud framing first, cladding following;
+  // larger/masonry ones get timber scaffolding kept just above the walls.
+  // Buildings with a died date come down over the month before it, top down
+  // — or burn: charred black, upper shell collapses, flames + heavy smoke,
+  // ruin cleared by the died date. A feature burns if props.died_by is
+  // 'fire' (or died_cause mentions fire), or by randomFireShare.
+  construction: {
+    minMonths: 1,            // smallest wood buildings
+    maxMonths: 24,           // largest/tallest
+    masonryFactor: 1.3,      // brick/stone/concrete take longer (capped at maxMonths)
+    frameMaxHeight: 10,      // m — non-masonry buildings up to this height show stud framing; others scaffolding
+    demolitionMonths: 1,
+    fireDays: 20,            // burn + charred ruin (stylised — long enough to see at slow play)
+    randomFireShare: 0,      // fraction of dated demolitions shown as fires anyway (0 = only when the data says so)
+    frameColor: 0xC8A66E,    // fresh lumber
+    scaffoldColor: 0x8B7B60, // weathered timber poles
+    maxFires: 6,             // simultaneous fires with flame/smoke particles (nearest first)
+    fire: {
+      flameEnd: 0.45,        // fraction of the fire window with open flames (the rest smoulders)
+      flameRate: 140,        // flame sprites/s per fire at peak (scaled up for big buildings)
+      sparkRate: 40,
+      smokeRate: 45,         // plume puffs/s at peak
+      smokeTail: 0.25,       // plume strength while smouldering after the flames, fading to the end
+      smokeLife: 11,         // s — long-lived puffs make a tall column
+      smokeRise: 9,          // m/s initial climb
+      smokeDrift: 3.5,       // m/s eastward drift (grows as it rises)
+      smokeEndSize: 55,      // m — puff size at the top of the plume
+      smokeOpacity: 0.75,
+      smokeColor: 0x221E1A,
+      lightIntensity: 60, lightRange: 140,   // flickering orange glow on the nearest blaze
+      poolFlames: 300, poolSparks: 120, poolSmoke: 420,
+    },
+  },
+
   // ── Riverbank trees ──────────────────────────────────────────────────
   // Instanced trees in a thin band just outside the river polygons (the
   // riparian elm/ash/maple/cottonwood fringe). Rows are offsets from the
@@ -546,7 +683,35 @@ export const CONFIG = {
     minYear: 1850,
     maxYear: 1960,
     startDate: '1906-07-01',      // date shown on first load (YYYY-MM-DD, local)
-    playSpeedDaysPerSecond: 45,   // time-lapse advance rate once ▶ is pressed
+    playSpeedDaysPerSecond: 45,   // ⏩ fast-forward rate (years pass)
+    // ▶ slow play: 2 days/s ≈ 3 minutes per year. wrapWithinYear loops
+    // Dec 31 → Jan 1 of the SAME year so the seasons cycle without buildings
+    // changing. enabled = start playing on load (false = start paused).
+    seasonCycle: { enabled: true, daysPerSecond: 2, wrapWithinYear: true },
+    // ▸▸▸ years fly by: one summer day shown per year; 10/s → 1850–1960 in ~11 s
+    yearsFly: { yearsPerSecond: 10, day: '07-15' },
+  },
+
+  // ── Seasons (driven by the view date) ────────────────────────────────
+  // Each channel is ['MM-DD', value] keyframes, linear between, wrapping over
+  // New Year. Rough Winnipeg norms: snow gone ~mid-April, river ice holds a few
+  // days longer then breaks up (floes drift for ~2 weeks); grass greens
+  // through May, browns from September; elms leaf out in May, colour late
+  // Sept–early Oct, bare by late Oct; snow builds through November while the
+  // river stays open until freeze-up at month's end.
+  seasons: {
+    snow:    [['01-01',1],['03-25',1],['04-12',0],['10-28',0],['11-20',1]],
+    green:   [['04-12',0],['05-02',0.05],['05-28',1],['09-05',1],['10-10',0.35],['11-01',0.2]],   // ~3 weeks of bare brown after melt
+    ice:     [['01-01',1],['04-14',1],['04-17',0],['11-25',0],['11-30',1]],
+    floes:   [['04-13',0],['04-16',1],['04-24',0.35],['05-01',0],['11-19',0],['11-24',0.45],['11-30',0]],
+    leaf:    [['05-01',0],['05-22',1],['10-02',1],['10-24',0]],
+    autumn:  [['09-10',0],['10-02',1],['10-25',1],['10-26',0]],   // leaf colour turn; reset once bare
+    heating: [['01-01',1],['04-01',1],['05-10',0],['09-25',0],['11-15',1]],   // chimney smoke multiplier blend
+    dormantColor: 0x7A5F35,       // winter-killed / not-yet-green prairie grass — matted straw brown
+    springLeafColor: 0x8FAE4A,    // fresh May leaves
+    lateAutumnColor: 0x6E4E2C,    // brown leaves hanging on before they drop
+    autumnColors: { 'American elm': 0xB89434, 'green ash': 0xC8A83A, 'Manitoba maple': 0xCFAE3E, 'cottonwood': 0xC9A63C },
+    floeCount: 450, floeSpeed: 6, floeColor: 0xDCE3EA,   // break-up / freeze-up ice pans
   },
 
   // ── Streetcars ───────────────────────────────────────────────────────
@@ -706,6 +871,20 @@ export const CONFIG = {
     backgroundColor: 'rgba(14,12,10,0.92)',
     borderColor: '#2a1e0e',
     headingColor: '#FFD080',
+    riverColor: '#2B4A5C',   // muted river blue (static — doesn't follow the flood level)
+    // Dot draw order, bottom → top (dots overlap at this scale; unlisted draw first)
+    drawOrder: ['wood_industrial', 'iron', 'wood', 'log', 'lumber', 'brick_veneer', 'brick', 'stone'],
+    // Building dots in Goad's fire-insurance atlas colours (others: their material colour)
+    materialColors: {
+      wood:            '#E8CF5A',   // frame — yellow
+      log:             '#E8CF5A',
+      lumber:          '#E8CF5A',
+      brick:           '#E89AA4',   // brick — pink
+      brick_veneer:    '#E89AA4',
+      stone:           '#9CC9E4',   // stone — light blue
+      wood_industrial: '#A6A6A6',   // industrial frame — grey
+      iron:            '#7E8286',   // iron-clad — darker grey
+    },
     crosshairColor: '#3a2a10',
   },
 

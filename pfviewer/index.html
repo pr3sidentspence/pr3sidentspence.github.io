@@ -92,6 +92,11 @@ canvas{display:block;position:fixed;inset:0;}
   display:flex;align-items:center;justify-content:center;cursor:pointer;
   -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;}
 .zoom-btn:active{background:rgba(200,160,90,0.2);border-color:#C8A05A;}
+/* Advanced/debug controls: hidden unless Ctrl+A toggles body.advanced.
+   !important beats the inline display the loaders set when they show them. */
+body:not(.advanced) #layer-bar,
+body:not(.advanced) #winter-btn,
+body:not(.advanced) #flood-control{display:none !important;}
 </style>
 </head>
 <body>
@@ -165,7 +170,9 @@ canvas{display:block;position:fixed;inset:0;}
 </div>
 <div id="date-control" style="display:none;position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.88);border:1px solid #2a1e0e;border-radius:10px;padding:10px 22px 12px;flex-direction:column;align-items:center;gap:7px;pointer-events:auto;z-index:14;width:min(640px,80vw);">
   <div style="display:flex;align-items:center;justify-content:center;gap:14px;width:100%;">
-    <button id="timeline-play-btn" title="Play time-lapse" style="background:transparent;border:1px solid #3a2810;border-radius:50%;width:30px;height:30px;color:#C8A05A;font-size:0.8rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶</button>
+    <button id="timeline-play-btn" title="Play (slow)" style="background:transparent;border:1px solid #3a2810;border-radius:50%;width:30px;height:30px;color:#C8A05A;font-size:0.8rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶</button>
+    <button id="timeline-ff-btn" title="Fast forward" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶</button>
+    <button id="timeline-fff-btn" title="Years fly by (one summer day per year)" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶▶</button>
     <div id="date-display" style="font-size:0.95rem;color:#C8A05A;letter-spacing:0.06em;min-width:180px;text-align:center;"></div>
     <input type="date" id="date-picker" style="background:#1e1610;border:1px solid #3a2810;border-radius:4px;color:#C8A05A;font-family:Georgia,serif;font-size:0.72rem;padding:3px 6px;color-scheme:dark;">
   </div>
@@ -254,7 +261,7 @@ camera.lookAt(CONFIG.start.cameraLookAt.x, CONFIG.start.cameraLookAt.y, CONFIG.s
 // ── Season state (declared here — used before buildingMeshes block) ─
 let winterMode=CONFIG.start.winterMode;
 const seasonalMats=[];   // {mat3, summerCol, winterCol}
-let groundMatRef=null, roadMatRef=null, cartTrackMesh=null, roadColBuf=null;
+let groundMatRef=null, roadMatRef=null, cartTrackMesh=null, roadColBuf=null, roadLatF=null;
 let streetcarRailMeshes=[]; // {year,mesh} — one ground-rail mesh per route, bucketed by that route's streetcar_start year (see buildRoads)
 const SNOW_SKIP=new Set(['blue']); // railways/sidings only — no snow accumulation
 
@@ -310,22 +317,59 @@ scene.add(ambLight);
 // as "0.584"). copyCameraToClipboard() reads this instead, so a URL-loaded
 // hours/minutes round-trips through copy exactly instead of drifting by a
 // minute or two.
+// ── Seasons: keyframe evaluator ────────────────────────────────────
+// Everything seasonal is driven by the view date (CONFIG.seasons keyframes),
+// blended continuously every frame — see applySeason() (further down). Kept
+// up here because setTimeOfDay() needs it during start-up.
+const SEASON=CONFIG.seasons;
+const _dayOfYear=(m,d)=>{const md=[0,31,59,90,120,151,181,212,243,273,304,334];return md[m-1]+d-1;};
+const _seasonKeys={};
+for(const ch of['snow','green','ice','floes','leaf','autumn','heating'])
+  _seasonKeys[ch]=SEASON[ch].map(([md,v])=>{const[m,d]=md.split('-').map(Number);return[_dayOfYear(m,d),v];}).sort((a,b)=>a[0]-b[0]);
+function _seasonChannel(keys,doy){
+  // Linear between keyframes, wrapping over New Year (365-day year)
+  for(let i=0;i<keys.length;i++){
+    const[a,va]=keys[i],[b,vb]=keys[(i+1)%keys.length];
+    const span=((b-a)+365)%365||365, off=((doy-a)+365)%365;
+    if(off<=span) return va+(vb-va)*off/span;
+  }
+  return keys[0][1];
+}
+function viewDayOfYear(d){
+  return _dayOfYear(d.getMonth()+1,d.getDate())+(d.getHours()+d.getMinutes()/60)/24;
+}
+function seasonState(d){
+  const doy=viewDayOfYear(d), S={doy};
+  for(const ch in _seasonKeys) S[ch]=Math.max(0,Math.min(1,_seasonChannel(_seasonKeys[ch],doy)));
+  return S;
+}
 let currentTodFraction=CONFIG.start.timeOfDay;
 function setTimeOfDay(t){
   currentTodFraction=t;
   // Physically correct solar position for Winnipeg 49.895°N — Up ≠ N (X=east,Y=up,Z=south)
   // Declination: equinox=0, summer solstice=+23.45°, winter solstice=−23.45°
-  // Tied to winterMode so sun arc narrows and flattens in winter automatically.
+  // Follows the view date's day of year (Cooper's approximation).
   const LAT  = 49.895396 * Math.PI / 180;
-  const decl = (winterMode ? -23.45 : 0) * Math.PI / 180;  // 0=equinox, swap to ±23.45 with season selector later
+  const _sd  = seasonState(window.currentViewDate||parseLocalISODate(CONFIG.timeline.startDate));
+  const decl = 23.45 * Math.sin(2*Math.PI*(284+_sd.doy+1)/365) * Math.PI / 180;
 
   // Sunrise/sunset hour angle: cos(h0) = −tan(lat)·tan(decl)
   const h0cos = -Math.tan(LAT) * Math.tan(decl);
   const h0    = Math.acos(Math.max(-1, Math.min(1, h0cos)));  // radians from noon
 
-  // TOD slider 0→1 maps to hour angle −h0 → +h0 (sunrise → sunset)
-  const dayFrac = Math.max(0, Math.min(1, (t - 0.10) / 0.80));
-  const h       = (dayFrac - 0.5) * 2 * h0;   // hour angle: 0 at noon
+  // Real clock: the slider's hour (04:00–22:00) → solar hour angle. Solar
+  // noon falls ~12:29 local standard time at Winnipeg's longitude, so winter
+  // mornings/evenings are dark and summer days run long.
+  const clockH  = TOD_START_H + t * TOD_RANGE_H;
+  const noonH   = CONFIG.lighting.solarNoonClock ?? 12.48;
+  const h       = (clockH - noonH) * Math.PI / 12;   // hour angle: 0 at solar noon
+  // Day phase for the sky keyframes (authored with sunrise≈0.10, sunset≈0.90):
+  // stretch each date's real sunrise→sunset onto 0.10–0.90, twilight either side.
+  const halfDayH = h0 * 12 / Math.PI, riseH = noonH - halfDayH, setH = noonH + halfDayH;
+  const TW = CONFIG.lighting.twilightHours ?? 1.5;
+  const phase = clockH < riseH ? 0.10 * Math.max(0, 1 - (riseH - clockH) / TW)
+              : clockH > setH  ? 0.90 + 0.10 * Math.min(1, (clockH - setH) / TW)
+              : 0.10 + 0.80 * (clockH - riseH) / Math.max(0.01, setH - riseH);
 
   // ENU → world XZ (standard spherical astronomy, verified against equinox case)
   // East  = −cos(decl)·sin(h)
@@ -338,10 +382,13 @@ function setTimeOfDay(t){
      R * Math.max(0.05, sUp),                     // worldY = up
      R * (Math.cos(decl)*Math.cos(h)*Math.sin(LAT) - Math.sin(decl)*Math.cos(LAT)) // worldZ = south
   );
-  const s=sampleSky(t);
+  const s=sampleSky(phase);
   scene.background.setHex(s.sky);scene.fog.color.setHex(s.fog);
   sun.color.setHex(s.sunCol);sun.intensity=s.sunInt;
   ambLight.intensity=s.ambInt;hemiLight.color.setHex(s.sky);
+  // Haze brightness tracks daylight (sun + ambient), fog tint for distance
+  hazeUniforms.uLight.value=Math.min(1.3,0.25+s.sunInt*0.45+s.ambInt*0.5);
+  hazeUniforms.uFogColor.value.setHex(s.fog);
   const hour=TOD_START_H+t*TOD_RANGE_H,hh=Math.floor(hour),mm=Math.round((hour-hh)*60);
   const lbl=document.getElementById('tod-label');
   if(lbl)lbl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
@@ -357,7 +404,7 @@ function setTimeOfDay(t){
   }
   const _tf=_hi[0]===_lo[0]?0:(_todHour-_lo[0])/(_hi[0]-_lo[0]);
   const _todBase=_lo[1]+(_hi[1]-_lo[1])*_tf;
-  const _seasonM=winterMode?CONFIG.chimneys.winterMultiplier:CONFIG.chimneys.summerMultiplier;
+  const _seasonM=CONFIG.chimneys.summerMultiplier+(CONFIG.chimneys.winterMultiplier-CONFIG.chimneys.summerMultiplier)*_sd.heating;
   chimneyTodMult=_todBase*_seasonM;
 }
 // ── Ground / Terrain ───────────────────────────────────────────────
@@ -380,6 +427,7 @@ const groundCoverUniforms={
   uGcCoreDirt:{value:new THREE.Color(_gc.coreDirt)},
   uGcFadeYears:{value:_gc.fadeYears},
   uGcStrength:{value:1},           // 0 in winter
+  uGcGreen:{value:1},              // season greenness: 0 = dormant (no green patches), 1 = summer
   uGcTex:{value:null},             // density map, see buildGroundCover()
   uGcHasTex:{value:0},
   uGcMin:{value:new THREE.Vector2()},
@@ -400,7 +448,7 @@ groundMat.onBeforeCompile=shader=>{
   shader.fragmentShader=`uniform vec3 uBankDirtColor;
 uniform float uBankDirtTop,uBankDirtBlend,uBankDirtJitter,uBankDirtStrength;
 uniform vec3 uGcGrassAlt,uGcGrassDry,uGcYardDirt,uGcCoreDirt;
-uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear;
+uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear,uGcGreen;
 uniform sampler2D uGcTex;
 uniform vec2 uGcMin,uGcSize;
 varying vec3 vBankWorld;
@@ -417,7 +465,7 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
     float nSm=gcNoise(wp/15.+11.7);
     float nFine=gcNoise(wp/4.+5.9);
     float camD=distance(cameraPosition,vBankWorld);
-    vec3 g=mix(diffuseColor.rgb,uGcGrassAlt,smoothstep(.3,.7,nBig));
+    vec3 g=mix(diffuseColor.rgb,uGcGrassAlt,smoothstep(.3,.7,nBig)*uGcGreen);   // green patches only once it greens up
     g=mix(g,uGcGrassDry,smoothstep(.58,.82,nBig*.45+nMid*.55)*uGcDryAmount);
     g*=1.+uGcMottle*(nSm*2.-1.);
     g*=mix(1.,.9+.2*nFine,1.-smoothstep(40.,220.,camD));   // fine grain near camera only (avoids shimmer)
@@ -520,6 +568,7 @@ async function applyDEM(){
     // DEM is now active — channel terrain override must not run
     _demLoaded = true;
     _terrainBaseY = null;
+    demRefElev = meta.refElev;
     console.log(`🗺 DEM applied: ${meta.verts}×${meta.verts} grid, ref ${meta.refElev.toFixed(1)}m ASL`);
     // Rebuild roads so they sample real terrain heights instead of Perlin noise
     if(window.roadGeojson) buildRoads(window.roadGeojson).catch(e=>console.warn('Road rebuild after DEM:',e));
@@ -638,24 +687,81 @@ function parseYearOrSentinel(v, sentinel){
   return Number.isFinite(y) ? y : sentinel;
 }
 
-function tagLifespan(geom, born, died){
+// Born/died as a FRACTIONAL year from a full ISO date ('1903-08-18' → 1903.63),
+// so construction/demolition can be timed to the month. Bare years / numbers
+// pass through. buildingYearUniform is fractional too (setCurrentViewDate).
+function parseDateFrac(v, sentinel){
+  if(v==null) return sentinel;
+  if(typeof v==='number') return v;
+  const m=String(v).match(/^(\d{4})(?:-(\d{1,2})(?:-(\d{1,2}))?)?/);
+  if(!m) return sentinel;
+  const y=+m[1], mo=m[2]?+m[2]:1, d=m[3]?+m[3]:1;
+  return y+(_dayOfYear(mo,d)/365);
+}
+function yearFrac(date){ return date.getFullYear()+_dayOfYear(date.getMonth()+1,date.getDate())/365+date.getHours()/8760; }
+
+// aBuild = [baseY, topY, constructionYears (negative = stud-framed), demolitionYears (negative = fire)].
+// Zeros (or missing attribute) = no construction/demolition animation — just born/died.
+const NO_BUILD=[0,0,0,0];
+function tagLifespan(geom, born, died, build=NO_BUILD){
   const n=geom.attributes.position.count;
-  const arr=new Float32Array(n*2);
-  for(let i=0;i<n;i++){ arr[i*2]=born; arr[i*2+1]=died; }
+  const arr=new Float32Array(n*2), b=new Float32Array(n*4);
+  for(let i=0;i<n;i++){ arr[i*2]=born; arr[i*2+1]=died; b.set(build,i*4); }
   geom.setAttribute('aLifespan', new THREE.Float32BufferAttribute(arr,2));
+  geom.setAttribute('aBuild', new THREE.Float32BufferAttribute(b,4));
   return geom;
 }
 
-function _installLifespanShader(shader){
-  shader.uniforms.buildingYear = buildingYearUniform;
-  shader.vertexShader = 'attribute vec2 aLifespan;\nvarying vec2 vLifespan;\n' + shader.vertexShader
-    .replace('void main() {', 'void main() {\n  vLifespan = aLifespan;');
-  shader.fragmentShader = 'uniform float buildingYear;\nvarying vec2 vLifespan;\n' + shader.fragmentShader
-    .replace('void main() {', 'void main() {\n  if(buildingYear < vLifespan.x || buildingYear >= vLifespan.y) discard;');
+// Lifespan + construction shader. kind 0 = the building itself: visible from
+// born−duration to died, built up to a rising level, torn down / burnt from
+// the top. kind 1 = scaffolding, kind 2 = stud framing: visible only while
+// under construction, running ahead of the walls.
+function _lifespanShaderFor(kind){
+  return shader=>{
+    shader.uniforms.buildingYear = buildingYearUniform;
+    shader.vertexShader = 'attribute vec2 aLifespan;\nattribute vec4 aBuild;\nvarying vec2 vLifespan;\nvarying vec4 vBuild;\nvarying float vBldY;\n' + shader.vertexShader
+      .replace('void main() {', 'void main() {\n  vLifespan = aLifespan; vBuild = aBuild;')
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vBldY = (modelMatrix * vec4(transformed, 1.0)).y;');
+    shader.fragmentShader = `#define BLD_KIND ${kind}
+uniform float buildingYear;
+varying vec2 vLifespan;
+varying vec4 vBuild;
+varying float vBldY;
+` + shader.fragmentShader
+      .replace('void main() {', `void main() {
+  float bldChar = 0.0;
+  {
+    float y = buildingYear, born = vLifespan.x, died = vLifespan.y;
+    float h = vBuild.y - vBuild.x, dur = abs(vBuild.z);
+    bool framed = vBuild.z < 0.0;
+    float start = born - (h > 0.0 ? dur : 0.0);
+    float p = (y - start) / max(dur, 1e-4);          // construction progress 0..1
+  #if BLD_KIND > 0
+    if (y < start || y >= born || h <= 0.0) discard;
+    float lvl = BLD_KIND == 1 ? min(1.0, p * 1.1 + 0.12) : min(1.0, p / 0.35);
+    if (vBldY > vBuild.x + lvl * h + 0.05) discard;
+  #else
+    if (y < start || y >= died) discard;
+    if (h > 0.0) {
+      float lvl = 1.0;
+      if (y < born) lvl = framed ? clamp((p - 0.3) / 0.7, 0.0, 1.0) : p;   // cladding follows the framing
+      float demo = abs(vBuild.w);
+      if (demo > 0.0 && y > died - demo) {
+        float q = (y - (died - demo)) / demo;
+        if (vBuild.w < 0.0) { lvl = min(lvl, 1.0 - 0.55 * smoothstep(0.35, 1.0, q)); bldChar = smoothstep(0.0, 0.3, q); }
+        else lvl = min(lvl, 1.0 - q);
+      }
+      if (vBldY > vBuild.x + lvl * h + 0.02) discard;
+    }
+  #endif
+  }`)
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.045, 0.04), bldChar * 0.92);');
+  };
 }
-function tagMaterialForLifespan(mat){
-  mat.onBeforeCompile = _installLifespanShader;
-  mat.customProgramCacheKey = () => 'lifespan';
+const _installLifespanShader=_lifespanShaderFor(0);
+function tagMaterialForLifespan(mat, kind=0){
+  mat.onBeforeCompile = _lifespanShaderFor(kind);
+  mat.customProgramCacheKey = () => 'lifespan'+kind;
   return mat;
 }
 // One fresh depth material per call — three.js needs a distinct customDepthMaterial
@@ -666,20 +772,252 @@ function makeLifespanDepthMaterial(){
   return depthMat;
 }
 
+// ── Per-building construction timing ──
+// Build info for a feature from its size/material and born/died, cached per
+// props so facades/glass rebuilds can reuse it.
+const buildInfoByProps=new WeakMap();   // props → {born, died, build:[baseY,topY,dur,demo]}
+const MASONRY=new Set(['brick','brick_veneer','stone','concrete']);
+function computeBuildInfo(props, mat, floors, area, baseY, topY, wallH){
+  const C=CONFIG.construction;
+  const born=parseDateFrac(props.born,NO_BORN), died=parseDateFrac(props.died,NO_DIED);
+  let dur=0, demo=0;
+  if(C&&born>NO_BORN+1){
+    const s=Math.min(1,0.55*Math.min(1,Math.max(0,(floors-1)/5))+0.45*Math.min(1,(area||100)/2000));
+    let months=C.minMonths+(C.maxMonths-C.minMonths)*Math.pow(s,1.5);
+    const masonry=MASONRY.has(mat);
+    if(masonry) months=Math.min(C.maxMonths,months*C.masonryFactor);
+    if(props.construction_months>0) months=props.construction_months;   // per-feature override (known history)
+    dur=months/12;
+    if(!masonry&&wallH<=C.frameMaxHeight) dur=-dur;           // stud-framed
+  }
+  if(C&&died<NO_DIED-1){
+    const fire=props.died_by==='fire'||/fire|burn/i.test(props.died_cause||'')
+      ||(C.randomFireShare>0&&seededRand(simpleHash(String(props.uid??props.id??''))%100000)<C.randomFireShare);
+    demo=fire?-(C.fireDays/365):C.demolitionMonths/12;
+  }
+  const info={born,died,build:[baseY,topY,dur,demo]};
+  buildInfoByProps.set(props,info);
+  return info;
+}
+// ── Scaffolding / stud framing ─────────────────────────────────────
+// Built on the fly only for buildings whose construction window is near the
+// current date (usually a few dozen), rebuilt each viewed month. The shader
+// (kind 1/2) shows each piece only while its building is going up, rising
+// just ahead of the walls. Geometry is written straight into typed arrays —
+// thin square beams between two points.
+const constructionRecords=[];   // {group,born,dur,framed,baseY,wallTop,topY,edges,floors}
+const fireRecords=[];           // {group,died,dur,x,z,baseY,topY,radius}
+let constructionMesh=null, _constructionKey=null;
+window._constructionRecords=constructionRecords; window._fireRecords=fireRecords;   // debug handles
+function _beam(out,a,b,t){
+  // square prism a→b (no end caps): 4 sides × 2 tris, with flat normals
+  const d=[b[0]-a[0],b[1]-a[1],b[2]-a[2]], L=Math.hypot(...d);
+  if(L<1e-3) return;
+  d[0]/=L;d[1]/=L;d[2]/=L;
+  const up=Math.abs(d[1])>0.9?[1,0,0]:[0,1,0];
+  let u=[d[1]*up[2]-d[2]*up[1],d[2]*up[0]-d[0]*up[2],d[0]*up[1]-d[1]*up[0]];
+  const ul=Math.hypot(...u); u=u.map(x=>x/ul*t/2);
+  const v=[d[1]*u[2]-d[2]*u[1],d[2]*u[0]-d[0]*u[2],d[0]*u[1]-d[1]*u[0]];
+  const c=[[u[0]+v[0],u[1]+v[1],u[2]+v[2]],[-u[0]+v[0],-u[1]+v[1],-u[2]+v[2]],[-u[0]-v[0],-u[1]-v[1],-u[2]-v[2]],[u[0]-v[0],u[1]-v[1],u[2]-v[2]]];
+  for(let k=0;k<4;k++){
+    const c0=c[k],c1=c[(k+1)%4];
+    const n=[c0[0]+c1[0],c0[1]+c1[1],c0[2]+c1[2]], nl=Math.hypot(...n)||1;
+    const P=[[a[0]+c0[0],a[1]+c0[1],a[2]+c0[2]],[b[0]+c0[0],b[1]+c0[1],b[2]+c0[2]],[b[0]+c1[0],b[1]+c1[1],b[2]+c1[2]],[a[0]+c1[0],a[1]+c1[1],a[2]+c1[2]]];
+    for(const i of[0,1,2,0,2,3]){out.pos.push(...P[i]);out.nor.push(n[0]/nl,n[1]/nl,n[2]/nl);out.n++;}
+  }
+}
+// One building's framing/scaffold as typed arrays, generated once and cached
+// on the record (a boom year can have hundreds going up at once).
+function _constructionPieces(r){
+  if(r._cache) return r._cache;
+  const out={pos:[],nor:[],n:0};
+  const b=r.baseY;
+  if(r.framed){
+    // Studs every ~1.2 m on each wall line, plates at each floor + wall top
+    const levels=[];
+    for(let f=0;f<=Math.ceil(r.floors);f++) levels.push(Math.min(r.wallTop,b+f*FLOOR_H));
+    for(const e of r.edges){
+      const n=Math.max(1,Math.round(e.len/1.2));
+      for(let k=0;k<=n;k++){
+        const t=k/n, x=e.ax+(e.bx-e.ax)*t, z=e.az+(e.bz-e.az)*t;
+        _beam(out,[x,b,z],[x,r.wallTop,z],0.09);
+      }
+      for(const y of levels) _beam(out,[e.ax,y,e.az],[e.bx,y,e.bz],0.12);
+    }
+  }else{
+    // Scaffold 1.2 m outside each wall: two lines of standards, ledgers
+    // every 2 m, a diagonal brace per bay-pair — up to just over the roof
+    const top=r.topY+1.5;
+    for(const e of r.edges){
+      const n=Math.max(1,Math.round(e.len/2.4));
+      for(const off of[0.3,1.2]){
+        const ox=e.nx*off, oz=e.nz*off;
+        for(let k=0;k<=n;k++){
+          const t=k/n, x=e.ax+(e.bx-e.ax)*t+ox, z=e.az+(e.bz-e.az)*t+oz;
+          _beam(out,[x,b,z],[x,top,z],0.1);
+        }
+        for(let y=b+2;y<top;y+=2) _beam(out,[e.ax+ox,y,e.az+oz],[e.bx+ox,y,e.bz+oz],0.08);
+      }
+      for(let k=0;k<n;k+=2){
+        const t0=k/n,t1=Math.min(1,(k+2)/n), ox=e.nx*1.2, oz=e.nz*1.2;
+        _beam(out,[e.ax+(e.bx-e.ax)*t0+ox,b,e.az+(e.bz-e.az)*t0+oz],[e.ax+(e.bx-e.ax)*t1+ox,top,e.az+(e.bz-e.az)*t1+oz],0.07);
+      }
+    }
+  }
+  // Per-vertex lifespan/build: the shader runs the level from r.baseY to the piece's own top
+  const topPiece=r.framed?r.wallTop:r.topY+1.5, n=out.n;
+  const life=new Float32Array(n*2), build=new Float32Array(n*4);
+  for(let i=0;i<n;i++){life[i*2]=r.born;life[i*2+1]=99999;build.set([b,topPiece,r.dur,0],i*4);}
+  r._cache={n,pos:new Float32Array(out.pos),nor:new Float32Array(out.nor),life,build};
+  return r._cache;
+}
+function _buildConstructionGeometry(recs){
+  const groups={frame:[],scaf:[]};
+  for(const r of recs) groups[r.framed?'frame':'scaf'].push(_constructionPieces(r));
+  const mk=(list,color,kind)=>{
+    const n=list.reduce((a,c)=>a+c.n,0);
+    if(!n) return null;
+    const pos=new Float32Array(n*3),nor=new Float32Array(n*3),life=new Float32Array(n*2),build=new Float32Array(n*4);
+    let o=0;
+    for(const c of list){pos.set(c.pos,o*3);nor.set(c.nor,o*3);life.set(c.life,o*2);build.set(c.build,o*4);o+=c.n;}
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    g.setAttribute('normal',new THREE.BufferAttribute(nor,3));
+    g.setAttribute('aLifespan',new THREE.BufferAttribute(life,2));
+    g.setAttribute('aBuild',new THREE.BufferAttribute(build,4));
+    const m=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({color}),kind));
+    m.frustumCulled=false;
+    return m;
+  };
+  const C=CONFIG.construction;
+  return [mk(groups.frame,C.frameColor,2),mk(groups.scaf,C.scaffoldColor,1)].filter(Boolean);
+}
+// Per frame: rebuild when the viewed month or the active layer changes.
+function updateConstructionMeshes(){
+  if(!CONFIG.construction) return;
+  const y=buildingYearUniform.value, key=activeLayer+':'+Math.floor(y*12);
+  if(key===_constructionKey) return;
+  _constructionKey=key;
+  if(constructionMesh){scene.remove(constructionMesh);constructionMesh.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});constructionMesh=null;}
+  const recs=constructionRecords.filter(r=>r.group.visible&&y>r.born-r.dur-0.1&&y<r.born+0.1);
+  if(!recs.length) return;
+  constructionMesh=new THREE.Group();
+  constructionMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
+  constructionMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
+  for(const m of _buildConstructionGeometry(recs)) constructionMesh.add(m);
+  scene.add(constructionMesh);
+}
+
+// ── Fires ──────────────────────────────────────────────────────────
+// Burning buildings (CONFIG.construction.fire): additive flame sprites +
+// sparks during the first part of the fire window, and a dense dark smoke
+// plume that starts with the flames, keeps rolling while it smoulders, and
+// bends downwind as it climbs. A flickering orange light sits on the nearest
+// fire. Nearest few fires only.
+let firePool=null, fireLight=null;
+function _makeFlameTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const g=c.getContext('2d'), gr=g.createRadialGradient(32,36,2,32,32,30);
+  gr.addColorStop(0,'rgba(255,245,200,1)'); gr.addColorStop(0.3,'rgba(255,170,50,0.9)');
+  gr.addColorStop(0.65,'rgba(220,60,10,0.4)'); gr.addColorStop(1,'rgba(120,20,0,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+function _initFirePool(){
+  const F=CONFIG.construction.fire, flameTex=_makeFlameTexture(), pool=[];
+  const mk=(kind,n)=>{for(let i=0;i<n;i++){
+    const mat=kind==='smoke'
+      ?new THREE.SpriteMaterial({map:smokeTexture,color:F.smokeColor,transparent:true,depthWrite:false,opacity:0})
+      :new THREE.SpriteMaterial({map:flameTex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0});
+    const spr=new THREE.Sprite(mat); spr.visible=false; scene.add(spr);
+    pool.push({spr,kind,age:0,life:1,active:false,vx:0,vy:0,vz:0,s0:1,s1:1,op:1});
+  }};
+  mk('flame',F.poolFlames); mk('spark',F.poolSparks); mk('smoke',F.poolSmoke);
+  fireLight=new THREE.PointLight(0xFF7A2A,0,F.lightRange,1.6); scene.add(fireLight);
+  return pool;
+}
+function _fireSlot(kind){ for(const s of firePool) if(!s.active&&s.kind===kind) return s; return null; }
+function tickFires(dt){
+  if(!fireRecords.length) return;
+  const F=CONFIG.construction.fire;
+  if(!firePool) firePool=_initFirePool();
+  const y=buildingYearUniform.value, cam=camera.position;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  const burning=[];
+  for(const f of fireRecords){
+    if(!f.group.visible) continue;
+    const q=(y-(f.died-f.dur))/f.dur;
+    if(q<0||q>=1) continue;
+    const d2=(f.x+offX-cam.x)**2+(f.z+offZ-cam.z)**2;
+    if(d2<4000*4000) burning.push({f,q,d2});
+  }
+  burning.sort((a,b)=>a.d2-b.d2);
+  let lightI=0, lightPos=null;
+  for(const{f,q}of burning.slice(0,CONFIG.construction.maxFires??6)){
+    const fx=f.x+offX, fz=f.z+offZ, H=f.topY-f.baseY;
+    // Flames: blaze up fast, peak, die down by flameEnd; smoke: follows the flames
+    // up, then smoulders on at smokeTail strength to the end of the window
+    const fl=q<F.flameEnd?Math.sin(Math.min(1,q/F.flameEnd)*Math.PI)**0.6:0;
+    const sm=q<F.flameEnd*0.5?Math.min(1,q/(F.flameEnd*0.15)):Math.max(F.smokeTail,1-(q-F.flameEnd*0.5)/(1-F.flameEnd*0.5)*(1-F.smokeTail));
+    const hTop=f.baseY+H*(1-0.55*Math.max(0,Math.min(1,(q-0.14)/0.26)));   // shell collapsing (matches the shader)
+    const size=Math.max(1,f.radius/6);
+    const emit=(kind,rate,setup)=>{
+      let n=rate*dt; n=Math.floor(n)+(Math.random()<n%1?1:0);
+      for(let e=0;e<n;e++){const s=_fireSlot(kind);if(!s)return;s.active=true;s.age=0;s.spr.visible=true;setup(s);}
+    };
+    const around=(s,yFrac)=>{const a=Math.random()*6.28,r=Math.sqrt(Math.random())*f.radius;
+      s.spr.position.set(fx+Math.cos(a)*r,f.baseY+(hTop-f.baseY)*yFrac,fz+Math.sin(a)*r);};
+    if(fl>0){
+      emit('flame',F.flameRate*fl*size,s=>{around(s,0.3+0.7*Math.random());
+        s.life=0.6+Math.random()*0.7;s.vx=(Math.random()-0.5)*1.5;s.vy=6+Math.random()*7;s.vz=(Math.random()-0.5)*1.5;
+        s.s0=(4+f.radius*0.45)*(0.7+Math.random()*0.6);s.s1=1;s.op=0.95;});
+      emit('spark',F.sparkRate*fl*size,s=>{around(s,1);
+        s.life=1.5+Math.random()*2;s.vx=2+Math.random()*3;s.vy=10+Math.random()*12;s.vz=(Math.random()-0.5)*4;
+        s.s0=0.9;s.s1=0.3;s.op=1;});
+      lightI=Math.max(lightI,fl); if(!lightPos||fl>=lightI) lightPos=[fx,hTop,fz];
+    }
+    if(sm>0) emit('smoke',F.smokeRate*sm*size,s=>{around(s,0.6+0.4*Math.random());
+      s.life=F.smokeLife*(0.7+Math.random()*0.6);s.vx=F.smokeDrift*(0.6+Math.random()*0.8);s.vy=F.smokeRise*(0.7+Math.random()*0.6);s.vz=(Math.random()-0.5)*2;
+      s.s0=(6+f.radius*0.5)*(0.8+Math.random()*0.4);s.s1=F.smokeEndSize+f.radius*1.5;s.op=F.smokeOpacity*(0.5+0.5*sm);});
+  }
+  // Flickering glow on the strongest nearby blaze
+  if(lightPos){fireLight.position.set(lightPos[0],lightPos[1]+2,lightPos[2]);fireLight.intensity=F.lightIntensity*lightI*(0.75+0.5*Math.random());}
+  else fireLight.intensity=0;
+  for(const s of firePool){
+    if(!s.active) continue;
+    s.age+=dt; const t=s.age/s.life;
+    if(t>=1){s.active=false;s.spr.visible=false;continue;}
+    if(s.kind==='smoke'){ s.vx+=F.smokeDrift*0.15*dt; s.vy*=1-0.12*dt; }   // bends downwind, slows as it climbs
+    s.spr.position.x+=s.vx*dt; s.spr.position.y+=s.vy*dt; s.spr.position.z+=s.vz*dt;
+    const sc=s.s0+(s.s1-s.s0)*(s.kind==='smoke'?Math.sqrt(t):t); s.spr.scale.set(sc,sc,1);
+    s.spr.material.opacity=s.op*(s.kind==='smoke'?Math.min(1,t*5)*(1-t)**1.3:(1-t)*(s.kind==='spark'?(0.6+0.4*Math.random()):1));
+  }
+}
+
+
 // ── Chimney smoke state ────────────────────────────────────────────
 // chimneyEmitters: populated by buildCity for every chimney stack placed.
 //   { wx,wy,wz, type, rate, timer, year }
 // chimneyPool: shared sprite pool capped at CONFIG.chimneys.smokePoolSize.
 //   Individual puffs are drawn from this pool regardless of chimney count,
 //   keeping GPU sprite count bounded regardless of city size.
-// cityHazeSlots: large drift sprites shown only at far zoom.
+// cityHazeGroup: stacked shader haze layers over the whole city (buildCityHaze).
 // chimneyTodMult: TOD × season multiplier, updated by setTimeOfDay().
 const chimneyEmitters = [];
 let   chimneyPool     = [];
 let   chimneyPoolNext = 0;
 let   chimneyTodMult  = 1.0;
 let   cityHazeGroup   = null;
-let   cityHazeSlots   = [];
+// Shared by every haze layer; uSrc* filled by buildHazeSources(), uLight by
+// setTimeOfDay(), uTime/uStrength per frame in tickChimneySmoke().
+const hazeUniforms={
+  uSrc:{value:null}, uSrcMin:{value:new THREE.Vector2()}, uSrcSize:{value:new THREE.Vector2(1,1)},
+  uYear:{value:1906}, uTime:{value:0}, uStrength:{value:0},
+  uWind:{value:new THREE.Vector2(1,0)}, uWindSpeed:{value:4}, uEvolve:{value:0.02}, uFadeYears:{value:3},
+  uColor:{value:new THREE.Color(0x57534B)}, uColorAbove:{value:new THREE.Color(0xA39C8E)}, uAboveBoost:{value:1.5}, uLight:{value:1},
+  uFogColor:{value:new THREE.Color()}, uFogDensity:{value:0},
+  uNearFade:{value:new THREE.Vector2(40,220)},
+};
 const facadeMeshes = new Map();
 window.facadeMeshes = facadeMeshes;
 // Start position in world coords — computed once after project() is available
@@ -692,7 +1030,9 @@ const startX=_ssx, startZ=-_ssy;
 // buildingIndex: keyed by normalised name, and by "source:id" compound key
 // idIndex: keyed by plain String(id) → array of matches (all sources)
 const buildingIndex = new Map();
-const idIndex = new Map();   // id string → [{feat,props,height}, ...]
+const idIndex = new Map();   // id string → [{feat,props,height,group}, ...]
+const nameIndexAll = new Map();   // normName → [entry, ...] across ALL layers (buildingIndex keeps only the last)
+const propsLayerGroup = new WeakMap();   // feature props → the THREE.Group of the layer it was built into
 
 function normName(s){
   return String(s).toLowerCase().replace(/[^a-z0-9]+/g,' ').trim();
@@ -793,7 +1133,7 @@ const layerGroups = [];   // [{year, group, label}]
 let roadDrawRadius = 0;   // set by buildCity based on detected year; 0 = not yet set
 const buildingCentroids = new Map(); // year→[{cx,cz,born,died,area}] — populated by buildCity, used by buildRoads
 window._buildingCentroids = buildingCentroids;
-let activeLayer='1906';   // module-scope: read by tickStreetcars for 1880 hide logic
+let activeLayer=CONFIG.start.layer??'pastforward';   // module-scope: read by tickStreetcars for 1880 hide logic; buildLayerBar falls back if it isn't loaded
 
 function detectYear(geojson){
   // Check filename hint stored on the geojson object by the loader
@@ -1199,6 +1539,75 @@ const WIN_GF_H_F = CONFIG.windows.groundFloorHeightFrac;
 // Only fully-tall floors get ordinary windows; a near-complete fraction
 // (>=0.9) is treated as a full floor, otherwise the remainder is left for
 // buildDormer() to handle (or left blank for non-peaked-roof materials).
+// ── Wall edges + party walls (window placement) ─────────────────────
+// Every edge of a footprint ring (including the closing one) with its
+// outward normal taken from the ring's signed area — the old centroid test
+// flipped normals on the inner edges of L/T/U shapes, pushing those windows
+// inside the wall where they were hidden.
+function wallEdgesOf(outer){
+  const pts=[];
+  for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);pts.push([sx,-sy]);}
+  let A=0;
+  for(let j=0;j<pts.length;j++){const[x1,z1]=pts[j],[x2,z2]=pts[(j+1)%pts.length];A+=x1*z2-x2*z1;}
+  const sgn=A>0?1:-1, edges=[];
+  for(let j=0;j<pts.length;j++){
+    const[ax,az]=pts[j],[bx,bz]=pts[(j+1)%pts.length];
+    const dx=bx-ax,dz=bz-az,len=Math.hypot(dx,dz);
+    if(len<0.3) continue;
+    edges.push({ax,az,bx,bz,nx:sgn*dz/len,nz:-sgn*dx/len,len});
+  }
+  return edges;
+}
+// Per-layer index of wall sample points, to find walls that actually abut a
+// neighbour (party walls — no windows) instead of guessing from shape.
+const PW_CELL=4, PW_STEP=2.5;
+function buildPartyWallGrid(features){
+  const grid=new Map();
+  features.forEach((feat,fi)=>{
+    const gt=feat.geometry?.type;
+    if(gt!=='Polygon'&&gt!=='MultiPolygon') return;
+    const born=parseYearOrSentinel(feat.properties.born,NO_BORN), died=parseYearOrSentinel(feat.properties.died,NO_DIED);
+    for(const rings of gt==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates]){
+      if(!rings[0]||rings[0].length<4) continue;
+      for(const e of wallEdgesOf(rings[0])){
+        const n=Math.max(1,Math.round(e.len/PW_STEP));
+        for(let k=0;k<n;k++){
+          const t=(k+0.5)/n, x=e.ax+(e.bx-e.ax)*t, z=e.az+(e.bz-e.az)*t;
+          const key=Math.floor(x/PW_CELL)+','+Math.floor(z/PW_CELL);
+          let c=grid.get(key); if(!c){c=[];grid.set(key,c);}
+          c.push(x,z,e.nx,e.nz,fi,born,died);
+        }
+      }
+    }
+  });
+  return grid;
+}
+// Fraction of an edge that faces a touching neighbour wall (within 1.6 m,
+// normals opposed) belonging to a building that existed when this one was
+// built (born no more than 10 years later, not yet demolished).
+function partyWallFraction(grid,e,fi,born){
+  if(!grid) return 0;
+  const n=Math.max(1,Math.round(e.len/PW_STEP));
+  let hit=0;
+  for(let k=0;k<n;k++){
+    const t=(k+0.5)/n, x=e.ax+(e.bx-e.ax)*t, z=e.az+(e.bz-e.az)*t;
+    const gx=Math.floor(x/PW_CELL), gz=Math.floor(z/PW_CELL);
+    let found=false;
+    for(let a=-1;a<=1&&!found;a++)for(let b=-1;b<=1&&!found;b++){
+      const c=grid.get((gx+a)+','+(gz+b)); if(!c) continue;
+      for(let q=0;q<c.length;q+=7){
+        if(c[q+4]===fi) continue;
+        if(c[q+2]*e.nx+c[q+3]*e.nz>-0.7) continue;
+        if((c[q]-x)**2+(c[q+1]-z)**2>2.56) continue;
+        if(c[q+5]>born+10||c[q+6]<=born) continue;
+        found=true; break;
+      }
+    }
+    if(found) hit++;
+  }
+  return hit/n;
+}
+
 function floorsForWindows(floors){
   let full=Math.floor(floors+1e-6);
   if(floors-full>=CONFIG.windows.halfFloorRoundUpThreshold) full+=1;
@@ -1333,7 +1742,7 @@ function placeMaskWindows(glassVerts, ax,az,bx,bz, nx,nz, worldHeight, maskWindo
   }
 }
 
-function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false){
+function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false, startFloor=0){
   const edgeDx=bx-ax, edgeDz=bz-az;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   if(edgeLen<2.5) return;
@@ -1343,7 +1752,7 @@ function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat,
   const usable=edgeLen-2*WIN_MARGIN;
   if(usable<(WIN_W+WIN_GAP)) return;
 
-  for(let f=0;f<floors;f++){
+  for(let f=Math.ceil(startFloor-1e-6);f<floors;f++){   // startFloor>0: upper-storey volume
     let wW, wH, sill, n, startT;
     if(isStorefront && f===0){
       // Ground floor storefront: one wide shop window spanning nearly full width
@@ -1420,6 +1829,36 @@ function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat,
 // as-is, but must also re-apply any facades/bump maps already loaded onto
 // specific buildings, and clear old chimneyEmitters/buildingCentroids
 // entries for that year first, or they'll leak/duplicate on every rebuild).
+// ── Building history overrides (data/building_history.json) ─────────
+// Kept outside the generated GeoJSON (merge_assessment.py rewrites that).
+// Keyed by feature uid; each entry's `phases` replace the one feature with
+// several — same footprint, each phase's props merged over the original —
+// e.g. a storey addition (base_floors) with its own born/died.
+let _buildingHistory=null;
+async function loadBuildingHistory(){
+  if(_buildingHistory) return _buildingHistory;
+  _buildingHistory={};
+  const url=CONFIG.dataFiles.buildingHistory;
+  if(!url) return _buildingHistory;
+  try{
+    const res=await fetch(url+'?v='+Date.now());
+    if(res.ok) _buildingHistory=(await res.json()).buildings??{};
+  }catch(e){console.warn('Building history: failed to load',e);}
+  return _buildingHistory;
+}
+async function applyBuildingHistory(geojson){
+  const H=await loadBuildingHistory();
+  if(!Object.keys(H).length) return;
+  let n=0;
+  geojson.features=geojson.features.flatMap(f=>{
+    const h=H[f.properties?.uid];
+    if(!h?.phases) return [f];
+    n++;
+    return h.phases.map((ph,i)=>({...f,properties:{...f.properties,...ph,uid:`${f.properties.uid}#${i}`}}));
+  });
+  if(n) console.log(`Building history: ${n} building(s) split into phases`);
+}
+
 async function buildCity(geojson){
   const year=detectYear(geojson);
   const group=new THREE.Group();
@@ -1427,13 +1866,15 @@ async function buildCity(geojson){
   group.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
   group.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   scene.add(group);
-  layerGroups.push({year,group,geojson});
+  const partyGrid=buildPartyWallGrid(geojson.features);
+  layerGroups.push({year,group,geojson,partyGrid});
   if(geojson.attribution) dataAttributions.add(geojson.attribution);
   const yearRadius = year==='1880' ? 1000 : 3000;
   roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
 
   const glassVerts=[];  // accumulated window glass vertex data
   const glassLifespan=[];  // parallel [born,died] per glass vertex — see tagLifespan()
+  const glassBuild=[];     // parallel [baseY,topY,dur,demo] per glass vertex (construction level)
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
@@ -1444,7 +1885,7 @@ async function buildCity(geojson){
   const chimneyStackGeos=[];  // CylinderGeometry stacks merged → one chimney mesh per layer
 
   for(let i=0;i<total;i++){
-    const feat=features[i],props=feat.properties;
+    const feat=features[i],props=feat.properties, _featIdx=i;
     const mat=MATS[props.material]?props.material:'unknown';
     // Born/died lifespan tag for every geometry this feature contributes below —
     // recorded here as "start" indices into each accumulator, applied in one
@@ -1457,6 +1898,9 @@ async function buildCity(geojson){
     const _lumberWallStart0=lumberWallGeos.length, _walkwayWallStart0=walkwayWallGeos.length;
     const _glassOuterStart0=glassVerts.length;
     const floors=props.floors??1,isPlatform=floors<=0.2;
+    // base_floors: this feature is a volume starting at that storey (e.g. storeys
+    // added later, with their own born/died — see data/building_history.json)
+    const baseFloors=Math.max(0,Math.min(props.base_floors||0,floors-0.5)), baseH=baseFloors*FLOOR_H;
     const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
     // Half-storey detection (e.g. floors=1.5/2.5/3.5…) — see floorsForWindows().
     const fullFloorsForDormers=floorsForWindows(floors);
@@ -1469,8 +1913,14 @@ async function buildCity(geojson){
     const forceFlat=roofTypeOverride==='flat';
 
     // Index for facade matching — by normalised name and by id
-    const entry={feat,props,height};
-    if(props.name) buildingIndex.set(normName(props.name),entry);
+    const entry={feat,props,height,group};
+    propsLayerGroup.set(props,group);
+    if(props.name){
+      const nk=normName(props.name);
+      buildingIndex.set(nk,entry);
+      if(!nameIndexAll.has(nk))nameIndexAll.set(nk,[]);
+      nameIndexAll.get(nk).push(entry);
+    }
     if(props.id!=null){
       const idKey=String(props.id);
       if(!idIndex.has(idKey))idIndex.set(idKey,[]);
@@ -1613,9 +2063,10 @@ async function buildCity(geojson){
 
 
       let wallGeom;
-      try{wallGeom=new THREE.ExtrudeGeometry(shape,{depth:height,bevelEnabled:false});}
+      try{wallGeom=new THREE.ExtrudeGeometry(shape,{depth:height-baseH,bevelEnabled:false});}
       catch(err){console.warn('earcut failed id:',props.id,err.message);continue;}
       wallGeom.rotateX(-Math.PI/2);
+      if(baseH>0) wallGeom.translate(0,baseH,0);   // upper-storey volume (base_floors) sits on the storeys below
       const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
       if(tris===0){wallGeom.dispose();continue;}
       // Bake per-building colour into vertex colours before merging
@@ -1663,24 +2114,10 @@ async function buildCity(geojson){
       const noWindows=isWall||isElevator||isLumberYard||isWalkway;
 
       if(!isPlatform&&!isChurch&&!noWindows&&floors>0.5){
-        const outerCoords=outer.slice(0,-1);
-        const wcx=mcx,wcz=mcz;  // reuse centroid already computed above
-
-        // Collect edges with outward normals first
-        const wEdges=[];
-        for(let j=0;j<outerCoords.length-1;j++){
-          const[ax0,ay0]=project(outerCoords[j][0],outerCoords[j][1]);
-          const[bx0,by0]=project(outerCoords[j+1][0],outerCoords[j+1][1]);
-          const ax=ax0,az=-ay0,bx=bx0,bz=-by0;
-          const dx=bx-ax,dz=bz-az,elen=Math.sqrt(dx*dx+dz*dz);
-          if(elen<0.3)continue;
-          let nx=-dz/elen,nz=dx/elen;
-          const midX=(ax+bx)/2,midZ=(az+bz)/2;
-          if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}
-          wEdges.push({ax,az,bx,bz,nx,nz,len:elen});
-          // Register in spatial index for facade face selection (Up ≠ N: XZ only)
-          addWallEdge(midX, midZ, nx, nz);
-        }
+        // Edges with outward normals (all of them, incl. the closing edge)
+        const wEdges=wallEdgesOf(outer);
+        // Register in spatial index for facade face selection (Up ≠ N: XZ only)
+        for(const e of wEdges) addWallEdge((e.ax+e.bx)/2,(e.az+e.bz)/2,e.nx,e.nz);
         if(wEdges.length===0) continue;
 
         // Find primary front edge (most eastward-facing outward normal)
@@ -1704,7 +2141,8 @@ async function buildCity(geojson){
         for(let i=0;i<wEdges.length;i++){
           const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
           const isPrimary=(i===primaryIdx);
-          if(isNarrow&&!isPrimary) continue;  // skip party walls on narrow buildings
+          // No windows on walls that actually abut a neighbour (party walls)
+          if(partyWallFraction(partyGrid,wEdges[i],_featIdx,_lifeBorn)>0.6) continue;
 
           // Is this edge part of the facade face? (within 60° of primary normal)
           const isFacadeFace= maskEntry && (nx*primaryNx+nz*primaryNz>0.65);
@@ -1713,7 +2151,7 @@ async function buildCity(geojson){
             // Place mask-derived windows on this face instead of procedural ones
             placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
           } else {
-            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow);
+            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow,baseFloors);
           }
         }
 
@@ -1781,7 +2219,7 @@ async function buildCity(geojson){
       // ── Brick flat-roof details ──────────────────────────────────
       // Only for brick, non-platform, tall enough to matter.
       // Suppressed when roof_type is an explicit peaked value (parapet makes no sense on a gabled roof).
-      const hasParapet=(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&!isLumberYard&&!isWalkway&&height>MIN_H+0.5&&!forcePeaked;
+      const hasParapet=props.parapet!==false&&(mat==='brick'||mat==='stone')&&!isPlatform&&!isBridge&&!isUpperFort&&!isChurch&&!isWall&&!isLumberYard&&!isWalkway&&height>MIN_H+0.5&&!forcePeaked;
       if(hasParapet){
         // Stone parapets are more substantial than brick
         const pW = mat==='stone' ? CONFIG.building.parapet.stoneWidth : PARAPET_W;   // thickness
@@ -1893,18 +2331,37 @@ async function buildCity(geojson){
         for(let _gi=_glassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=buildingBaseY;
       }
     }
-    // Apply this feature's born/died tag to every geometry it added above,
-    // across every ring/branch (elevator, dormers, normal walls, etc.) —
-    // done once here rather than at each individual push site.
-    for(let _k=_wallStart0;_k<wallGeos[mat].length;_k++) tagLifespan(wallGeos[mat][_k],_lifeBorn,_lifeDied);
-    for(let _k=_roofStart0;_k<roofGeos[mat].length;_k++) tagLifespan(roofGeos[mat][_k],_lifeBorn,_lifeDied);
-    for(let _k=_parapetStart0;_k<parapetGeos.length;_k++) tagLifespan(parapetGeos[_k],_lifeBorn,_lifeDied);
-    for(let _k=_stoneParapetStart0;_k<stoneParapetGeos.length;_k++) tagLifespan(stoneParapetGeos[_k],_lifeBorn,_lifeDied);
-    for(let _k=_roofCapStart0;_k<roofCapGeos.length;_k++) tagLifespan(roofCapGeos[_k],_lifeBorn,_lifeDied);
-    for(let _k=_chimneyStart0;_k<chimneyStackGeos.length;_k++) tagLifespan(chimneyStackGeos[_k],_lifeBorn,_lifeDied);
-    for(let _k=_lumberWallStart0;_k<lumberWallGeos.length;_k++) tagLifespan(lumberWallGeos[_k],_lifeBorn,_lifeDied);
-    for(let _k=_walkwayWallStart0;_k<walkwayWallGeos.length;_k++) tagLifespan(walkwayWallGeos[_k],_lifeBorn,_lifeDied);
-    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++) glassLifespan.push(_lifeBorn,_lifeDied);
+    // Apply this feature's born/died + construction tag to every geometry it
+    // added above, across every ring/branch (elevator, dormers, normal walls,
+    // etc.) — done once here rather than at each individual push site.
+    const _fGeos=[];
+    for(let _k=_wallStart0;_k<wallGeos[mat].length;_k++) _fGeos.push(wallGeos[mat][_k]);
+    for(let _k=_roofStart0;_k<roofGeos[mat].length;_k++) _fGeos.push(roofGeos[mat][_k]);
+    for(let _k=_parapetStart0;_k<parapetGeos.length;_k++) _fGeos.push(parapetGeos[_k]);
+    for(let _k=_stoneParapetStart0;_k<stoneParapetGeos.length;_k++) _fGeos.push(stoneParapetGeos[_k]);
+    for(let _k=_roofCapStart0;_k<roofCapGeos.length;_k++) _fGeos.push(roofCapGeos[_k]);
+    for(let _k=_chimneyStart0;_k<chimneyStackGeos.length;_k++) _fGeos.push(chimneyStackGeos[_k]);
+    for(let _k=_lumberWallStart0;_k<lumberWallGeos.length;_k++) _fGeos.push(lumberWallGeos[_k]);
+    for(let _k=_walkwayWallStart0;_k<walkwayWallGeos.length;_k++) _fGeos.push(walkwayWallGeos[_k]);
+    // Vertical extent from the real geometry (roofs/chimneys included) so the
+    // build-up level reaches the very top
+    let _minY=Infinity,_maxY=-Infinity;
+    for(const g of _fGeos){g.computeBoundingBox();_minY=Math.min(_minY,g.boundingBox.min.y);_maxY=Math.max(_maxY,g.boundingBox.max.y);}
+    for(let _gv=_glassOuterStart0+1;_gv<glassVerts.length;_gv+=3){_minY=Math.min(_minY,glassVerts[_gv]);_maxY=Math.max(_maxY,glassVerts[_gv]);}
+    const _fOuter=(feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates[0]:feat.geometry.coordinates)[0];
+    const _fArea=props.area_m2||(_fOuter?ringAreaM2(_fOuter):100);
+    const _bi=_minY<_maxY
+      ?computeBuildInfo(props,mat,floors,_fArea,_minY,_maxY,height)
+      :{born:parseDateFrac(props.born,NO_BORN),died:parseDateFrac(props.died,NO_DIED),build:NO_BUILD};
+    for(const g of _fGeos) tagLifespan(g,_bi.born,_bi.died,_bi.build);
+    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++){glassLifespan.push(_bi.born,_bi.died);glassBuild.push(..._bi.build);}
+    // Scaffolding/framing + fire records (see updateConstructionMeshes / tickFires)
+    if(_fOuter&&_bi.build[2]!==0) constructionRecords.push({group,born:_bi.born,dur:Math.abs(_bi.build[2]),framed:_bi.build[2]<0,
+      baseY:_minY,wallTop:_minY+height,topY:_maxY,edges:wallEdgesOf(_fOuter),floors});
+    if(_fOuter&&_bi.build[3]<0){
+      const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
+      fireRecords.push({group,died:_bi.died,dur:-_bi.build[3],x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,radius:Math.sqrt(_fArea)/2});
+    }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
 
@@ -2165,10 +2622,11 @@ async function buildCity(geojson){
     wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
     wMesh.castShadow=true;wMesh.receiveShadow=true;
     group.add(wMesh);buildingMeshes.push(wMesh);
-    // Collect centroids for mini-map
-    const col='#'+MATS[mat].color.toString(16).padStart(6,'0');
+    // Collect centroids for mini-map — Goad's fire-atlas colours where set
+    const col=CONFIG.minimap.materialColors?.[mat]??('#'+MATS[mat].color.toString(16).padStart(6,'0'));
     for(const info of wallInfos[mat]){
-      if(info.cx!==undefined) minimapDots.push({x:info.cx,z:info.cz,col});}
+      if(info.cx!==undefined) minimapDots.push({x:info.cx,z:info.cz,col,mat,group,
+        born:parseYearOrSentinel(info.feat?.properties?.born,NO_BORN),died:parseYearOrSentinel(info.feat?.properties?.died,NO_DIED)});}
     const lcEl=document.getElementById(`lc-${mat}`);if(lcEl)lcEl.textContent=matCounts[mat].toLocaleString();
     if(roofGeos[mat].length>0){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
@@ -2281,6 +2739,7 @@ async function buildCity(geojson){
     const gGeom=new THREE.BufferGeometry();
     gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
     gGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(new Float32Array(glassLifespan),2));
+    gGeom.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(glassBuild),4));
     gGeom.computeVertexNormals();
     const gMesh=new THREE.Mesh(gGeom,glassMat);
     gMesh.renderOrder=1;   // draw after opaque walls
@@ -2360,6 +2819,7 @@ function buildGroundCover(){
 // ── Road surface ───────────────────────────────────────────────────
 async function buildRoads(geojson){
   buildGroundCover();
+  if(cityHazeGroup) buildHazeSources();   // same active-layer centroids
   setProgress(88,'Building road network…');await tick();
   // Dispose previous road mesh if rebuilding for layer change
   if(roadMatRef){
@@ -2371,7 +2831,7 @@ async function buildRoads(geojson){
   for(const{mesh}of streetcarRailMeshes){mesh.geometry.dispose();scene.remove(mesh);}
   streetcarRailMeshes=[];
   if(cartTrackMesh){cartTrackMesh.geometry.dispose();scene.remove(cartTrackMesh);cartTrackMesh=null;}
-  const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[], life=[];
+  const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[], life=[], latF=[];
 
   // ── Road filtering: skip roads with no nearby buildings ────────────
   // Always render: Main, Portage, Broadway, Higgins (historic arterials).
@@ -2489,6 +2949,7 @@ async function buildRoads(geojson){
         // 0x55→pow(0.333,2.2)/1.42≈0.072 edge; 0x30→pow(0.188,2.2)/1.42≈0.021 centre
         for(const t of[tA,tA,tB, tA,tB,tB]){
           const f=Math.abs(t);
+          latF.push(f);
           col.push(
             0.072*f + 0.021*(1-f),
             0.065*f + 0.018*(1-f),
@@ -2506,15 +2967,32 @@ async function buildRoads(geojson){
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
   geom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(life,2));
-  roadColBuf=geom.attributes.color;  // stored for winter/summer swap
+  roadColBuf=geom.attributes.color;  // stored for the seasonal snow blend (applySeason)
+  roadLatF=new Float32Array(latF);   // per-vertex edge(1)↔centre(0) fraction for that blend
+  if(typeof _applied!=='undefined') delete _applied.roads;
   geom.computeVertexNormals();
   roadMatRef=new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
   roadMatRef.receiveShadow=true;
   tagMaterialForLifespan(roadMatRef);  // hide segments until a nearby building is born
+  // Fade out with camera distance: far away the thin dark strips alias and
+  // z-fight the terrain (log depth ignores polygonOffset) and read too dark.
+  {
+    const RF=CONFIG.scene.roadFade??[500,1400];
+    roadMatRef.transparent=true;
+    roadMatRef.onBeforeCompile=shader=>{
+      _installLifespanShader(shader);
+      shader.uniforms.uRoadFade={value:new THREE.Vector2(RF[0],RF[1])};
+      shader.vertexShader='varying float vRoadDist;\n'+shader.vertexShader
+        .replace('#include <project_vertex>','#include <project_vertex>\n  vRoadDist=length(mvPosition.xyz);');
+      shader.fragmentShader='uniform vec2 uRoadFade;\nvarying float vRoadDist;\n'+shader.fragmentShader
+        .replace('#include <color_fragment>','#include <color_fragment>\n  diffuseColor.a*=1.-smoothstep(uRoadFade.x,uRoadFade.y,vRoadDist);\n  if(diffuseColor.a<.01) discard;');
+    };
+    roadMatRef.customProgramCacheKey=()=>'lifespanRoadFade';
+  }
   const roadMesh=new THREE.Mesh(geom,roadMatRef);
   roadMesh.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
   roadMesh.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
-  roadMesh.receiveShadow=true;scene.add(roadMesh);
+  roadMesh.receiveShadow=true;roadMesh.renderOrder=-1;scene.add(roadMesh);   // first of the transparents (it fades)
 
   // Cart tracks — two narrow ruts per segment, visible in winter only
   const trackPos=[], trackLife=[];
@@ -2663,6 +3141,78 @@ async function buildRoads(geojson){
 //     depthWrite:false so opaque terrain occludes it via depth buffer.
 
 const WATER_BASE = CONFIG.water.baseY;   // −3.0: flood plane Y at slider=0
+
+// ── River level by date (CONFIG.water.levels) ──────────────────────
+// waterLevelAt(date) → world Y. Uses historical records when one is close to
+// the date (loadWaterLevels), else the fake seasonal curve with a per-year
+// seeded variation on the spring rise. The flood slider adds waterManualOffset.
+let waterHistory=null;          // [{t:ms, y:worldY}] sorted, or null
+let waterManualOffset=0;        // metres, from the flood slider
+let demRefElev=null;            // m ASL of world y=0 (from dem.json), for 'asl'/'james_ft' data
+const JAMES_DATUM_M=727.57*0.3048;   // James Avenue gauge datum, m ASL
+const _wlKeys=CONFIG.water.levels.seasonal.map(([md,v])=>{const[m,d]=md.split('-').map(Number);return[_dayOfYear(m,d),v];}).sort((a,b)=>a[0]-b[0]);
+const _wlPeak=Math.max(..._wlKeys.map(k=>k[1])), _wlLow=Math.min(..._wlKeys.map(k=>k[1]));
+function seasonalWaterLevel(d){
+  const rel=_seasonChannel(_wlKeys,viewDayOfYear(d));
+  // Scale the rise above the low by a per-year factor (seeded → repeatable)
+  const f=1+(seededRand(d.getFullYear()*1.37)*2-1)*CONFIG.water.levels.yearVariation;
+  return CONFIG.water.startY+_wlLow+(rel-_wlLow)*f;
+}
+function waterLevelAt(d){
+  if(waterHistory){
+    const t=d.getTime(), H=waterHistory, gap=CONFIG.water.levels.maxGapDays*86400000;
+    let lo=0,hi=H.length-1;
+    if(t>=H[0].t&&t<=H[hi].t){
+      while(hi-lo>1){const m=(lo+hi)>>1;if(H[m].t<=t)lo=m;else hi=m;}
+      const a=H[lo],b=H[hi];
+      if(b.t-a.t<=gap) return b.t===a.t?a.y:a.y+(b.y-a.y)*(t-a.t)/(b.t-a.t);
+    }
+    // Single nearby record (edge of the data) — use it if within half a gap
+    const near=H[Math.abs(H[lo].t-t)<Math.abs(H[hi].t-t)?lo:hi];
+    if(Math.abs(near.t-t)<=gap/2) return near.y;
+  }
+  return seasonalWaterLevel(d);
+}
+async function loadWaterLevels(){
+  const L=CONFIG.water.levels;
+  if(!L.historyFile) return;
+  try{
+    const res=await fetch(L.historyFile+'?v='+Date.now());
+    if(!res.ok){console.log(`🌊 Water levels: no ${L.historyFile} (${res.status}) — using seasonal curve`);return;}
+    const j=await res.json();
+    const conv=v=>j.datum==='asl'?v-(demRefElev??0)
+               :j.datum==='james_ft'?JAMES_DATUM_M+v*0.3048-(demRefElev??0)
+               :CONFIG.water.startY+v;
+    if(j.datum!=='relative'&&demRefElev==null) console.warn('🌊 Water levels: absolute datum but no DEM refElev — levels will be off');
+    waterHistory=j.records.map(([ds,v])=>({t:parseLocalISODate(ds).getTime(),y:conv(v)})).sort((a,b)=>a.t-b.t);
+    console.log(`🌊 Water levels: ${waterHistory.length} records (${j.datum}) from ${L.historyFile}`);
+  }catch(e){console.warn('🌊 Water levels: failed to load',e);}
+}
+// Per frame: move the flood plane to the date's level (+ slider offset) and
+// retint for flood depth. Cheap no-op when nothing changed.
+let _lastWaterY=null;
+function updateWaterLevel(){
+  if(!waterMesh) return;
+  const y=waterLevelAt(currentViewDate)+waterManualOffset;
+  if(_lastWaterY!==null&&Math.abs(y-_lastWaterY)<0.003) return;
+  _lastWaterY=y;
+  waterMesh.position.y=y;
+  const t=Math.max(0,Math.min(1,(y-WATER_BASE)/CONFIG.water.floodMaxRiseMetres));
+  const floodBase=CONFIG.water.color, floodPeak=CONFIG.water.floodPeakColor;
+  waterLiquidColor.setRGB(
+    (((floodBase>>16)&0xff)*(1-t)+((floodPeak>>16)&0xff)*t)/255,
+    (((floodBase>>8 )&0xff)*(1-t)+((floodPeak>>8 )&0xff)*t)/255,
+    (( floodBase     &0xff)*(1-t)+( floodPeak     &0xff)*t)/255
+  );
+  waterLiquidOpacity=0.88+t*0.10;
+  delete _applied.water;   // applySeason blends this with river ice next frame
+  const lbl=document.getElementById('flood-label');
+  if(lbl){
+    const rel=y-CONFIG.water.startY;
+    lbl.textContent=(rel>=0?'+':'')+rel.toFixed(1)+'m'+(Math.abs(waterManualOffset)>0.05?' *':'');
+    lbl.title='River level vs normal'+(Math.abs(waterManualOffset)>0.05?` (incl. ${waterManualOffset.toFixed(1)} m manual offset — double-click slider to reset)`:' (from date)');
+  }
+}
 
 // World-space polygon rings for PiP terrain depression (accumulated across calls).
 let _riverPolygons = [];
@@ -2889,7 +3439,8 @@ function buildRiverTrees(){
           let pick=rnd()*wTot, sp=T.species[0];
           for(const s of T.species){if((pick-=s.weight)<=0){sp=s;break;}}
           const sc=sp.scale[0]+rnd()*(sp.scale[1]-sp.scale[0]);
-          placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc,col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
+          placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc,sy:0.9+0.2*rnd(),sp:sp.name,phase:rnd()*0.5,aPhase:rnd()*0.4,
+                                 col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
         }
       }
     }
@@ -2908,7 +3459,7 @@ function buildRiverTrees(){
     const crown=new THREE.InstancedMesh(g.crown,crownMat,list.length);
     list.forEach((t,i)=>{
       q.setFromAxisAngle(_brY,t.rot);
-      sv.set(t.sc,t.sc*(0.9+0.2*((i*7919)%100)/100),t.sc);
+      sv.set(t.sc,t.sc*t.sy,t.sc);
       m.compose(pv.set(t.x,t.y,t.z),q,sv);
       wood.setMatrixAt(i,m); crown.setMatrixAt(i,m);
       crown.setColorAt(i,col.set(t.col));
@@ -2920,8 +3471,7 @@ function buildRiverTrees(){
       scene.add(mesh);
     }
     crown.instanceColor.needsUpdate=true;
-    crown.visible=!winterMode;
-    riverTreeMeshes.push({mesh:wood,crown:false},{mesh:crown,crown:true});
+    riverTreeMeshes.push({mesh:wood,crown:false},{mesh:crown,crown:true,list});
     total+=list.length;
   }
   console.log(`River trees: ${total} (vase ${placed.vase.length}, round ${placed.round.length}, tall ${placed.tall.length})`);
@@ -3083,32 +3633,19 @@ async function buildWater(geojson){
     const fc = document.getElementById('flood-control');
     if(fc) fc.style.display = 'flex';
     const fs = document.getElementById('flood-slider');
+    // The slider is a manual offset on top of the date-driven level
+    // (updateWaterLevel): its resting position (startY) means "no offset".
+    const _t0 = Math.max(0, Math.min(1,
+      (CONFIG.water.startY - WATER_BASE) / CONFIG.water.floodMaxRiseMetres));
     if(fs){
-      const _t0 = Math.max(0, Math.min(1,
-        (CONFIG.water.startY - WATER_BASE) / CONFIG.water.floodMaxRiseMetres));
       fs.value = _t0;
-      waterMesh.position.y = CONFIG.water.startY;
+      fs.addEventListener('input', () => {
+        waterManualOffset = WATER_BASE + parseFloat(fs.value) * CONFIG.water.floodMaxRiseMetres - CONFIG.water.startY;
+        updateWaterLevel();
+      });
+      fs.addEventListener('dblclick', () => { fs.value = _t0; waterManualOffset = 0; updateWaterLevel(); });
     }
-    if(fs) fs.addEventListener('input', () => {
-      const t  = parseFloat(fs.value);
-      const wY = WATER_BASE + t * CONFIG.water.floodMaxRiseMetres;
-      waterMesh.position.y = wY;
-      const lbl = document.getElementById('flood-label');
-      if(lbl){
-        if(t < 0.01)       lbl.textContent = 'Channel';
-        else if(wY < -0.3) lbl.textContent = `${wY.toFixed(1)}m`;
-        else if(t > 0.95)  lbl.textContent = '1826 Peak';
-        else               lbl.textContent = `+${wY.toFixed(1)}m`;
-      }
-      const floodBase = CONFIG.water.color, floodPeak = CONFIG.water.floodPeakColor;
-      waterMatRef.color.setRGB(
-        (((floodBase>>16)&0xff)*(1-t)+((floodPeak>>16)&0xff)*t)/255,
-        (((floodBase>>8 )&0xff)*(1-t)+((floodPeak>>8 )&0xff)*t)/255,
-        (( floodBase     &0xff)*(1-t)+( floodPeak     &0xff)*t)/255
-      );
-      waterMatRef.opacity = 0.88 + t * 0.10;
-      waterMatRef.needsUpdate = true;
-    });
+    updateWaterLevel();
   }
 
   // River outlines for riverbank trees / anything else that needs the water's
@@ -3193,14 +3730,42 @@ const MAP_SIZE=CONFIG.minimap.canvasSizePx, MAP_RANGE=CONFIG.minimap.worldRangeM
 function minimapW2C(wx,wz){
   return[(wx/MAP_RANGE)*0.5*MAP_SIZE+MAP_SIZE/2,(wz/MAP_RANGE)*0.5*MAP_SIZE+MAP_SIZE/2];
 }
+// River outlines as one cached Path2D in minimap pixels (static — no flooding);
+// rebuilt only if more river rings arrive.
+let _mmRiverPath=null, _mmRiverRings=-1, _mmDotsSorted=-1;
+function minimapRiverPath(){
+  if(_mmRiverRings===riverRings.length) return _mmRiverPath;
+  _mmRiverRings=riverRings.length;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;   // rings are world XZ, dots are building frame
+  _mmRiverPath=new Path2D();
+  for(const ring of riverRings){
+    ring.forEach((p,i)=>{
+      const[cx,cz]=minimapW2C(p.x-offX,p.z-offZ);
+      if(i===0)_mmRiverPath.moveTo(cx,cz);else _mmRiverPath.lineTo(cx,cz);
+    });
+    _mmRiverPath.closePath();
+  }
+  return _mmRiverPath;
+}
 function drawMinimap(){
   if(!minimapVisible||!minimapCtx)return;
   const ctx=minimapCtx;
   ctx.clearRect(0,0,MAP_SIZE,MAP_SIZE);
   ctx.fillStyle=CONFIG.minimap.backgroundColor;ctx.fillRect(0,0,MAP_SIZE,MAP_SIZE);
+  if(riverRings.length){ctx.fillStyle=CONFIG.minimap.riverColor??'#2B4A5C';ctx.fill(minimapRiverPath(),'evenodd');}
   ctx.strokeStyle=CONFIG.minimap.borderColor;ctx.lineWidth=1;ctx.beginPath();
   ctx.arc(MAP_SIZE/2,MAP_SIZE/2,MAP_SIZE*0.45,0,Math.PI*2);ctx.stroke();
-  for(const{x,z,col}of minimapDots){
+  // Dots overlap heavily at this scale, so draw order decides what shows:
+  // sort once by CONFIG.minimap.drawOrder (later = on top, e.g. brick over grey).
+  if(_mmDotsSorted!==minimapDots.length){
+    const order=CONFIG.minimap.drawOrder??[], rank=m=>order.indexOf(m);
+    minimapDots.sort((a,b)=>rank(a.mat)-rank(b.mat));
+    _mmDotsSorted=minimapDots.length;
+  }
+  const yr=buildingYearUniform.value;
+  for(const{x,z,col,group,born,died}of minimapDots){
+    if(group&&!group.visible) continue;          // active layer only
+    if(yr<born||yr>=died) continue;              // standing on the current date
     const[cx,cz]=minimapW2C(x,z);
     if(cx<0||cx>MAP_SIZE||cz<0||cz>MAP_SIZE)continue;
     ctx.fillStyle=col;ctx.fillRect(cx-1.5,cz-1.5,3,3);
@@ -3326,7 +3891,11 @@ async function loadFacade(imageFile){
   if(match){
     const wallCol=MATS[match.props.material??'unknown']?.color??CONFIG.materials.unknown.color;
     const imgAspect=rawCanvas.height/rawCanvas.width;  // height/width ratio of image
-    autoPlaceFacade(canvasToTex(processCanvasForFacade(rawCanvas,wallCol)),match,imageFile.name,imgAspect);
+    const tex=canvasToTex(processCanvasForFacade(rawCanvas,wallCol));
+    // Same building in every loaded layer (1906, PastForward, …) gets the facade,
+    // sharing one material so a later bump map applies to all of them.
+    let mat=null;
+    for(const m of facadeSiblings(match)) mat=await autoPlaceFacade(tex,m,imageFile.name,imgAspect,mat);
     return;
   }
 
@@ -3364,9 +3933,36 @@ function facadeHeight(wallH, hasPara, hasPeak, frontEdgeLen, verts, frontNx, fro
   return gableFront ? wallH + FACADE_RIDGE_H : wallH;
 }
 
+// Every layer's copy of a matched building: same id or same name, centroid
+// within 25 m (ids aren't unique across datasets), one per layer group.
+function facadeSiblings(match){
+  const centroid=f=>{
+    const ring=(f.geometry.type==='MultiPolygon'?f.geometry.coordinates[0]:f.geometry.coordinates)[0];
+    let x=0,z=0;for(const c of ring){const[sx,sy]=project(c[0],c[1]);x+=sx;z-=sy;}
+    return{x:x/ring.length,z:z/ring.length};
+  };
+  const c0=centroid(match.feat);
+  const cands=[match,
+    ...(match.props.id!=null?idIndex.get(String(match.props.id))||[]:[]),
+    ...(match.props.name?nameIndexAll.get(normName(match.props.name))||[]:[])];
+  const out=[], seen=new Set();
+  for(const e of cands){
+    const g=e.group??findLayerGroup(e.props);
+    if(seen.has(g)) continue;
+    const c=centroid(e.feat);
+    if(Math.hypot(c.x-c0.x,c.z-c0.z)>25) continue;
+    seen.add(g); out.push(e);
+  }
+  return out;
+}
+
 // Find the layer group a building belongs to based on its source_file/group property.
 // Returns the THREE.Group so facade panels can be added to it and hide with the layer.
 function findLayerGroup(props){
+  // The group the feature was actually built into (source_file is unreliable:
+  // PastForward features keep their original Goad_1906_… file names)
+  const built=props&&propsLayerGroup.get(props);
+  if(built) return built;
   const sf=props?.source_file||props?.group||'';
   const m=sf.match(/\b(1880|1906|1916)\b/);
   if(m){
@@ -3380,7 +3976,7 @@ function findLayerGroup(props){
   return (visible||layerGroups[0]||{}).group||null;
 }
 
-async function autoPlaceFacade(tex,match,filename,imgAspect=null){
+async function autoPlaceFacade(tex,match,filename,imgAspect=null,sharedMatIn=null){
   const{feat,props}=match;
   const floors=props.floors??1;
   const isPlatform=floors<=0.2;
@@ -3431,7 +4027,7 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   frontEdges.sort((a,b)=>a.streetPos-b.streetPos);
 
   const stemKey=normName(filename.replace(/\.[^.]+$/,''));
-  const layerGroup=findLayerGroup(props);
+  const layerGroup=match.group??findLayerGroup(props);
 
   // Orthographic projection UVs — project each vertex onto the frontal plane.
   // Frontage axis = perpendicular to primary normal in world XZ (Up ≠ N).
@@ -3450,29 +4046,29 @@ async function autoPlaceFacade(tex,match,filename,imgAspect=null){
   else { height=geoHeight; }
 
 
-  const sharedMat=new THREE.MeshPhongMaterial({
+  const sharedMat=sharedMatIn||tagMaterialForLifespan(new THREE.MeshPhongMaterial({   // facade appears/disappears with its host building
     map:tex, transparent:true, alphaTest:0.1,
     polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-1,
     side:THREE.FrontSide, shininess:8, specular:CONFIG.facade.panelSpecular,
-  });
-  tagMaterialForLifespan(sharedMat); // facade appears/disappears with its host building
-  const _fBorn=parseYearOrSentinel(props.born,NO_BORN), _fDied=parseYearOrSentinel(props.died,NO_DIED);
+  }));
+  const _bi=buildInfoByProps.get(props)??{born:parseDateFrac(props.born,NO_BORN),died:parseDateFrac(props.died,NO_DIED),build:NO_BUILD};
   let firstMesh=null;
   for(const e of frontEdges){
     const uA=(e.a.x*fax+e.a.z*faz-projMin)/projSpan;
     const uB=(e.b.x*fax+e.b.z*faz-projMin)/projSpan;
     const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup);
-    tagLifespan(m.geometry,_fBorn,_fDied);
+    tagLifespan(m.geometry,_bi.born,_bi.died,_bi.build);   // rises/falls with its host building
     if(!firstMesh)firstMesh=m;
   }
-  if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
-  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" | ${frontEdges.length} panels, ${projSpan.toFixed(1)}m projected`);
+  if(stemKey&&firstMesh&&!sharedMatIn) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
+  console.log(`Facade auto: "${filename}" → "${props.name||props.id}" [${layerGroup?.name??'?'}] | ${frontEdges.length} panels, ${projSpan.toFixed(1)}m projected`);
   // If a window mask was loaded before this facade, update its panelHeight and rebuild glass
   if(stemKey){
     const nm2=normName(props.name||'');
     const mc=windowMaskCache.get(nm2);
     if(mc){mc.panelHeight=height;for(const lg of layerGroups)rebuildGlassMesh(lg);}
   }
+  return sharedMat;
 }
 
 // Apply one panel with orthographically projected UV coordinates.
@@ -3566,13 +4162,13 @@ async function placeFacadeOnBuilding(info,worldNormal){
   });
   tagMaterialForLifespan(sharedMat); // facade appears/disappears with its host building
   const _fp=info.feat?.properties||{};
-  const _fBorn=parseYearOrSentinel(_fp.born,NO_BORN), _fDied=parseYearOrSentinel(_fp.died,NO_DIED);
+  const _bi=buildInfoByProps.get(_fp)??{born:parseDateFrac(_fp.born,NO_BORN),died:parseDateFrac(_fp.died,NO_DIED),build:NO_BUILD};
   let firstMesh=null;
   for(const e of frontEdges){
     const uA=(e.a.x*fax2+e.a.z*faz2-projMin2)/projSpan2;
     const uB=(e.b.x*fax2+e.b.z*faz2-projMin2)/projSpan2;
     const m=applyFacadePanel(e.a,e.b,e.nx,e.nz,height,uA,uB,sharedMat,layerGroup2);
-    tagLifespan(m.geometry,_fBorn,_fDied);
+    tagLifespan(m.geometry,_bi.born,_bi.died,_bi.build);
     if(!firstMesh)firstMesh=m;
   }
   if(stemKey&&firstMesh) facadeMeshes.set(stemKey,{mesh:firstMesh,mat:sharedMat,panelHeight:height});
@@ -3984,7 +4580,22 @@ sprintBtn.addEventListener('touchstart',e=>{
   sprintBtn.classList.toggle('active',sprinting);
 },{passive:false});
 
+// Advanced/debug mode (Ctrl+A): shows the layer bar, season (❄/☀) button and
+// flood slider. Remembered per browser.
+function setAdvancedUI(on){
+  document.body.classList.toggle('advanced',on);
+  try{localStorage.setItem('pfviewer.advanced',on?'1':'0');}catch(e){}
+}
+try{if(localStorage.getItem('pfviewer.advanced')==='1')document.body.classList.add('advanced');}catch(e){}
 window.addEventListener('keydown',e=>{
+  if(e.code==='KeyA'&&(e.ctrlKey||e.metaKey)&&!e.target.closest?.('input,textarea,[contenteditable]')){
+    e.preventDefault();   // instead of the browser's select-all
+    const on=!document.body.classList.contains('advanced');
+    setAdvancedUI(on);
+    showToast(on?'Advanced controls on (Ctrl+A to hide)':'Advanced controls off');
+    setTimeout(()=>showToast(null),1800);
+    return;   // don't register KeyA as held — it would strafe in walk mode
+  }
   keys[e.code]=true;sprinting=e.shiftKey;
   if(e.code==='KeyF'&&!fpsMode)enterFPS();
   if(e.code==='Escape'&&fpsMode)exitFPS();
@@ -4054,7 +4665,8 @@ function initAudio(){
     });
     setTimeout(bell,bellCfg.repeatMinMs+Math.random()*(bellCfg.repeatMaxMs-bellCfg.repeatMinMs));
   }
-  setTimeout(bell,bellCfg.startDelayMinMs+Math.random()*(bellCfg.startDelayMaxMs-bellCfg.startDelayMinMs));
+  // Each ambient sound is optional — comment its block out in CONFIG.audio.ambient to disable it
+  if(bellCfg) setTimeout(bell,bellCfg.startDelayMinMs+Math.random()*(bellCfg.startDelayMaxMs-bellCfg.startDelayMinMs));
   const hoofCfg=CONFIG.audio.ambient.hoofbeats;
   function hooves(){
     if(!fpsMode){setTimeout(hooves,3000+Math.random()*5000);return;}
@@ -4068,7 +4680,7 @@ function initAudio(){
     });
     setTimeout(hooves,hoofCfg.repeatMinMs+Math.random()*(hoofCfg.repeatMaxMs-hoofCfg.repeatMinMs));
   }
-  setTimeout(hooves,hoofCfg.startDelayMs);
+  if(hoofCfg) setTimeout(hooves,hoofCfg.startDelayMs);
   loadTrainAudio();
 }
 
@@ -4189,9 +4801,11 @@ function parseLocalISODate(iso){
 
 let currentViewDate = parseLocalISODate(CONFIG.timeline.startDate);
 window.currentViewDate = currentViewDate;
-buildingYearUniform.value = currentViewDate.getFullYear(); // supersede the placeholder default above
+buildingYearUniform.value = yearFrac(currentViewDate); // supersede the placeholder default above (fractional: construction timing)
 let dateResolutionMode = 'quarter';  // 'quarter' (slider-driven) | 'day' (date-picker-driven) — controls label format only
-let timelinePlaying = false;
+// 'paused' | 'play' (slow: CONFIG.timeline.seasonCycle) | 'fast' (playSpeedDaysPerSecond)
+// | 'years' (one summer day per year, CONFIG.timeline.yearsFly)
+let timelineMode = CONFIG.timeline.seasonCycle?.enabled ? 'play' : 'paused';
 
 function dateToQuarterUnit(date){
   const q  = Math.floor(date.getMonth()/3);
@@ -4237,7 +4851,7 @@ function setCurrentViewDate(date, mode){
   // material discards fragments outside [born,died) against this value, so
   // buildings pop in/out instantly with no geometry rebuild (see the
   // design note above buildCity() / tagMaterialForLifespan()).
-  buildingYearUniform.value = date.getFullYear();
+  buildingYearUniform.value = yearFrac(date);   // fractional — construction/demolition run to the month
 }
 
 // Step the viewed date by whole years (timeline ‹ / › buttons), clamped to range.
@@ -4267,11 +4881,21 @@ function initDateControl(){
     setCurrentViewDate(parseLocalISODate(picker.value),'day');
   });
 
-  const playBtn=document.getElementById('timeline-play-btn');
-  playBtn.addEventListener('click',()=>{
-    timelinePlaying=!timelinePlaying;
-    playBtn.textContent=timelinePlaying?'⏸':'▶';
+  // ▶/⏸ toggles slow play ↔ pause; ⏩ toggles fast ↔ slow play
+  document.getElementById('timeline-play-btn').addEventListener('click',()=>{
+    timelineMode=timelineMode==='paused'?'play':'paused';
+    updateTimelineButtons();
   });
+  document.getElementById('timeline-ff-btn').addEventListener('click',()=>{
+    timelineMode=timelineMode==='fast'?'play':'fast';
+    updateTimelineButtons();
+  });
+  document.getElementById('timeline-fff-btn').addEventListener('click',()=>{
+    timelineMode=timelineMode==='years'?'play':'years';
+    _yearsFlyPos=currentViewDate.getFullYear();
+    updateTimelineButtons();
+  });
+  updateTimelineButtons();
 
   document.getElementById('year-dec').addEventListener('click',()=>stepYear(-1));
   document.getElementById('year-inc').addEventListener('click',()=>stepYear(1));
@@ -4279,12 +4903,42 @@ function initDateControl(){
   updateDateUI();
 }
 
-// Advances currentViewDate while the ▶ button is active. A simple linear
-// time-lapse (speed tunable via CONFIG.timeline.playSpeedDaysPerSecond) —
-// deliberately basic; refine here if/when real time-lapse playback design
-// (easing, per-era pacing, etc.) is settled.
+function updateTimelineButtons(){
+  const play=document.getElementById('timeline-play-btn'), ff=document.getElementById('timeline-ff-btn');
+  if(play){ play.textContent=timelineMode==='paused'?'▶':'⏸'; play.title=timelineMode==='paused'?'Play (slow)':'Pause'; }
+  for(const[id,mode,title]of[['timeline-ff-btn','fast','Fast forward'],['timeline-fff-btn','years','Years fly by (one summer day per year)']]){
+    const b=document.getElementById(id); if(!b) continue;
+    const on=timelineMode===mode;
+    b.style.background=on?'#C8A05A':'transparent'; b.style.color=on?'#09080a':'#C8A05A';
+    b.title=on?'Back to slow play':title;
+  }
+}
+let _yearsFlyPos=0;   // fractional year while in 'years' mode
+// Advances currentViewDate: slow play (seasons roll by; optionally wrapping
+// within the year so buildings hold still) or fast forward (years pass).
 function tickTimeline(dt){
-  if(!timelinePlaying) return;
+  if(timelineMode==='paused') return;
+  if(timelineMode==='years'){
+    // One (summer) day per year: jump the date only when the whole year changes
+    const Y=CONFIG.timeline.yearsFly??{yearsPerSecond:10,day:'07-15'};
+    _yearsFlyPos+=dt*Y.yearsPerSecond;
+    if(_yearsFlyPos>=TIMELINE_MAX_YEAR+1) _yearsFlyPos=TIMELINE_MIN_YEAR;
+    const yr=Math.floor(_yearsFlyPos);
+    if(yr!==currentViewDate.getFullYear()){
+      const[m,d]=Y.day.split('-').map(Number);
+      setCurrentViewDate(new Date(yr,m-1,d,12),dateResolutionMode);
+    }
+    return;
+  }
+  if(timelineMode==='play'){
+    const cyc=CONFIG.timeline.seasonCycle;
+    const y=currentViewDate.getFullYear();
+    const d=new Date(currentViewDate.getTime()+dt*(cyc?.daysPerSecond??2)*86400000);
+    if(cyc?.wrapWithinYear!==false&&d.getFullYear()!==y) d.setFullYear(y,0,1);
+    else if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
+    setCurrentViewDate(d,dateResolutionMode);
+    return;
+  }
   // Advance by adding milliseconds to the raw timestamp — setDate(getDate()+fraction)
   // is a no-op because getDate() returns an integer and the fractional part never
   // accumulates across frames.
@@ -4293,7 +4947,7 @@ function tickTimeline(dt){
   setCurrentViewDate(d,dateResolutionMode);
 }
 window._debugTickTimeline=tickTimeline;
-window._debugGetTimelinePlaying=()=>timelinePlaying;
+window._debugGetTimelinePlaying=()=>timelineMode!=='paused';
 
 // ── Streetcar traffic system ────────────────────────────────────────
 // Up ≠ N: all waypoints are world XZ (X=east, Z=south).
@@ -5213,100 +5867,206 @@ function buildChimneyPool(){
 
 // City-wide haze layers (far zoom) — flat horizontal planes so they read
 // as a blanket of smoke from the zoomed-out overhead camera, not orbs.
+// ── City smoke haze ─────────────────────────────────────────────────
+// Source map: per texel, the year the smoke-source coverage within `radius`
+// first passed each of 4 thresholds (RGBA, byte = year-1800; 0 = always,
+// 255 = never). Built by splatting each building's footprint area (and each
+// siding metre × yardWeight, dated rail.minVisibleYear) into 5-year buckets
+// with a cone kernel, then scanning the cumulative sum per texel. Uses the
+// active layer, like the road filter / ground cover; rebuilt from buildRoads()
+// and after load.
+function buildHazeSources(){
+  const H=CONFIG.chimneys.cityHaze, R=H.radius, step=H.texelMetres;
+  const srcs=[];   // {x,z,area,born}
+  for(const[yr,cs]of buildingCentroids)
+    if(activeLayer==='all'||activeLayer==='combined'||activeLayer===yr)
+      for(const c of cs) srcs.push({x:c.cx,z:c.cz,area:c.area||100,born:c.born});
+  if(!srcs.length) return;
+  if(railGeojson){
+    for(const f of railGeojson.features){
+      if(f.properties.rail_class==='through') continue;   // yards / sidings only
+      const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates:[f.geometry.coordinates];
+      for(const line of lines) for(let i=0;i<line.length-1;i++){
+        const[ax,ay]=project(line[i][0],line[i][1]),[bx,by]=project(line[i+1][0],line[i+1][1]);
+        const len=Math.hypot(bx-ax,by-ay), n=Math.max(1,Math.round(len/10));
+        for(let k=0;k<n;k++){const t=(k+0.5)/n;srcs.push({x:ax+(bx-ax)*t,z:-(ay+(by-ay)*t),area:H.yardWeight*len/n,born:CONFIG.rail.minVisibleYear});}
+      }
+    }
+  }
+  let minX=Infinity,minZ=Infinity,maxX=-Infinity,maxZ=-Infinity;
+  for(const s of srcs){minX=Math.min(minX,s.x);maxX=Math.max(maxX,s.x);minZ=Math.min(minZ,s.z);maxZ=Math.max(maxZ,s.z);}
+  minX-=R*1.5;minZ-=R*1.5;maxX+=R*1.5;maxZ+=R*1.5;
+  const nx=Math.ceil((maxX-minX)/step), nz=Math.ceil((maxZ-minZ)/step);
+  const B0=1850, BW=5, NB=Math.ceil((1965-B0)/BW)+1;   // bucket 0 = "always" (≤1850)
+  const hist=new Float32Array(nx*nz*NB);
+  const bucket=y=>y<=B0?0:Math.min(NB-1,1+Math.floor((y-B0)/BW));
+  const rc=Math.ceil(R/step), norm=Math.PI*R*R/3;          // ∫(1-d/R) over the disc
+  for(const s of srcs){
+    const ci=Math.floor((s.x-minX)/step), cj=Math.floor((s.z-minZ)/step), b=bucket(s.born);
+    for(let j=Math.max(0,cj-rc);j<=Math.min(nz-1,cj+rc);j++)
+      for(let i=Math.max(0,ci-rc);i<=Math.min(nx-1,ci+rc);i++){
+        const d=Math.hypot(minX+(i+0.5)*step-s.x,minZ+(j+0.5)*step-s.z);
+        if(d<R) hist[(j*nx+i)*NB+b]+=s.area*(1-d/R)/norm;
+      }
+  }
+  const data=new Uint8Array(nx*nz*4), th=H.thresholds;
+  for(let t=0;t<nx*nz;t++){
+    let acc=0; const out=[255,255,255,255];
+    for(let b=0;b<NB;b++){
+      acc+=hist[t*NB+b];
+      const yr=b===0?1800:B0+(b-1)*BW;
+      for(let k=0;k<4;k++) if(out[k]===255&&acc>=th[k]) out[k]=Math.max(0,Math.min(254,yr-1800));
+      if(out[3]!==255) break;
+    }
+    data.set(out,t*4);
+  }
+  const tex=new THREE.DataTexture(data,nx,nz,THREE.RGBAFormat);
+  tex.magFilter=THREE.LinearFilter;tex.minFilter=THREE.LinearFilter;tex.needsUpdate=true;
+  hazeUniforms.uSrc.value?.dispose();
+  hazeUniforms.uSrc.value=tex;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  hazeUniforms.uSrcMin.value.set(minX+offX,minZ+offZ);
+  hazeUniforms.uSrcSize.value.set(nx*step,nz*step);
+  // (Re)size the layers: source extent plus the downwind reach
+  if(cityHazeGroup){
+    const w=hazeUniforms.uWind.value, reach=Math.max(...H.layers.map(l=>l.reach));
+    const x0=Math.min(minX,minX+w.x*reach), x1=Math.max(maxX,maxX+w.x*reach);
+    const z0=Math.min(minZ,minZ+w.y*reach), z1=Math.max(maxZ,maxZ+w.y*reach);
+    for(const m of cityHazeGroup.children){
+      m.scale.set(x1-x0,1,z1-z0);
+      m.position.x=(x0+x1)/2+offX; m.position.z=(z0+z1)/2+offZ;
+    }
+  }
+  console.log(`City haze sources: ${nx}×${nz} @ ${step}m from ${srcs.length} sources`);
+}
+
+// The renderer uses a logarithmic depth buffer: hand-written shaders must
+// include the logdepthbuf chunks or their depth is on a different scale and
+// they fail the depth test against all geometry (only visible against sky).
+const HAZE_VERT=`
+#include <common>
+#include <logdepthbuf_pars_vertex>
+varying vec3 vHazeWorld;
+void main(){
+  vec4 w=modelMatrix*vec4(position,1.0);
+  vHazeWorld=w.xyz;
+  gl_Position=projectionMatrix*viewMatrix*w;
+  #include <logdepthbuf_vertex>
+}`;
+const HAZE_FRAG=`
+#include <logdepthbuf_pars_fragment>
+uniform sampler2D uSrc;
+uniform vec2 uSrcMin,uSrcSize,uWind,uNearFade;
+uniform float uYear,uTime,uStrength,uWindSpeed,uFadeYears,uLight,uFogDensity,uReach,uLayerOpacity,uLayerSeed,uMaxAlpha,uAboveBoost,uLayerSpeed,uEvolve;
+uniform vec3 uColor,uColorAbove,uFogColor;
+varying vec3 vHazeWorld;
+float hzHash(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+float hzNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
+  return mix(mix(hzHash(i),hzHash(i+vec2(1,0)),u.x),mix(hzHash(i+vec2(0,1)),hzHash(i+vec2(1,1)),u.x),u.y);}
+float hzFbm(vec2 p){float a=.5,s=0.;for(int i=0;i<4;i++){s+=a*hzNoise(p);p=p*2.03+17.1;a*=.5;}return s;}
+// 0..1 source intensity at world xz for the current year (4 coverage steps)
+float hzSrc(vec2 q){
+  vec2 uv=(q-uSrcMin)/uSrcSize;
+  if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.) return 0.;
+  vec4 yrs=texture2D(uSrc,uv)*255.+1800.;
+  vec4 on=clamp((uYear-yrs)/uFadeYears,0.,1.);
+  return dot(on,vec4(.18,.22,.27,.33));
+}
+void main(){
+  #include <logdepthbuf_fragment>
+  vec2 p=vHazeWorld.xz;
+  vec2 perp=vec2(-uWind.y,uWind.x);
+  // Look upwind: smoke here came from sources to the west, spreading as it travels
+  float acc=0.,wsum=0.;
+  for(int k=0;k<6;k++){
+    float d=float(k)/5.*uReach;
+    float wob=(hzNoise(vec2(d*.01,uLayerSeed)+p*.002)-.5)*d*.45;
+    float w=exp(-float(k)*.35);
+    acc+=hzSrc(p-uWind*d+perp*wob)*w; wsum+=w;
+  }
+  float src=acc/wsum;
+  if(src<.003) discard;
+  // Wind-advected, domain-warped noise → drifting wisps instead of blobs
+  vec2 q=(p-uWind*uTime*uWindSpeed*uLayerSpeed)/240.+uLayerSeed;
+  // Warp field drifts slowly on its own too, so wisps change shape as they travel
+  float ev=uTime*uEvolve;
+  q+=vec2(hzFbm(q*.6+3.7+ev),hzFbm(q*.6+9.2-ev*.7))*1.3-.65;
+  float n=hzFbm(q);
+  float wisps=smoothstep(.24,.7,n)*(.6+.4*hzFbm(q*2.7+5.));
+  // Seen from above: sunlit top against dark roofs → lighter and a bit denser;
+  // from below: shaded underside against the sky. Blends as the camera passes the layer.
+  float above=smoothstep(-6.,6.,cameraPosition.y-vHazeWorld.y);
+  float a=src*wisps*uStrength*uLayerOpacity*mix(1.,uAboveBoost,above);
+  float dist=distance(cameraPosition,vHazeWorld);
+  a*=smoothstep(uNearFade.x,uNearFade.y,dist);
+  a=min(a,uMaxAlpha);
+  if(a<.004) discard;
+  // Lit smoke colour, faded into the fog with distance (FogExp2)
+  vec3 col=mix(uColor,uColorAbove,above)*uLight*(.85+.3*n);
+  float fogF=1.-exp(-uFogDensity*uFogDensity*dist*dist);
+  gl_FragColor=vec4(mix(col,uFogColor,fogF),a*(1.-fogF*.6));
+  #include <colorspace_fragment>
+}`;
+
 function buildCityHaze(){
   if(cityHazeGroup) return;
-  const cfg=CONFIG.chimneys.cityHaze;
+  const H=CONFIG.chimneys.cityHaze;
+  hazeUniforms.uWind.value.set(H.wind[0],H.wind[1]).normalize();
+  hazeUniforms.uWindSpeed.value=H.windSpeed;
+  hazeUniforms.uEvolve.value=H.evolve??0.02;
+  hazeUniforms.uFadeYears.value=H.fadeYears;
+  hazeUniforms.uColor.value.set(H.color);
+  hazeUniforms.uColorAbove.value.set(H.colorAbove??H.color);
+  hazeUniforms.uAboveBoost.value=H.aboveBoost??1;
+  hazeUniforms.uNearFade.value.set(H.nearFade[0],H.nearFade[1]);
+  if(scene.fog?.density!==undefined) hazeUniforms.uFogDensity.value=scene.fog.density;
   cityHazeGroup=new THREE.Group();
   scene.add(cityHazeGroup);
-  cityHazeGroup.visible=false;
-  // Unit plane laid flat; each mesh is scaled per-slot
-  const planeGeo=new THREE.PlaneGeometry(1,1);
-  planeGeo.rotateX(-Math.PI/2);  // normal points up — lies horizontal
-  for(let i=0;i<cfg.positions.length;i++){
-    const [px,pz]=cfg.positions[i];
-    const sc =cfg.scale[0]+(cfg.scale[1]-cfg.scale[0])*seededRand(i*7.3);
-    const szR=cfg.scaleZ??0.55;  // depth:width ratio
-    const op =cfg.opacity[0]+(cfg.opacity[1]-cfg.opacity[0])*seededRand(i*3.7);
-    const mat=new THREE.MeshBasicMaterial({
-      map:chimneySmokeDarkTex||makeSmokeTextureDark(),
-      color:new THREE.Color(0x2a2820),  // dark sooty brown-grey tint
-      transparent:true,opacity:op,depthWrite:false,side:THREE.DoubleSide,
+  const geo=new THREE.PlaneGeometry(1,1);
+  geo.rotateX(-Math.PI/2);   // lies horizontal
+  H.layers.forEach((L,i)=>{
+    const mat=new THREE.ShaderMaterial({
+      uniforms:{...hazeUniforms,
+        uReach:{value:L.reach}, uLayerOpacity:{value:L.opacity}, uLayerSeed:{value:i*7.31}, uMaxAlpha:{value:H.maxAlpha},
+        uLayerSpeed:{value:L.speed??1}},
+      vertexShader:HAZE_VERT, fragmentShader:HAZE_FRAG,
+      transparent:true, depthWrite:false, side:THREE.DoubleSide,
     });
-    const mesh=new THREE.Mesh(planeGeo,mat);
-    mesh.scale.set(sc,1,sc*szR);
-    const py=cfg.baseY+(seededRand(i*4.1)-0.5)*cfg.yRange;
-    mesh.position.set(px,py,pz);
-    cityHazeGroup.add(mesh);
-    const ang=seededRand(i*1.9)*Math.PI*2;
-    cityHazeSlots.push({
-      spr:mesh,  // 'spr' kept for tick compatibility — it's a Mesh, not a Sprite
-      age:cfg.life*seededRand(i*5.1),
-      life:cfg.life*(0.8+seededRand(i*2.3)*0.4),
-      baseOp:op,baseScale:sc,szR,
-      vel:{x:Math.cos(ang)*cfg.drift,z:Math.sin(ang)*cfg.drift},
-      baseY:py,
-    });
-  }
+    const m=new THREE.Mesh(geo,mat);
+    m.position.y=L.y; m.frustumCulled=false; m.renderOrder=5+i;
+    cityHazeGroup.add(m);
+  });
+  buildHazeSources();
 }
 
 // Reusable objects for per-tick chimney culling (avoids GC pressure)
 const _cv        = new THREE.Vector3();
 const _frustum   = new THREE.Frustum();
 const _psMat     = new THREE.Matrix4();
+const _hazeSnowCol=new THREE.Color();
 function tickChimneySmoke(dt){
+  // City haze layers: always on (they fade near the camera themselves)
+  if(cityHazeGroup){
+    hazeUniforms.uTime.value+=dt;
+    hazeUniforms.uYear.value=currentViewDate.getFullYear()+currentViewDate.getMonth()/12;
+    const H=CONFIG.chimneys.cityHaze;
+    hazeUniforms.uStrength.value=H.strength*chimneyTodMult;
+    // From above, contrast against the ground: brownish over bare ground, dark soot over snow
+    hazeUniforms.uColorAbove.value.set(H.colorAbove??H.color).lerp(_hazeSnowCol.set(H.colorAboveSnow??H.color),season.snow);
+  }
   if(chimneyPool.length===0||chimneyEmitters.length===0) return;
 
   const CHIM=CONFIG.chimneys;
   const CAM=camera.position;
-  const xzDist=Math.sqrt(CAM.x*CAM.x+CAM.z*CAM.z);
+  // LOD by the camera's height above the ground — was distance from the
+  // world origin, which hid every puff anywhere > farDist from (0,0) even
+  // with the camera right over a chimney. Chimneys beyond farDist (3D) from
+  // the camera are skipped individually below; the city haze covers them.
+  const camAlt=Math.max(0,CAM.y-sampleTerrainY(CAM.x,CAM.z));
   // Update frustum once per tick — used to cull off-screen emitters
   _psMat.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
   _frustum.setFromProjectionMatrix(_psMat);
-
-  // ── LOD mode ─────────────────────────────────────────────────────
-  const farMode=xzDist>CHIM.farDist;
-  // City haze
-  if(cityHazeGroup){
-    cityHazeGroup.visible=farMode;
-    if(farMode){
-      const hCfg=CHIM.cityHaze;
-      for(const slot of cityHazeSlots){
-        slot.age+=dt;
-        if(slot.age>slot.life){
-          // Respawn: drift to new position
-          slot.age=0;
-          slot.spr.position.set(
-            slot.spr.position.x+(seededRand(performance.now()*0.0001+slot.baseY)-0.5)*40,
-            slot.baseY+(seededRand(performance.now()*0.0003)-0.5)*hCfg.yRange*0.5,
-            slot.spr.position.z+(seededRand(performance.now()*0.0002+slot.baseY)-0.5)*40
-          );
-          const ang=seededRand(performance.now()*0.0011)*Math.PI*2;
-          slot.vel.x=Math.cos(ang)*hCfg.drift;
-          slot.vel.z=Math.sin(ang)*hCfg.drift;
-        }
-        const f=slot.age/slot.life;
-        // Pulse opacity gently; fade in first 20%, out last 20%
-        const fade=f<0.2?f/0.2:(f>0.8?(1-f)/0.2:1);
-        slot.spr.material.opacity=slot.baseOp*fade*chimneyTodMult;
-        slot.spr.position.x+=slot.vel.x*dt;
-        slot.spr.position.z+=slot.vel.z*dt;
-        // Layers drift very slightly in Y — no dramatic bob
-        slot.spr.position.y=slot.baseY+Math.sin(slot.age*0.15)*hCfg.yRange*0.08;
-        // Plane grows slightly over life; keep flat (Y scale stays 1)
-        const sc=slot.baseScale*(1+f*0.25);
-        slot.spr.scale.set(sc,1,sc*slot.szR);
-      }
-    }
-  }
-
-  // Hide/show individual pool based on LOD
-  if(farMode){
-    // Deactivate all pool sprites
-    for(const slot of chimneyPool){
-      if(slot.active){slot.active=false;slot.spr.visible=false;}
-    }
-    return;
-  }
+  const farD2=CHIM.farDist*CHIM.farDist;
 
   // ── Tick active pool sprites ───────────────────────────────────
   for(const slot of chimneyPool){
@@ -5328,10 +6088,10 @@ function tickChimneySmoke(dt){
   // Only process the nearest maxNearEmitters.  Emitters are filtered by
   // active layer visibility to suppress smoke from hidden layers.
   let maxActive=CHIM.maxNearEmitters;
-  if(xzDist>CHIM.nearDist){
-    // Linear falloff: full detail at nearDist, 0 at farDist
-    const t=Math.min(1,(xzDist-CHIM.nearDist)/(CHIM.farDist-CHIM.nearDist));
-    maxActive=Math.max(2,Math.round(maxActive*(1-t)));
+  if(camAlt>CHIM.nearDist){
+    // Fewer emitters as the camera climbs: full detail below nearDist, a handful at farDist+
+    const t=Math.min(1,(camAlt-CHIM.nearDist)/(CHIM.farDist-CHIM.nearDist));
+    maxActive=Math.max(8,Math.round(maxActive*(1-t*0.8)));
   }
 
   // Build sorted candidate list — visible emitters only, sorted by distance²
@@ -5349,8 +6109,10 @@ function tickChimneySmoke(dt){
     // Frustum cull — skip chimneys not in the camera's view
     _cv.set(e.wx,e.wy,e.wz);
     if(!_frustum.containsPoint(_cv)) continue;
-    const dx=e.wx-CAM.x, dz=e.wz-CAM.z;
-    cands.push({e, d2:dx*dx+dz*dz});
+    const dx=e.wx-CAM.x, dy=e.wy-CAM.y, dz=e.wz-CAM.z;
+    const d2=dx*dx+dy*dy+dz*dz;
+    if(d2>farD2) continue;   // too far to read as individual puffs
+    cands.push({e, d2});
   }
   cands.sort((a,b)=>a.d2-b.d2);
 
@@ -5523,6 +6285,227 @@ function initTrains(geojson){
     `${trainConsists.filter(t=>t.kind==='switcher').length} yard switchers`);
 }
 
+// ── River steamboats ───────────────────────────────────────────────
+// See CONFIG.steamboats. One roaming sternwheeler at most, scheduled as a
+// duty cycle: after each trip the idle gap is drawn so that, on average,
+// trip / (trip + gap) = presence(year). A docked boat sits at the Steamboat
+// Landing for the whole era. Boats ride the flood plane (waterMesh.position.y),
+// so they rise with the flood slider. Local boat axes: +Z = bow, +Y = up.
+const SB=CONFIG.steamboats;
+const SB_L=38, SB_B=8.5;                 // hull length / beam (m) — ~ the International (137 ft)
+let sbRoutes=null, sbRoaming=null, sbDocked=null, sbIdle=0, sbLastP=null;
+const _sbVec=new THREE.Vector3();
+
+function sbKey(keys,year){
+  if(year<=keys[0][0]) return keys[0][1];
+  for(let i=0;i<keys.length-1;i++){
+    const[a,va]=keys[i],[b,vb]=keys[i+1];
+    if(year<=b) return va+(vb-va)*(year-a)/(b-a);
+  }
+  return keys[keys.length-1][1];
+}
+function sbFractionalYear(d){return d.getFullYear()+d.getMonth()/12;}
+
+function buildSteamboatGroup(){
+  const C=SB.colors, g=new THREE.Group();
+  const mat=c=>new THREE.MeshLambertMaterial({color:c});
+  const add=(geo,m,x,y,z)=>{const me=new THREE.Mesh(geo,m);me.position.set(x,y,z);me.castShadow=true;me.receiveShadow=true;g.add(me);return me;};
+  // Hull: flat-bottomed barge with a pointed bow, extruded plan shape
+  const hs=new THREE.Shape();
+  // shape coords (x, -zForward): ExtrudeGeometry + rotateX(-π/2) maps shape y → -z
+  hs.moveTo(-SB_B/2, SB_L/2); hs.lineTo(SB_B/2, SB_L/2); hs.lineTo(SB_B/2,-SB_L/2+7);
+  hs.lineTo(0,-SB_L/2); hs.lineTo(-SB_B/2,-SB_L/2+7); hs.closePath();
+  const hull=new THREE.ExtrudeGeometry(hs,{depth:1.4,bevelEnabled:false});
+  hull.rotateX(-Math.PI/2);
+  add(hull,mat(C.hull),0,0,0);
+  add(new THREE.BoxGeometry(SB_B+0.05,0.25,SB_L-7),mat(C.trim),0,0.55,-3.5);        // dark rub-rail / waterline band
+  // Main-deck cabin, hurricane-deck roof, texas + pilot house
+  add(new THREE.BoxGeometry(SB_B-1,2.5,SB_L-12),mat(C.cabin),0,2.65,-2);
+  add(new THREE.BoxGeometry(SB_B+0.4,0.22,SB_L-8),mat(C.roof),0,4.0,-2);
+  add(new THREE.BoxGeometry(4,2,11),mat(C.cabin),0,5.1,0);
+  add(new THREE.BoxGeometry(2.8,2.1,2.8),mat(C.cabin),0,7.15,7);
+  add(new THREE.BoxGeometry(3.3,0.2,3.3),mat(C.trim),0,8.3,7);
+  // Twin stacks forward of the pilot house, with flared crowns
+  const stackM=mat(C.stack), smokeAnchors=[];
+  for(const sx of[-1.5,1.5]){
+    add(new THREE.CylinderGeometry(0.45,0.5,10,10),stackM,sx,9,11);
+    add(new THREE.CylinderGeometry(0.75,0.45,0.8,10),stackM,sx,14.3,11);
+    const a=new THREE.Object3D(); a.position.set(sx,14.9,11); g.add(a); smokeAnchors.push(a);
+  }
+  // Sternwheel: two rims + radial paddle buckets, spins about local X
+  const wheel=new THREE.Group(); wheel.position.set(0,1.9,-SB_L/2-2.4); g.add(wheel);
+  const wm=mat(C.wheel), R=2.3;
+  for(const sx of[-3.3,3.3]){
+    const rim=new THREE.Mesh(new THREE.TorusGeometry(R,0.12,5,20),wm);
+    rim.rotation.y=Math.PI/2; rim.position.x=sx; wheel.add(rim);
+  }
+  for(let i=0;i<10;i++){
+    const b=new THREE.Mesh(new THREE.BoxGeometry(6.8,0.12,R*2),wm);
+    b.rotation.x=i*Math.PI/10; b.castShadow=true; wheel.add(b);
+  }
+  add(new THREE.BoxGeometry(0.3,3.2,5.5),mat(C.trim),-3.6,2.2,-SB_L/2-1.5);        // wheel support beams
+  add(new THREE.BoxGeometry(0.3,3.2,5.5),mat(C.trim), 3.6,2.2,-SB_L/2-1.5);
+  g.userData={wheel,smokeAnchors};
+  return g;
+}
+
+function sbSmokePools(){
+  const pools=[buildSmokePool(Math.random()*1000),buildSmokePool(Math.random()*1000)];
+  for(const pool of pools) for(const s of pool) s.spr.material.color.setHex(SB.smokeTint);
+  return pools.map(pool=>({smoke:pool,smokeNext:0,smokeTimer:0,smokeInterval:0.35,t:Math.random()}));
+}
+function sbDisposeSmoke(emitters){
+  for(const e of emitters) for(const s of e.smoke){scene.remove(s.spr);s.spr.material.dispose();}
+}
+
+// Wake: foam ribbon behind the stern + two Kelvin arms diverging at ~19.5°.
+// Built from a trail of past stern positions; rebuilt each frame (tiny).
+const SB_WAKE_PTS=56;
+function buildWakeMesh(){
+  const n=SB_WAKE_PTS, verts=3*n*2;               // 3 ribbons × n points × 2 sides
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array(verts*3),3));
+  geo.setAttribute('color',new THREE.BufferAttribute(new Float32Array(verts*4),4));
+  const idx=[];
+  for(let r=0;r<3;r++) for(let i=0;i<n-1;i++){
+    const a=(r*n+i)*2;
+    idx.push(a,a+2,a+1, a+1,a+2,a+3);
+  }
+  geo.setIndex(idx);
+  const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,transparent:true,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  m.frustumCulled=false; m.renderOrder=2;
+  scene.add(m);
+  return m;
+}
+function updateWake(boat,waterY){
+  const W=SB.wake, trail=boat.trail, n=SB_WAKE_PTS;
+  const pos=boat.wake.geometry.attributes.position.array, col=boat.wake.geometry.attributes.color.array;
+  const fc=new THREE.Color(W.foamColor), tanA=Math.tan(W.armAngleDeg*Math.PI/180);
+  let o=0,c=0;
+  const push=(x,z,a)=>{pos[o++]=x;pos[o++]=waterY+0.06;pos[o++]=z;col[c++]=fc.r;col[c++]=fc.g;col[c++]=fc.b;col[c++]=a;};
+  for(let r=0;r<3;r++){
+    let d=0;
+    for(let i=0;i<n;i++){
+      const p=trail[Math.min(i,trail.length-1)];
+      if(i>0&&i<trail.length){const q=trail[i-1];d+=Math.hypot(p.x-q.x,p.z-q.z);}
+      const live=i<trail.length?1:0;
+      // Perpendicular from the local trail direction
+      const q=trail[Math.min(i+1,trail.length-1)], pr=trail[Math.max(i-1,0)];
+      let dx=pr.x-q.x, dz=pr.z-q.z; const l=Math.hypot(dx,dz)||1; dx/=l; dz/=l;
+      const px=-dz, pz=dx, f=Math.min(1,d/W.length);
+      let off,hw,a;
+      if(r===0){ off=0; hw=SB_B*0.45+d*0.05; a=W.foamAlpha*Math.pow(1-f,1.6); }
+      else{ off=(r===1?-1:1)*(SB_B*0.5+d*tanA); hw=0.8+d*0.015; a=W.armAlpha*Math.pow(1-f,1.2)*Math.min(1,d/8); }
+      a*=live*boat.wakeFade;
+      const cx=p.x+px*off, cz=p.z+pz*off;
+      push(cx+px*hw,cz+pz*hw,a); push(cx-px*hw,cz-pz*hw,a);
+    }
+  }
+  boat.wake.geometry.attributes.position.needsUpdate=true;
+  boat.wake.geometry.attributes.color.needsUpdate=true;
+}
+
+function sbRouteFromLonLat(list){
+  const offZ=CONFIG.water.offsetZ??0;
+  const pts=list.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx,z:-sy+offZ};});
+  const dists=[0];
+  for(let i=1;i<pts.length;i++) dists.push(dists[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z));
+  return{pts,dists,totalLen:dists[dists.length-1]};
+}
+
+function initSteamboats(){
+  if(!SB||sbRoutes) return;
+  const red=SB.routes.red, ass=SB.routes.assiniboine;
+  // Assiniboine trips continue down the Red from the nearest point to the Forks
+  const end=ass[ass.length-1];
+  let best=0,bd=Infinity;
+  red.forEach(([lon,lat],i)=>{const d=(lon-end[0])**2+(lat-end[1])**2;if(d<bd){bd=d;best=i;}});
+  sbRoutes={red:sbRouteFromLonLat(red), assiniboine:sbRouteFromLonLat([...ass,...red.slice(best+1)])};
+  // Docked boat
+  const[dx,dy]=project(SB.dock.lon,SB.dock.lat);
+  const g=buildSteamboatGroup(); scene.add(g);
+  g.position.set(dx+(CONFIG.scene?.buildingOffsetX??0),0,-dy+(CONFIG.scene?.buildingOffsetZ??0));
+  g.rotation.y=Math.PI-SB.dock.heading*Math.PI/180;   // compass heading → yaw (+Z bow; north = −Z)
+  sbDocked={group:g,emitters:sbSmokePools()};
+  for(const e of sbDocked.emitters) e.smokeInterval=1.6;   // banked fires: a lazy trickle
+  console.log(`Steamboats: routes red ${sbRoutes.red.totalLen.toFixed(0)}m, assiniboine ${sbRoutes.assiniboine.totalLen.toFixed(0)}m`);
+}
+
+function spawnRoamingBoat(startT){
+  const yr=sbFractionalYear(currentViewDate);
+  const onAss=Math.random()<sbKey(SB.assiniboineShare,yr);
+  const route=onAss?sbRoutes.assiniboine:sbRoutes.red;
+  const dir=Math.random()<0.5?1:-1;              // +1 = downstream
+  const g=buildSteamboatGroup(); scene.add(g);
+  sbRoaming={group:g,route,dir,t:startT??(dir>0?0:1),trail:[],wake:buildWakeMesh(),wakeFade:1,
+             emitters:sbSmokePools(),speed:dir>0?SB.speed.downstream:SB.speed.upstream};
+}
+function removeRoamingBoat(){
+  if(!sbRoaming) return;
+  const b=sbRoaming; sbRoaming=null;
+  scene.remove(b.group); b.group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});
+  scene.remove(b.wake); b.wake.geometry.dispose(); b.wake.material.dispose();
+  sbDisposeSmoke(b.emitters);
+}
+
+function tickSteamboats(dt){
+  if(!sbRoutes||!waterMesh) return;
+  const yr=sbFractionalYear(currentViewDate);
+  const p=sbKey(SB.presence,yr);
+  const waterY=waterMesh.position.y;
+  const sailing=p>0&&season.ice<0.01&&season.floes<0.15;   // river open (CONFIG.seasons)
+
+  // Docked boat: whole era; smokes only in the sailing season
+  sbDocked.group.visible=p>0;
+  if(p>0){
+    sbDocked.group.position.y=waterY-SB.draft;
+    for(const e of sbDocked.emitters){
+      const a=sbDocked.group.userData.smokeAnchors[sbDocked.emitters.indexOf(e)];
+      a.getWorldPosition(_sbVec); tickSmoke(e,dt,_sbVec,sailing);
+    }
+  }
+
+  if(!sailing){ removeRoamingBoat(); sbIdle=Math.max(sbIdle,5); return; }
+  if(!sbRoaming){
+    // First tick, or the date moved to a different presence (scrubbing): re-roll
+    // as if arriving at a random moment — a boat is already out with probability p,
+    // otherwise wait a random slice of an average gap.
+    if(sbLastP===null||Math.abs(p-sbLastP)>0.05){
+      sbLastP=p;
+      if(Math.random()<p){ spawnRoamingBoat(Math.random()); return; }
+      const avgTrip=sbRoutes.red.totalLen/((SB.speed.upstream+SB.speed.downstream)/2);
+      sbIdle=Math.random()*avgTrip*(1-p)/Math.max(p,0.01);
+    }
+    sbIdle-=dt;
+    if(sbIdle<=0) spawnRoamingBoat();
+    return;
+  }
+  sbLastP=p;
+  const b=sbRoaming, r=b.route;
+  b.t+=b.dir*b.speed*dt/r.totalLen;
+  if(b.t>1||b.t<0){
+    // Trip over — idle gap so trip/(trip+gap) ≈ presence on average
+    const trip=r.totalLen/b.speed;
+    sbIdle=trip*(1-p)/Math.max(p,0.01)*(-Math.log(1-Math.random()*0.999));
+    removeRoamingBoat(); return;
+  }
+  const s=sampleRoute(r,b.t);
+  const yaw=b.dir>0?s.yaw:s.yaw+Math.PI;
+  b.group.position.set(s.x,waterY-SB.draft,s.z);
+  b.group.rotation.y=yaw;
+  b.group.userData.wheel.rotation.x+=b.speed*1.25/2.3*dt;   // wheel turns a bit faster than hull speed (slip)
+  // Stern trail for the wake (a point every ~3 m)
+  const sx=s.x-Math.sin(yaw)*(SB_L/2+2), sz=s.z-Math.cos(yaw)*(SB_L/2+2);
+  const last=b.trail[0];
+  if(!last||Math.hypot(last.x-sx,last.z-sz)>3){ b.trail.unshift({x:sx,z:sz}); if(b.trail.length>SB_WAKE_PTS) b.trail.pop(); }
+  else{ last.x=sx; last.z=sz; }
+  if(b.trail.length>1) updateWake(b,waterY);
+  for(let i=0;i<b.emitters.length;i++){
+    b.group.userData.smokeAnchors[i].getWorldPosition(_sbVec);
+    tickSmoke(b.emitters[i],dt,_sbVec,true);
+  }
+}
+
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -5579,7 +6562,7 @@ function tickTrains(dt){
 function startLoop(){
   function loop(now){
     requestAnimationFrame(loop);
-    const dt=Math.min((now-lastTime)*0.001,0.1);lastTime=now;
+    const dt=Math.max(0,Math.min((now-lastTime)*0.001,0.1));lastTime=now;   // ≥0: first rAF stamp can predate lastTime after a long load
     if(fpsMode){
       const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
       const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pitch);
@@ -5628,6 +6611,12 @@ function startLoop(){
     tickDroppings(dt);
     tickTimeline(dt);
     tickTrains(dt);
+    tickSteamboats(dt);
+    updateWaterLevel();
+    updateConstructionMeshes();
+    tickFires(dt);
+    applySeason();
+    tickFloes(dt);
     tickTrainAudio(dt);
     tickChimneySmoke(dt);
     plumeUniforms.uPlumeTime.value=now*0.001;
@@ -5736,76 +6725,143 @@ function buildLayerBar(){
   };
 }
 
-function toggleWinter(){
-  winterMode=!winterMode;
-  const btn=document.getElementById('winter-btn');
-  if(btn)btn.textContent=winterMode?'☀ Summer':'❄ Winter';
+// ── Seasons: apply ─────────────────────────────────────────────────
+// The ❄/☀ button just jumps the date to mid-winter / mid-summer.
+let season=seasonState(currentViewDate);
 
-  // Ground
-  if(groundMatRef)  groundMatRef.color.setHex(winterMode?CONFIG.scene.ground.winterColor:CONFIG.scene.ground.summerColor);
-  bankDirtUniforms.uBankDirtStrength.value=winterMode?0:1;
-  groundCoverUniforms.uGcStrength.value=winterMode?0:1;
-  plumeUniforms.uPlumeStrength.value=winterMode?0:1;
-  for(const t of riverTreeMeshes) if(t.crown) t.mesh.visible=!winterMode;   // bare elms in winter
-  // Channel walls match ground colour
-  if(channelMatRef) channelMatRef.color.setHex(winterMode?CONFIG.scene.ground.winterColor:CONFIG.scene.ground.summerColor);
-  // Creek ribbons match water/ice colour
-  if(creekMatRef)   creekMatRef.color.setHex(winterMode?CONFIG.water.winterColor:CONFIG.water.color);
+const _sc={a:new THREE.Color(),b:new THREE.Color(),c:new THREE.Color()};
+const waterLiquidColor=new THREE.Color(CONFIG.water.color);
+let waterLiquidOpacity=0.88;
+let _applied={};      // last-applied values, so heavy updates only run on change
+const _changed=(key,v,eps)=>{if(_applied[key]!==undefined&&Math.abs(_applied[key]-v)<eps)return false;_applied[key]=v;return true;};
 
-  // River: frozen ice — bluer than snow, glossy like ice
-  if(waterMatRef){
-    if(winterMode){
-      waterMatRef.color.setHex(CONFIG.water.winterColor);      // blue-white ice, cooler than ground snow
-      waterMatRef.shininess=120;               // glossy
-      waterMatRef.specular.setHex(CONFIG.water.winterSpecular);   // blue-tinted specular highlight
-      waterMatRef.opacity=0.95;
-    }else{
-      waterMatRef.color.setHex(CONFIG.water.color);      // restore turbid brown
-      waterMatRef.shininess=30;
-      waterMatRef.specular.setHex(CONFIG.water.specular);
-      waterMatRef.opacity=0.88;
-    }
-    waterMatRef.needsUpdate=true;
+function applySeason(force){
+  const S=season=window._season=seasonState(currentViewDate);
+  if(force) _applied={};
+  winterMode=S.snow>0.5;   // legacy flag (button label, anything still reading it)
+
+  // Ground: dormant brown ↔ summer green, then → snow
+  if(groundMatRef&&_changed('ground',S.green*7+S.snow,0.002)){
+    const g=_sc.a.set(SEASON.dormantColor).lerp(_sc.b.set(CONFIG.scene.ground.summerColor),S.green)
+      .lerp(_sc.c.set(CONFIG.scene.ground.winterColor),S.snow);
+    groundMatRef.color.copy(g);
+    if(channelMatRef) channelMatRef.color.copy(g);
+    bankDirtUniforms.uBankDirtStrength.value=1-S.snow;
+    groundCoverUniforms.uGcStrength.value=1-S.snow;
+    groundCoverUniforms.uGcGreen.value=S.green;
+    const gr=CONFIG.scene.grid;
+    grid.material.color.copy(_sc.a.set(gr.summerTint).lerp(_sc.b.set(gr.winterTint),S.snow));
+    grid.material.opacity=gr.summerOpacity+(gr.winterOpacity-gr.summerOpacity)*S.snow;
+    for(const{mat3,summerCol,winterCol}of seasonalMats) mat3.color.copy(_sc.a.set(summerCol).lerp(_sc.b.set(winterCol),S.snow));
+    if(cartTrackMesh) cartTrackMesh.visible=S.snow>0.5;
   }
-  // Recompute sun arc for new season declination
-  const slider=document.getElementById('tod-slider');
-  if(slider) setTimeOfDay(parseFloat(slider.value));
-
-  // Roads
-  // Road vertex colour swap: summer=dry-edge/wet-centre, winter=snow-edge/mud-centre
-  // MeshBasicMaterial so lighting doesn't affect the colours.
-  if(roadColBuf){
-    const arr=roadColBuf.array;
-    // Lateral fractions stored implicitly — recompute from colour value.
-    // Edge/centre colour targets now live in CONFIG.scene.roadColors.
-    // We can't recover t from the stored colour, so re-derive from relative brightness:
-    // Instead just rebuild: bright=snow, dark=mud based on stored R channel brightness
-    for(let i=0;i<arr.length;i+=3){
-      const r=arr[i], g=arr[i+1], b=arr[i+2];
-      // f=0 means centre (wet/dark), f=1 means edge (dry/bright)
-      // Use ratio of current value to dry-edge value as f proxy
-      const f=Math.min(r/0.072,1);
-      const rc=CONFIG.scene.roadColors;
-      const [edge,centre]=winterMode?[rc.winterEdge,rc.winterCentre]:[rc.summerEdge,rc.summerCentre];
-      arr[i]  =(edge[0]*f+centre[0]*(1-f))/255;
-      arr[i+1]=(edge[1]*f+centre[1]*(1-f))/255;
-      arr[i+2]=(edge[2]*f+centre[2]*(1-f))/255;
+  // Roads: rewrite vertex colours (heavy — only on a visible snow change)
+  if(roadColBuf&&roadLatF&&_changed('roads',S.snow,0.03)){
+    const rc=CONFIG.scene.roadColors, arr=roadColBuf.array, s=S.snow;
+    const E=[0,1,2].map(k=>(rc.summerEdge[k]*(1-s)+rc.winterEdge[k]*s)/255);
+    const C=[0,1,2].map(k=>(rc.summerCentre[k]*(1-s)+rc.winterCentre[k]*s)/255);
+    for(let v=0;v<roadLatF.length;v++){
+      const f=roadLatF[v], i=v*3;
+      arr[i]=E[0]*f+C[0]*(1-f); arr[i+1]=E[1]*f+C[1]*(1-f); arr[i+2]=E[2]*f+C[2]*(1-f);
     }
     roadColBuf.needsUpdate=true;
-    roadMatRef.color.setHex(0xFFFFFF);  // no tint — vertex colours are exact
   }
-
-  // Cart tracks (only visible in winter)
-  if(cartTrackMesh) cartTrackMesh.visible=winterMode;
-
-  // Roofs and flat caps
-  for(const{mat3,summerCol,winterCol}of seasonalMats){
-    mat3.color.setHex(winterMode?winterCol:summerCol);
+  // River: liquid (flood-tinted) ↔ ice
+  if(waterMatRef&&_changed('water',S.ice,0.002)){
+    const W=CONFIG.water, k=S.ice;
+    waterMatRef.color.copy(waterLiquidColor).lerp(_sc.a.set(W.winterColor),k);
+    waterMatRef.specular.copy(_sc.a.set(W.specular).lerp(_sc.b.set(W.winterSpecular),k));
+    waterMatRef.shininess=30+90*k;
+    waterMatRef.opacity=waterLiquidOpacity+(0.95-waterLiquidOpacity)*k;
+    if(creekMatRef) creekMatRef.color.copy(_sc.a.set(W.color).lerp(_sc.b.set(W.winterColor),k));
   }
+  plumeUniforms.uPlumeStrength.value=(1-S.ice)*(1-S.floes);
+  // Sun declination + heating smoke follow the day of year (setTimeOfDay reads season)
+  if(_changed('doy',Math.floor(S.doy),0.5)) setTimeOfDay(currentTodFraction);
+  if(_changed('trees',S.leaf*3+S.autumn,0.004)) updateTreeSeason(S.leaf,S.autumn);
+  const btn=document.getElementById('winter-btn');
+  if(btn&&_changed('btn',S.snow>0.5?1:0,0.5)) btn.textContent=S.snow>0.5?'☀ Summer':'❄ Winter';
+}
 
-  // Grid lines
-  if(winterMode){ grid.material.color.setHex(CONFIG.scene.grid.winterTint);grid.material.opacity=CONFIG.scene.grid.winterOpacity; }
-  else           { grid.material.color.setHex(CONFIG.scene.grid.summerTint);grid.material.opacity=CONFIG.scene.grid.summerOpacity; }
+// Button: jump to mid-winter / mid-summer of the current year
+function toggleWinter(){
+  const d=new Date(currentViewDate);
+  if(season.snow>0.5){d.setMonth(6);d.setDate(15);}else{d.setMonth(0);d.setDate(15);}
+  setCurrentViewDate(d,dateResolutionMode);
+  applySeason(true);
+}
+
+// ── Ice floes (break-up in April, pans at freeze-up) ──
+// Instanced irregular slabs drifting downstream along the steamboat routes.
+let floeMesh=null, floes=[];
+function initFloes(){
+  if(floeMesh||!sbRoutes) return;
+  const geo=new THREE.CylinderGeometry(1,1,0.35,8,1);
+  const pa=geo.attributes.position, jit=[1,0.7,1.15,0.8,1.05,0.65,0.95,0.85];
+  for(let i=0;i<pa.count;i++){
+    const x=pa.getX(i),z=pa.getZ(i),r=Math.hypot(x,z);
+    if(r<1e-3) continue;
+    const a=(Math.atan2(z,x)+Math.PI*2)%(Math.PI*2), k=jit[Math.round(a/(Math.PI/4))%8];
+    pa.setXYZ(i,x*k,pa.getY(i),z*k);
+  }
+  geo.computeVertexNormals();
+  floeMesh=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:SEASON.floeColor}),SEASON.floeCount);
+  floeMesh.count=0; floeMesh.receiveShadow=true; floeMesh.frustumCulled=false;
+  scene.add(floeMesh);
+  // Where the Assiniboine route joins the Red (floes widen their spread there)
+  const ar=sbRoutes.assiniboine, joinT=sbRouteFromLonLat(SB.routes.assiniboine).totalLen/ar.totalLen;
+  for(let i=0;i<SEASON.floeCount;i++){
+    const ass=Math.random()<0.35;
+    floes.push({route:ass?ar:sbRoutes.red,joinT:ass?joinT:-1,t:Math.random(),lat:(Math.random()*2-1)*0.8,
+      size:3+Math.pow(Math.random(),2)*12,rot:Math.random()*6.28,spin:(Math.random()-0.5)*0.05,sx:0.6+Math.random()*0.8});
+  }
+}
+const _fm=new THREE.Matrix4(), _fq=new THREE.Quaternion(), _fs=new THREE.Vector3(), _fp=new THREE.Vector3();
+function tickFloes(dt){
+  if(!floeMesh||!waterMesh) return;
+  const n=Math.round(season.floes*floes.length);
+  floeMesh.count=n;
+  if(!n) return;
+  const y=waterMesh.position.y+0.05;
+  for(let i=0;i<n;i++){
+    const f=floes[i];
+    f.t+=SEASON.floeSpeed*dt/f.route.totalLen; if(f.t>1) f.t-=1;
+    f.rot+=f.spin*dt;
+    const s=sampleRoute(f.route,f.t), half=f.t<f.joinT?25:70;   // Assiniboine ~65 m wide, Red ~200 m
+    _fq.setFromAxisAngle(_brY,f.rot);
+    _fm.compose(_fp.set(s.x+s.px*f.lat*half,y,s.z+s.pz*f.lat*half),_fq,_fs.set(f.size,1,f.size*f.sx));
+    floeMesh.setMatrixAt(i,_fm);
+  }
+  floeMesh.instanceMatrix.needsUpdate=true;
+}
+
+// ── Tree phenology ──
+// leaf 0→1 = leaf-out (May) / 1→0 = leaf-drop (Oct); autumn 0→1 = colour turn.
+// Each tree has its own phase so a stand turns and drops gradually.
+const _tm=new THREE.Matrix4(), _tq=new THREE.Quaternion(), _ts=new THREE.Vector3(), _tp=new THREE.Vector3(), _tc=new THREE.Color(), _tc2=new THREE.Color();
+function updateTreeSeason(leaf,autumn){
+  const late=_sc.c.set(SEASON.lateAutumnColor);
+  for(const e of riverTreeMeshes){
+    if(!e.crown||!e.list) continue;
+    e.list.forEach((t,i)=>{
+      const sLeaf=Math.max(0,Math.min(1,(leaf-t.phase)/0.5));            // this tree's leaf fullness
+      const k=sLeaf<0.02?0:t.sc*(0.4+0.6*sLeaf);
+      _tq.setFromAxisAngle(_brY,t.rot);
+      _tm.compose(_tp.set(t.x,t.y,t.z),_tq,_ts.set(k,k*t.sy,k));
+      e.mesh.setMatrixAt(i,_tm);
+      _tc.set(t.col);
+      if(autumn>0){
+        const a=Math.max(0,Math.min(1,(autumn-t.aPhase)/0.6));
+        _tc.lerp(_tc2.set(SEASON.autumnColors[t.sp]??0xB89434),a);
+        _tc.lerp(late,(1-sLeaf)*0.8*a);                                   // browning as they fall
+      }else if(sLeaf<1){
+        _tc.lerp(_tc2.set(SEASON.springLeafColor),(1-sLeaf)*0.7);         // fresh pale leaves
+      }
+      e.mesh.setColorAt(i,_tc);
+    });
+    e.mesh.instanceMatrix.needsUpdate=true;
+    if(e.mesh.instanceColor) e.mesh.instanceColor.needsUpdate=true;
+  }
 }
 
 function enableLiveDrops(){
@@ -5954,7 +7010,10 @@ function rebuildGlassMesh(layerEntry){
   // Re-collect glass verts using same logic as buildCity
   const glassVerts=[];
   const glassLifespan=[];  // parallel [born,died] per glass vertex — see tagLifespan()/buildCity()
-  for(const feat of geojson.features){
+  const glassBuild=[];     // parallel construction info, from buildCity's cached buildInfoByProps
+  const partyGrid=layerEntry.partyGrid??(layerEntry.partyGrid=buildPartyWallGrid(geojson.features));
+  for(let _featIdx=0;_featIdx<geojson.features.length;_featIdx++){
+    const feat=geojson.features[_featIdx];
     const props=feat.properties;
     const _lifeBorn=parseYearOrSentinel(props.born,NO_BORN), _lifeDied=parseYearOrSentinel(props.died,NO_DIED);
     const _glassOuterStart0=glassVerts.length;
@@ -5984,20 +7043,7 @@ function rebuildGlassMesh(layerEntry){
       const _rbBaseY=_rbTSum/_rbTN;
       const _rbGlassStart=glassVerts.length;
       if(!isPlatform&&!isChurch&&!isBridge&&!noWindows&&floors>0.5&&areaOk){
-        const outerCoords=outer.slice(0,-1);
-        const wcx=_rbCx,wcz=_rbCz;
-        const wEdges=[];
-        for(let j=0;j<outerCoords.length-1;j++){
-          const[ax0,ay0]=project(outerCoords[j][0],outerCoords[j][1]);
-          const[bx0,by0]=project(outerCoords[j+1][0],outerCoords[j+1][1]);
-          const ax=ax0,az=-ay0,bx=bx0,bz=-by0;
-          const dx=bx-ax,dz=bz-az,elen=Math.sqrt(dx*dx+dz*dz);
-          if(elen<0.3) continue;
-          let nx=-dz/elen,nz=dx/elen;
-          const midX=(ax+bx)/2,midZ=(az+bz)/2;
-          if(nx*(midX-wcx)+nz*(midZ-wcz)<0){nx=-nx;nz=-nz;}
-          wEdges.push({ax,az,bx,bz,nx,nz,len:elen});
-        }
+        const wEdges=wallEdgesOf(outer);
         if(wEdges.length===0) continue;
         let primaryIdx=0,bestDot=-Infinity;
         for(let i=0;i<wEdges.length;i++){
@@ -6014,12 +7060,12 @@ function rebuildGlassMesh(layerEntry){
         for(let i=0;i<wEdges.length;i++){
           const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
           const isPrimary=(i===primaryIdx);
-          if(isNarrow&&!isPrimary) continue;
+          if(partyWallFraction(partyGrid,wEdges[i],_featIdx,_lifeBorn)>0.6) continue;   // party wall
           const isFacadeFace=maskEntry&&(nx*primaryNx+nz*primaryNz>0.65);
           if(isFacadeFace){
             placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
           } else {
-            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,floorsForWindows(floors),mat,isPrimary&&isNarrow);
+            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,floorsForWindows(floors),mat,isPrimary&&isNarrow,Math.max(0,Math.min(props.base_floors||0,floors-0.5)));
           }
         }
 
@@ -6053,13 +7099,15 @@ function rebuildGlassMesh(layerEntry){
         for(let _gi=_rbGlassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=_rbBaseY;
       }
     }
-    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++) glassLifespan.push(_lifeBorn,_lifeDied);
+    const _bi=buildInfoByProps.get(props)??{born:_lifeBorn,died:_lifeDied,build:NO_BUILD};
+    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++){glassLifespan.push(_bi.born,_bi.died);glassBuild.push(..._bi.build);}
   }
 
   if(glassVerts.length>0){
     const gGeom=new THREE.BufferGeometry();
     gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
     gGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(new Float32Array(glassLifespan),2));
+    gGeom.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(glassBuild),4));
     gGeom.computeVertexNormals();
     const gMesh=new THREE.Mesh(gGeom,glassMat);
     gMesh.renderOrder=1;
@@ -6199,7 +7247,7 @@ async function liveLoad(fileList){
     gj._filename=f.name;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water'){await buildWater(gj);}
-    else if(kind==='building'){const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
+    else if(kind==='building'){await applyBuildingHistory(gj);const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
     else if(kind==='road'){roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true;}
     else if(kind==='rail'){railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true;}
     else console.warn(`Unrecognised GeoJSON: ${f.name} — no matching properties found in first 10 features`);
@@ -6228,11 +7276,15 @@ async function loadFiles(fileList){
     else console.warn(`Unrecognised GeoJSON: ${f.name}`);
   }
   let n=0;
-  if(buildingGJ)n=await buildCity(buildingGJ);
+  if(buildingGJ){await applyBuildingHistory(buildingGJ);n=await buildCity(buildingGJ);}
   if(roadGJ){roadGeojson=roadGJ;await buildRoads(roadGJ);initStreetcars(roadGJ);initCarts(roadGJ);}
   if(railGJ){railGeojson=railGJ;buildRailTracks(railGJ);initTrains(railGJ);railsLoaded=true;}
   if(waterGJ)await buildWater(waterGJ);
   buildRiverTrees();   // needs buildings, roads, rails and water all loaded
+  initSteamboats();
+  initFloes();
+  if(cityHazeGroup) buildHazeSources();   // now rails (yards) are loaded too
+  applySeason(true);
   totalBuildings+=n;if(roadGJ)roadsLoaded=true;
   buildLayerBar();
   // Apply any facades dropped at initial load
@@ -6336,6 +7388,7 @@ renderer.render(scene,camera);
   // correctly when they load in the loop below using DEM heights.
   setProgress(35,'Loading terrain…');await tick();
   await applyDEM();
+  await loadWaterLevels();   // after the DEM: absolute datums need its refElev
 
   for(let i=0;i<found.length;i++){
     const{url,gj}=found[i];
@@ -6343,12 +7396,16 @@ renderer.render(scene,camera);
     gj._filename=url;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water')        await buildWater(gj);
-    else if(kind==='building'){ const n=await buildCity(gj);totalBuildings+=n; }
+    else if(kind==='building'){ await applyBuildingHistory(gj); const n=await buildCity(gj);totalBuildings+=n; }
     else if(kind==='road')   { roadGeojson=gj;window.roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
     else if(kind==='rail')   { railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
 
   buildRiverTrees();   // needs buildings, roads, rails and water all loaded
+  initSteamboats();
+  initFloes();
+  if(cityHazeGroup) buildHazeSources();   // now rails (yards) are loaded too
+  applySeason(true);
   setProgress(100,'Done.');await tick();
   document.getElementById('loading').style.display='none';
   document.getElementById('hud').style.display='block';
