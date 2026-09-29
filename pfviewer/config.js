@@ -287,6 +287,8 @@ export const CONFIG = {
     roofCap: {
       tarPaperColor: 0x38342E, tarPaperWinterColor: 0xF5F6FA,
       stoneColor: 0x505050,
+      bigAreaM2: 400,      // roofs this big (m², inside the parapet ring) count as "big"…
+      bigDistance: 5000,   // …and their gravel caps stay visible this far (others: detailDistance)
     },
     // Specular for the upright parapet wall above brick/stone buildings.
     parapetSpecular: { brick: 0x1a1a1a, stone: 0xC8B890 },
@@ -890,7 +892,7 @@ export const CONFIG = {
     // Only buildings within 3 km. Small details and real window glass only near the camera:
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
     // (painted windows cover the distance). Phones share one GPU process across all tabs.
-    building: { loadRadius: 3000, detailDistance: 600 },
+    building: { loadRadius: 3000, detailDistance: 600, roofCap: { bigDistance: 2500 } },
     glass:    { maxDistance: 700 },
     camera:   { pixelRatioCap: 1.25 },
     lighting: { sun: { shadowMapSize: 1024 } },

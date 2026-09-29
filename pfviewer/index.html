@@ -1061,7 +1061,7 @@ function mergeByTile(geos, keys){
 }
 function tickDetailLOD(){
   const D=CONFIG.building.detailDistance??1500, D2=D*D, c=camera.position;
-  for(const t of detailTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2<D2;
+  for(const t of detailTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2<(t.d2??D2);
 }
 // ExtrudeGeometry closes the base with a downward-facing cap nobody ever sees
 // (buildings sit on the ground) — drop those triangles.
@@ -2662,7 +2662,8 @@ async function buildCity(geojson){
         const capGeom=new THREE.ShapeGeometry(capShape);
         capGeom.rotateX(-Math.PI/2);
         capGeom.translate(0,buildingBaseY+height+0.02,0);
-        capGeom.userData={capCol};   // store colour for merge-time material selection
+        let _capA=0; for(let j=0,n=outerPts.length;j<n;j++){const a=outerPts[j],b=outerPts[(j+1)%n];_capA+=a[0]*b[1]-b[0]*a[1];}
+        capGeom.userData={capCol, big:Math.abs(_capA)/2>=(CONFIG.building.roofCap.bigAreaM2??400)};   // colour for merge-time material; big caps stay visible farther
         roofCapGeos.push(capGeom);
 
         // Parapet ring
@@ -3151,11 +3152,15 @@ async function buildCity(geojson){
     const cMat=new THREE.MeshLambertMaterial({color:CONFIG.building.roofCap.tarPaperColor,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
     tagMaterialForLifespan(cMat,0,true);
     seasonalMats.push({mat3:cMat,summerCol:CONFIG.building.roofCap.tarPaperColor,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
-    for(const{geom,x,z}of mergeByTile(roofCapGeos,roofCapKeys)){
+    // Big buildings' caps go in their own tile meshes that stay visible out to
+    // roofCap.bigDistance — a large flat roof changing colour is easy to see.
+    const capKeys=roofCapKeys.map((k,i)=>roofCapGeos[i].userData.big?k+',big':k);
+    const bigD=CONFIG.building.roofCap.bigDistance??5000;
+    for(const{key,geom,x,z}of mergeByTile(roofCapGeos,capKeys)){
       releaseAfterUpload(geom);
       const cMesh=new THREE.Mesh(geom,cMat);
       cMesh.receiveShadow=true;group.add(cMesh);
-      detailTiles.push({mesh:cMesh,x:x+group.position.x,z:z+group.position.z});
+      detailTiles.push({mesh:cMesh,x:x+group.position.x,z:z+group.position.z,d2:key.endsWith(',big')?bigD*bigD:undefined});
     }
   }
 
