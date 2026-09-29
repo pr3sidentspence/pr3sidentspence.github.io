@@ -92,6 +92,15 @@ canvas{display:block;position:fixed;inset:0;}
   display:flex;align-items:center;justify-content:center;cursor:pointer;
   -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;}
 .zoom-btn:active{background:rgba(200,160,90,0.2);border-color:#C8A05A;}
+/* Narrow screens (phones): let the date panel's top row fit — the ▶ button
+   was clipped and the panel ran under the Map button. */
+@media (max-width:600px){
+  #date-control{top:56px !important;width:calc(100vw - 16px) !important;padding:8px 10px 10px !important;}
+  #date-control > div:first-child{gap:6px !important;}
+  #date-display{min-width:0 !important;font-size:0.8rem !important;flex:1;}
+  #date-picker{font-size:0.65rem !important;padding:2px 3px !important;max-width:110px;}
+  #layer-bar{top:150px !important;}
+}
 /* Advanced/debug controls: hidden unless Ctrl+A toggles body.advanced.
    !important beats the inline display the loaders set when they show them. */
 body:not(.advanced) #layer-bar,
@@ -194,6 +203,68 @@ body:not(.advanced) #flood-control{display:none !important;}
   <button id="facade-cancel" style="background:transparent;border:1px solid #3a2810;border-radius:4px;color:#5a4030;font-size:0.7rem;padding:4px 12px;cursor:pointer;font-family:Georgia,serif;">Esc — Cancel</button>
 </div>
 
+<script>
+// ── Diagnostics (?debug=1) ─────────────────────────────────────────────
+// Classic script, so it runs even if the module below fails to load or parse
+// (e.g. on a phone browser). Records errors, rejections, console errors/warnings,
+// WebGL context loss, GPU/device info and loading steps; ?debug=1 shows a
+// panel with a Copy button. window.pfDiag.show() opens it any time.
+(function(){
+  const t0=performance.now(), log=[];
+  const on=new URLSearchParams(location.search).has('debug');
+  let panel=null, pre=null;
+  const ts=()=>((performance.now()-t0)/1000).toFixed(1).padStart(6)+'s';
+  function add(kind,msg){
+    log.push(ts()+' '+kind.padEnd(6)+' '+String(msg).slice(0,600));
+    if(pre){pre.textContent=log.join('\n');pre.scrollTop=pre.scrollHeight;}
+  }
+  function show(){
+    if(panel) return;
+    panel=document.createElement('div');
+    panel.style.cssText='position:fixed;left:6px;right:6px;bottom:6px;max-height:45vh;z-index:10000;background:rgba(8,6,4,0.95);border:1px solid #6a4a20;border-radius:8px;display:flex;flex-direction:column;font:11px/1.35 ui-monospace,monospace;color:#E8D8B0;';
+    const bar=document.createElement('div');
+    bar.style.cssText='display:flex;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px solid #3a2810;';
+    bar.innerHTML='<b style="flex:1;color:#C8A05A">pfviewer diagnostics</b>';
+    const mk=(label,fn)=>{const b=document.createElement('button');b.textContent=label;b.style.cssText='background:#2a1e0e;color:#E8D8B0;border:1px solid #6a4a20;border-radius:4px;padding:3px 8px;font:inherit;';b.onclick=fn;bar.appendChild(b);};
+    mk('Copy',()=>{const t=log.join('\n');(navigator.clipboard?navigator.clipboard.writeText(t):Promise.reject()).then(()=>add('info','copied to clipboard')).catch(()=>{const r=document.createRange();r.selectNodeContents(pre);getSelection().removeAllRanges();getSelection().addRange(r);add('info','selected — use the browser copy');});});
+    mk('Hide',()=>{panel.remove();panel=null;pre=null;});
+    pre=document.createElement('pre');
+    pre.style.cssText='margin:0;padding:6px 8px;overflow:auto;white-space:pre-wrap;word-break:break-word;';
+    pre.textContent=log.join('\n');
+    panel.append(bar,pre);
+    (document.body||document.documentElement).appendChild(panel);
+  }
+  window.pfDiag={add,show,log};
+  add('info',location.href);
+  add('info',navigator.userAgent);
+  add('info','screen '+screen.width+'×'+screen.height+' dpr '+devicePixelRatio+(navigator.deviceMemory?' · deviceMemory '+navigator.deviceMemory+' GB':'')+(navigator.hardwareConcurrency?' · cores '+navigator.hardwareConcurrency:''));
+  try{
+    const c=document.createElement('canvas'), gl=c.getContext('webgl2');
+    if(!gl) add('ERROR','WebGL2 not available');
+    else{
+      const d=gl.getExtension('WEBGL_debug_renderer_info');
+      add('info','GPU '+(d?gl.getParameter(d.UNMASKED_VENDOR_WEBGL)+' / '+gl.getParameter(d.UNMASKED_RENDERER_WEBGL):gl.getParameter(gl.RENDERER)));
+      add('info','maxTex '+gl.getParameter(gl.MAX_TEXTURE_SIZE)+' · vertexTexUnits '+gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS)+' · floatColorBuffer '+!!gl.getExtension('EXT_color_buffer_float')+' · floatLinear '+!!gl.getExtension('OES_texture_float_linear'));
+      gl.getExtension('WEBGL_lose_context')?.loseContext();
+    }
+  }catch(e){add('ERROR','GPU probe: '+e);}
+  addEventListener('error',e=>{
+    if(e.target&&e.target!==window&&(e.target.src||e.target.href)) add('ERROR','failed to load '+(e.target.src||e.target.href));
+    else add('ERROR',(e.message||e.error)+(e.filename?' @ '+e.filename.split('/').pop()+':'+e.lineno+':'+e.colno:''));
+  },true);
+  addEventListener('unhandledrejection',e=>add('REJECT',e.reason&&(e.reason.stack||e.reason.message)||e.reason));
+  const ce=console.error.bind(console), cw=console.warn.bind(console);
+  console.error=(...a)=>{add('ERROR',a.map(String).join(' '));ce(...a);};
+  console.warn=(...a)=>{add('warn',a.map(String).join(' '));cw(...a);};
+  addEventListener('DOMContentLoaded',()=>{
+    const lbl=document.getElementById('loading-label');
+    if(lbl) new MutationObserver(()=>add('step',lbl.textContent)).observe(lbl,{childList:true,characterData:true,subtree:true});
+    const mem=()=>performance.memory?' · heap '+Math.round(performance.memory.usedJSHeapSize/1e6)+' MB':'';
+    setInterval(()=>{ if(on) add('tick','alive'+mem()); },15000);
+    if(on) show();
+  });
+})();
+</script>
 <script type="module">
 const isMobile=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
 
@@ -209,6 +280,12 @@ import { CONFIG }          from './config.js';
 // fit), one layer's building files, smaller shadows, lower pixel ratio.
 // ?profile=mobile forces it (testing on desktop); ?profile=desktop skips it.
 const _profile=new URLSearchParams(location.search).get('profile');
+// ?off=haze,ground,plume,shadows,paint,water,trees,vehicles,fences,glass,facades — switch
+// features off to find what a device's GPU chokes on (see ?debug=1)
+const OFF=new Set((new URLSearchParams(location.search).get('off')||'').split(',').map(x=>x.trim()).filter(Boolean));
+if(OFF.size) window.pfDiag?.add('info','features off: '+[...OFF].join(', '));
+// ?radius=N — only load buildings within N m of the centre (tests whether scene size is the problem)
+const _radiusParam=parseFloat(new URLSearchParams(location.search).get('radius'));
 const lowMemProfile=_profile==='mobile'||(_profile!=='desktop'&&isMobile);
 if(lowMemProfile&&CONFIG.mobile){
   const merge=(dst,src)=>{for(const k in src){
@@ -217,7 +294,9 @@ if(lowMemProfile&&CONFIG.mobile){
   }};
   merge(CONFIG,CONFIG.mobile);
   console.log('📱 Low-memory profile active (CONFIG.mobile applied)');
+  window.pfDiag?.add('info','low-memory profile active');
 }
+if(_radiusParam>0){ CONFIG.building.loadRadius=_radiusParam; window.pfDiag?.add('info','load radius '+_radiusParam+' m'); }
 
 // ═══════════════════════════════════════════════════════════════════════
 // COORDINATE SYSTEM — Up ≠ N
@@ -259,22 +338,37 @@ const ROAD_W = CONFIG.roadWidths;
 
 // ── Renderer ───────────────────────────────────────────────────────
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+window._renderer=renderer;   // debug handle (renderer.info draw-call checks)
 renderer.setPixelRatio(Math.min(devicePixelRatio, CONFIG.camera.pixelRatioCap));
+let _glLost=false;
 renderer.domElement.addEventListener('webglcontextlost',e=>{
   e.preventDefault();
+  _glLost=true;
   const d=document.createElement('div');
   d.style.cssText='position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;background:#09080a;color:#C8A05A;font-family:Georgia,serif;font-size:0.9rem;line-height:1.5;z-index:999;';
-  d.innerHTML='The 3D view ran out of graphics memory on this device.<br>Try closing other tabs and reloading'+(lowMemProfile?'.':', or add <b>?profile=mobile</b> to the address.');
+  d.innerHTML='The graphics driver on this device stopped the 3D view.<br>Try closing other tabs and reloading'+(lowMemProfile?'.':', or add <b>?profile=mobile</b> to the address.')
+    +'<br><br><a href="#" id="diag-link" style="color:#E8D8B0">Show diagnostics</a>';
   document.body.appendChild(d);
+  d.querySelector('#diag-link').onclick=ev=>{ev.preventDefault();window.pfDiag?.show();};
+  window.pfDiag?.add('ERROR','WebGL context lost');
   console.error('WebGL context lost',lowMemProfile?'(low-memory profile)':'');
 });
 renderer.setSize(innerWidth, innerHeight);
-renderer.shadowMap.enabled = true;
+// PowerVR (Pixel 10's Tensor G5, Imagination D-Series) driver bug: the WebGL
+// context is lost after a few thousand draws that sample a shadow map. No
+// setting avoids it except not sampling shadows, so real-time shadows are off
+// on those GPUs. ?shadows=1 forces them on (for testing a newer driver).
+const _gpuName=(()=>{ try{ const gl=renderer.getContext(), x=gl.getExtension('WEBGL_debug_renderer_info');
+  return x?String(gl.getParameter(x.UNMASKED_RENDERER_WEBGL)):''; }catch(e){ return ''; } })();
+const _shadowBuggyGPU=/PowerVR|Imagination/i.test(_gpuName) && new URLSearchParams(location.search).get('shadows')!=='1';
+if(_shadowBuggyGPU) window.pfDiag?.add('info','PowerVR GPU: real-time shadows off (driver loses the context)');
+renderer.shadowMap.enabled = !OFF.has('shadows') && !_shadowBuggyGPU;
 renderer.shadowMap.type    = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // ── Scene ──────────────────────────────────────────────────────────
 const scene = new THREE.Scene();
+window._scene=scene;   // debug handle (triangle budget checks)
 scene.background = new THREE.Color(CONFIG.scene.backgroundColor);
 scene.fog = new THREE.FogExp2(CONFIG.scene.fog.color, CONFIG.scene.fog.density);
 
@@ -420,6 +514,11 @@ function setTimeOfDay(t){
   // Oil-lamp night glow on windows — warm amber when sun below horizon
   const nightness = Math.max(0, Math.min(1, 1 - sUp * 10));
   glassMat.emissive.setRGB(CONFIG.glass.nightGlowColor.r * nightness, CONFIG.glass.nightGlowColor.g * nightness, CONFIG.glass.nightGlowColor.b * nightness);
+  // Painted distant windows: same glass colour + night glow as the real panes
+  windowPaintUniforms.uWinNight.value = nightness;
+  windowPaintUniforms.uWinGlass.value.set(CONFIG.glass.color);
+  windowPaintUniforms.uWinGlow.value.setRGB(CONFIG.glass.nightGlowColor.r, CONFIG.glass.nightGlowColor.g, CONFIG.glass.nightGlowColor.b);
+  { const D=CONFIG.glass.maxDistance??1800; windowPaintUniforms.uWinFade.value.set(D*0.72, D*0.92); }
   // Chimney smoke TOD multiplier — time-of-day × season
   const _todHour=TOD_START_H+t*TOD_RANGE_H;
   const _todCurve=CONFIG.chimneys.todCurve;
@@ -510,6 +609,7 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
   diffuseColor.rgb=mix(diffuseColor.rgb,uBankDirtColor,bankF*uBankDirtStrength);`);
 };
 groundMat.customProgramCacheKey=()=>'bankDirt';
+if(OFF.has('ground')){ groundMat.onBeforeCompile=()=>{}; groundMat.customProgramCacheKey=()=>'plainGround'; }
 const _tSegs = CONFIG.terrain?.segments ?? 300;
 const _tGeo  = new THREE.PlaneGeometry(12000, 12000, _tSegs, _tSegs);
 _tGeo.rotateX(-Math.PI / 2);           // vertices now in world XZ; Y is height
@@ -564,6 +664,44 @@ terrainMesh.receiveShadow = true;
 window.terrainMesh = terrainMesh;
 window.ground = terrainMesh; // backward compat
 
+// ── DEM smoothing ───────────────────────────────────────────────────
+// The LiDAR records today's streets and lot grading (a few tenths of a metre),
+// which the dirt/grass height cut-off traced as a waffle. Blur at
+// CONFIG.terrain.smooth.radiusM (two box passes ≈ Gaussian), but keep the
+// original wherever the blur would move a height by more than keepAboveM
+// (riverbanks, real slopes), blending in between. In place.
+function smoothDEM(h, S, cellM){
+  const C=CONFIG.terrain.smooth;
+  if(!C||!C.radiusM) return;
+  const r=Math.max(1,Math.round(C.radiusM/cellM/2));   // half-width per pass (2 passes)
+  const a=new Float32Array(h), b=new Float32Array(h.length);
+  const pass=(src,dst,horiz)=>{
+    for(let o=0;o<S;o++){
+      let sum=0,n=0;
+      const at=i=>horiz?src[o*S+i]:src[i*S+o];
+      for(let i=0;i<=r&&i<S;i++){sum+=at(i);n++;}
+      for(let i=0;i<S;i++){
+        const idx=horiz?o*S+i:i*S+o;
+        dst[idx]=sum/n;
+        const add=i+r+1, rem=i-r;
+        if(add<S){sum+=at(add);n++;}
+        if(rem>=0){sum-=at(rem);n--;}
+      }
+    }
+  };
+  for(let k=0;k<2;k++){ pass(a,b,true); pass(b,a,false); }
+  const lo=C.keepBelowM??0.5, hi=C.keepAboveM??1.5;
+  let changed=0;
+  for(let i=0;i<h.length;i++){
+    const d=Math.abs(h[i]-a[i]);
+    const w=d<=lo?0:d>=hi?1:(d-lo)/(hi-lo);          // 0 = smoothed, 1 = original
+    const v=a[i]+(h[i]-a[i])*w*w*(3-2*w);
+    if(v!==h[i]) changed++;
+    h[i]=v;
+  }
+  console.log(`🗺 DEM smoothed (≈${C.radiusM} m; kept original where it moves > ${hi} m) — ${changed.toLocaleString()} cells adjusted`);
+}
+
 // ── Real DEM loader ─────────────────────────────────────────────────
 // Fetches dem.json + dem.bin (produced by pfviewer/tools/dem_from_las.py).
 // Replaces Perlin noise Y values with LiDAR-derived ground elevations.
@@ -587,6 +725,7 @@ async function applyDEM(){
       console.warn(`DEM size mismatch: ${heights.length} vs ${S}² / terrain ${N}`);
       return;
     }
+    smoothDEM(heights, S, meta.size/(S-1));
     if(S === T){
       for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
     }else{
@@ -751,16 +890,65 @@ function tagLifespan(geom, born, died, build=NO_BUILD){
   return geom;
 }
 
+// ── Per-building data table ──
+// Buildings' [born, died, baseY, topY] + [constructionYears, demolitionYears]
+// live ONCE in a float texture (2 RGBA texels per building). Building pieces
+// (walls, roofs, parapets, chimneys, glass…) carry only a per-vertex building
+// index (aBldIdx) and the vertex shader looks the rest up — instead of six
+// floats repeated on every vertex. Row 0 = "no constraint".
+const BLD_TEX_W=1024;
+let bldRows=new Float32Array(8*8192), bldCount=0;
+const bldTableUniform={value:null};
+function addBuildingRow(born,died,build,hasWindows=0){
+  if(bldCount===0){ bldRows.set([NO_BORN,NO_DIED,0,0,0,0,0,0],0); bldCount=1; }
+  if((bldCount+1)*8>bldRows.length){ const g=new Float32Array(bldRows.length*2); g.set(bldRows); bldRows=g; }
+  bldRows.set([born,died,build[0],build[1],build[2],build[3],hasWindows,0],bldCount*8);   // [6] = got real windows → painted ones at distance
+  return bldCount++;
+}
+// Upload after each layer is built (and after live loads)
+function refreshBuildingTable(){
+  const texels=Math.max(1,bldCount)*2, h=Math.ceil(texels/BLD_TEX_W);
+  const data=new Float32Array(BLD_TEX_W*h*4); data.set(bldRows.subarray(0,Math.max(1,bldCount)*8));
+  const tex=new THREE.DataTexture(data,BLD_TEX_W,h,THREE.RGBAFormat,THREE.FloatType);
+  tex.minFilter=tex.magFilter=THREE.NearestFilter; tex.needsUpdate=true;
+  bldTableUniform.value?.dispose();
+  bldTableUniform.value=tex;
+}
+function tagBuildingIdx(geom, idx){
+  const n=geom.attributes.position.count, a=new Float32Array(n); a.fill(idx);
+  geom.setAttribute('aBldIdx',new THREE.Float32BufferAttribute(a,1));
+  return geom;
+}
+
 // Lifespan + construction shader. kind 0 = the building itself: visible from
 // born−duration to died, built up to a rising level, torn down / burnt from
 // the top. kind 1 = scaffolding, kind 2 = stud framing: visible only while
 // under construction, running ahead of the walls.
-function _lifespanShaderFor(kind){
+// Painted windows (walls only, table mode): a window grid computed from the
+// fragment's position — storeys from the building's base, window size/spacing
+// from CONFIG.windows — fading in with distance where the real 3D glass tiles
+// drop out (CONFIG.glass.maxDistance). At night each painted window is lit or
+// dark by a per-window hash. Only on buildings that got real windows.
+const windowPaintUniforms={ uWinNight:{value:0}, uWinGlass:{value:new THREE.Color()}, uWinGlow:{value:new THREE.Color()},
+  uWinFade:{value:new THREE.Vector2(1200,1600)} };
+function _lifespanShaderFor(kind, table=false, paint=false){
   return shader=>{
     shader.uniforms.buildingYear = buildingYearUniform;
-    shader.vertexShader = 'attribute vec2 aLifespan;\nattribute vec4 aBuild;\nvarying vec2 vLifespan;\nvarying vec4 vBuild;\nvarying float vBldY;\n' + shader.vertexShader
-      .replace('void main() {', 'void main() {\n  vLifespan = aLifespan; vBuild = aBuild;')
-      .replace('#include <project_vertex>', '#include <project_vertex>\n  vBldY = (modelMatrix * vec4(transformed, 1.0)).y;');
+    if(paint) Object.assign(shader.uniforms,windowPaintUniforms);
+    const head = table
+      ? 'attribute float aBldIdx;\nuniform highp sampler2D uBldTable;\nvarying vec2 vLifespan;\nvarying vec4 vBuild;\nvarying float vBldY;\n'
+      : 'attribute vec2 aLifespan;\nattribute vec4 aBuild;\nvarying vec2 vLifespan;\nvarying vec4 vBuild;\nvarying float vBldY;\n';
+    const fetch = table
+      ? `int bi = int(aBldIdx + 0.5) * 2;
+  vec4 bt0 = texelFetch(uBldTable, ivec2(bi % ${BLD_TEX_W}, bi / ${BLD_TEX_W}), 0);
+  vec4 bt1 = texelFetch(uBldTable, ivec2((bi + 1) % ${BLD_TEX_W}, (bi + 1) / ${BLD_TEX_W}), 0);
+  vLifespan = bt0.xy; vBuild = vec4(bt0.zw, bt1.xy);` + (paint ? ' vWinFlag = bt1.z; vWinSeed = aBldIdx;' : '')
+      : 'vLifespan = aLifespan; vBuild = aBuild;';
+    if(table) shader.uniforms.uBldTable = bldTableUniform;
+    shader.vertexShader = head + (paint ? 'varying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' : '') + shader.vertexShader
+      .replace('void main() {', 'void main() {\n  ' + fetch)
+      .replace('#include <project_vertex>', '#include <project_vertex>\n  vBldY = (modelMatrix * vec4(transformed, 1.0)).y;'
+        + (paint ? '\n  vWinPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWinN = normalize(mat3(modelMatrix) * objectNormal);' : ''));
     shader.fragmentShader = `#define BLD_KIND ${kind}
 uniform float buildingYear;
 varying vec2 vLifespan;
@@ -794,21 +982,107 @@ varying float vBldY;
     }
   #endif
   }`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.045, 0.04), bldChar * 0.92);');
+      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.045, 0.04), bldChar * 0.92);'
+        + (paint ? `
+  float winMask = 0.0, winLit = 0.0;
+  if (vWinFlag > 0.5 && abs(vWinN.y) < 0.3) {
+    float fade = smoothstep(uWinFade.x, uWinFade.y, distance(cameraPosition, vWinPos));
+    if (fade > 0.0) {
+      vec2 t = normalize(vec2(-vWinN.z, vWinN.x));
+      float cell = ${(CONFIG.windows.width+CONFIG.windows.gap).toFixed(3)};
+      float u = dot(vWinPos.xz, t) / cell;
+      float fy = (vWinPos.y - vBuild.x) / ${FLOOR_H.toFixed(3)};
+      float fu = fract(u), fv = fract(fy);
+      float wu = ${(CONFIG.windows.width/(CONFIG.windows.width+CONFIG.windows.gap)).toFixed(3)};
+      float v0 = ${(CONFIG.windows.sillHeight/FLOOR_H).toFixed(3)}, v1 = ${((CONFIG.windows.sillHeight+CONFIG.windows.height)/FLOOR_H).toFixed(3)};
+      float inside = step(fu, wu) * step(v0, fv) * step(fv, v1) * step(0.2, fy);
+      // Too small to resolve → average coverage instead of shimmering
+      float px = max(fwidth(u), fwidth(fy));
+      float avg = wu * (v1 - v0);
+      winMask = fade * mix(inside, avg, smoothstep(0.35, 0.9, px));
+      float h = fract(sin(dot(vec3(floor(u), floor(fy), vWinSeed), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+      winLit = mix(step(h, 0.62), 0.62, smoothstep(0.35, 0.9, px));
+      diffuseColor.rgb = mix(diffuseColor.rgb, uWinGlass, winMask);
+    }
+  }` : ''))
+      + '';
+    if(paint) shader.fragmentShader = 'uniform float uWinNight;\nuniform vec3 uWinGlass, uWinGlow;\nuniform vec2 uWinFade;\nvarying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' + shader.fragmentShader
+      .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += uWinGlow * uWinNight * winMask * winLit;');
   };
 }
 const _installLifespanShader=_lifespanShaderFor(0);
-function tagMaterialForLifespan(mat, kind=0){
-  mat.onBeforeCompile = _lifespanShaderFor(kind);
-  mat.customProgramCacheKey = () => 'lifespan'+kind;
+// table=true: the mesh's geometry carries aBldIdx (building table) instead of
+// per-vertex aLifespan/aBuild — used for all building pieces.
+function tagMaterialForLifespan(mat, kind=0, table=false, paint=false){
+  if(OFF.has('paint')) paint=false;
+  mat.onBeforeCompile = _lifespanShaderFor(kind, table, paint);
+  mat.customProgramCacheKey = () => 'lifespan'+kind+(table?'t':'')+(paint?'w':'');
   return mat;
 }
 // One fresh depth material per call — three.js needs a distinct customDepthMaterial
 // per mesh (it's not a shared cache key like the main material is).
-function makeLifespanDepthMaterial(){
+function makeLifespanDepthMaterial(table=false){
   const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
-  tagMaterialForLifespan(depthMat);
+  tagMaterialForLifespan(depthMat, 0, table);
   return depthMat;
+}
+
+// Free a geometry's CPU-side arrays once they're on the GPU — for meshes
+// nothing reads back (glass, roofs, parapets, chimneys, fences). Bounds are
+// computed first (culling needs them). NOT for wall meshes: hover raycasts them.
+function _dropArray(){ this.array=null; }
+function releaseAfterUpload(geom){
+  geom.computeBoundingSphere(); geom.computeBoundingBox();
+  for(const k in geom.attributes) geom.attributes[k].onUpload(_dropArray);
+  if(geom.index) geom.index.onUpload(_dropArray);
+  return geom;
+}
+
+// ── Building tiles ──
+// Building meshes are merged per map tile (CONFIG.building.tileMetres) instead
+// of one city-wide mesh per material: off-screen tiles are culled, the shadow
+// pass only draws tiles inside the shadow camera, and small details
+// (parapets, roof caps, chimneys, fences) hide beyond detailDistance.
+const tileKeyOf=(x,z)=>{const T=CONFIG.building.tileMetres??1000;return Math.floor(x/T)+','+Math.floor(z/T);};
+const detailTiles=[];   // {mesh,x,z} — hidden beyond CONFIG.building.detailDistance
+// Merge geos into one geometry per tile key. Returns [{key, geom, x, z}] (x,z = tile centre).
+function mergeByTile(geos, keys){
+  const T=CONFIG.building.tileMetres??1000, by=new Map();
+  geos.forEach((g,i)=>{const k=keys[i];let b=by.get(k);if(!b){b=[];by.set(k,b);}b.push(g);});
+  const out=[];
+  for(const[key,list]of by){
+    const geom=mergeGeometries(list,false);
+    for(const g of list) g.dispose();
+    if(!geom){console.warn('Tile merge failed (mismatched attributes) for tile',key);continue;}
+    const[i,j]=key.split(',').map(Number);
+    out.push({key,geom,x:(i+0.5)*T,z:(j+0.5)*T});
+  }
+  return out;
+}
+function tickDetailLOD(){
+  const D=CONFIG.building.detailDistance??1500, D2=D*D, c=camera.position;
+  for(const t of detailTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2<D2;
+}
+// ExtrudeGeometry closes the base with a downward-facing cap nobody ever sees
+// (buildings sit on the ground) — drop those triangles.
+function dropBottomCap(geom){
+  const pos=geom.attributes.position, n=pos.count;
+  let minY=Infinity; for(let i=0;i<n;i++) minY=Math.min(minY,pos.getY(i));
+  const keep=[];
+  for(let t=0;t<n;t+=3){
+    const a=pos.getY(t),b=pos.getY(t+1),c=pos.getY(t+2);
+    if(Math.abs(a-minY)<1e-4&&Math.abs(b-minY)<1e-4&&Math.abs(c-minY)<1e-4) continue;
+    keep.push(t);
+  }
+  if(keep.length*3===n) return geom;
+  const out=new THREE.BufferGeometry();
+  for(const name in geom.attributes){
+    const src=geom.attributes[name], sz=src.itemSize, arr=new src.array.constructor(keep.length*3*sz);
+    keep.forEach((t,k)=>arr.set(src.array.subarray(t*sz,(t+3)*sz),k*3*sz));
+    out.setAttribute(name,new THREE.BufferAttribute(arr,sz));
+  }
+  geom.dispose();
+  return out;
 }
 
 // ── Per-building construction timing ──
@@ -816,18 +1090,23 @@ function makeLifespanDepthMaterial(){
 // props so facades/glass rebuilds can reuse it.
 const buildInfoByProps=new WeakMap();   // props → {born, died, build:[baseY,topY,dur,demo]}
 const MASONRY=new Set(['brick','brick_veneer','stone','concrete']);
+// Construction time (years) from size + material — shared by the animation
+// (computeBuildInfo) and deferred loading (deferFutureBuildings).
+function constructionYears(props,mat,floors,area){
+  const C=CONFIG.construction;
+  const s=Math.min(1,0.55*Math.min(1,Math.max(0,(floors-1)/5))+0.45*Math.min(1,(area||100)/2000));
+  let months=C.minMonths+(C.maxMonths-C.minMonths)*Math.pow(s,1.5);
+  if(MASONRY.has(mat)) months=Math.min(C.maxMonths,months*C.masonryFactor);
+  if(props.construction_months>0) months=props.construction_months;   // per-feature override (known history)
+  return months/12;
+}
 function computeBuildInfo(props, mat, floors, area, baseY, topY, wallH){
   const C=CONFIG.construction;
   const born=parseDateFrac(props.born,NO_BORN), died=parseDateFrac(props.died,NO_DIED);
   let dur=0, demo=0;
   if(C&&born>NO_BORN+1){
-    const s=Math.min(1,0.55*Math.min(1,Math.max(0,(floors-1)/5))+0.45*Math.min(1,(area||100)/2000));
-    let months=C.minMonths+(C.maxMonths-C.minMonths)*Math.pow(s,1.5);
-    const masonry=MASONRY.has(mat);
-    if(masonry) months=Math.min(C.maxMonths,months*C.masonryFactor);
-    if(props.construction_months>0) months=props.construction_months;   // per-feature override (known history)
-    dur=months/12;
-    if(!masonry&&wallH<=C.frameMaxHeight) dur=-dur;           // stud-framed
+    dur=constructionYears(props,mat,floors,area);
+    if(!MASONRY.has(mat)&&wallH<=C.frameMaxHeight) dur=-dur;           // stud-framed
   }
   if(C&&died<NO_DIED-1){
     const fire=props.died_by==='fire'||/fire|burn/i.test(props.died_cause||'')
@@ -871,6 +1150,7 @@ function _constructionPieces(r){
   if(r._cache) return r._cache;
   const out={pos:[],nor:[],n:0};
   const b=r.baseY;
+  r.edges=r.edges||wallEdgesOf(r.outer);
   if(r.framed){
     // Studs every ~1.2 m on each wall line, plates at each floor + wall top
     const levels=[];
@@ -938,7 +1218,11 @@ function updateConstructionMeshes(){
   if(key===_constructionKey) return;
   _constructionKey=key;
   if(constructionMesh){scene.remove(constructionMesh);constructionMesh.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});constructionMesh=null;}
-  const recs=constructionRecords.filter(r=>r.group.visible&&y>r.born-r.dur-0.1&&y<r.born+0.1);
+  const recs=[];
+  for(const r of constructionRecords){
+    if(r.group.visible&&y>r.born-r.dur-0.1&&y<r.born+0.1) recs.push(r);
+    else if(r._cache){ r._cache=null; r.edges=null; }   // evict — scrubbing the timeline would otherwise accumulate them all
+  }
   if(!recs.length) return;
   constructionMesh=new THREE.Group();
   constructionMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
@@ -1043,6 +1327,14 @@ function tickFires(dt){
 // cityHazeGroup: stacked shader haze layers over the whole city (buildCityHaze).
 // chimneyTodMult: TOD × season multiplier, updated by setTimeOfDay().
 const chimneyEmitters = [];
+// Emitters bucketed in a coarse grid so each frame only scans cells near the
+// camera (was: every chimney in the city, every frame).
+const CHIM_CELL=200, chimneyGrid=new Map();
+function addChimneyEmitter(e){
+  chimneyEmitters.push(e);
+  const k=Math.floor(e.wx/CHIM_CELL)+','+Math.floor(e.wz/CHIM_CELL);
+  let c=chimneyGrid.get(k); if(!c){c=[];chimneyGrid.set(k,c);} c.push(e);
+}
 let   chimneyPool     = [];
 let   chimneyPoolNext = 0;
 let   chimneyTodMult  = 1.0;
@@ -1745,13 +2037,15 @@ function buildDormer(glassVerts, cx,cz, ex,ez, nx,nz, eaveY, bldgCol){
   return {wallGeom, gableGeom, roofGeom};
 }
 
+// Opaque: panes sit just proud of the wall, so there's nothing to see through;
+// the night glow is emissive and needs no transparency. Opaque glass writes
+// depth and skips blending — much cheaper with ~10^6 panes.
 const glassMat=new THREE.MeshPhongMaterial({
   color:CONFIG.glass.color, shininess:CONFIG.glass.shininess, specular:CONFIG.glass.specular,
-  transparent:true, opacity:CONFIG.glass.opacity,
   side:THREE.DoubleSide,
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
-tagMaterialForLifespan(glassMat); // shared across all layers/rebuilds — tagged once here, not per buildCity() call
+tagMaterialForLifespan(glassMat,0,true); // shared across all layers/rebuilds — tagged once here, not per buildCity() call
 // Glass never casts shadows (no castShadow set on its mesh), so no customDepthMaterial needed.
 setTimeOfDay(CONFIG.start.timeOfDay); // initial sky/lighting — must be after glassMat
 
@@ -1902,6 +2196,84 @@ async function applyBuildingHistory(geojson){
   if(n) console.log(`Building history: ${n} building(s) corrected / split into phases`);
 }
 
+// Before building a layer: drop features beyond CONFIG.building.loadRadius
+// (set by the mobile profile — phones can't hold the whole city), apply the
+// building-history overrides, then trim properties to CONFIG.building.keepProps.
+async function prepareBuildings(geojson){
+  const R=CONFIG.building?.loadRadius;
+  if(R){
+    const n0=geojson.features.length;
+    geojson.features=geojson.features.filter(f=>{
+      const g=f.geometry; if(!g) return false;
+      let c=g.coordinates; while(Array.isArray(c[0])) c=c[0];
+      const[x,y]=project(c[0],c[1]);
+      return x*x+y*y<=R*R;
+    });
+    console.log(`Load radius ${R} m: kept ${geojson.features.length} / ${n0} features`);
+  }
+  await applyBuildingHistory(geojson);
+  // Keep only the properties the viewer uses — the data files carry ~70
+  // (notes, matching/basis bookkeeping, centroids…) and 50k features' worth
+  // of them is a lot of heap. Files on disk are untouched.
+  const keep=CONFIG.building?.keepProps;
+  if(keep){
+    const K=new Set(keep);
+    for(const f of geojson.features){
+      const p=f.properties, t={};
+      for(const k in p) if(K.has(k)) t[k]=p[k];
+      f.properties=t;
+    }
+  }
+}
+
+// ── Deferred future buildings ──────────────────────────────────────
+// PastForward files hold every building to 1939, but at launch only those
+// whose construction could have started by the current date are built. The
+// rest wait in decade chunks (by born − estimated construction time) and are
+// built in the background as the clock approaches (maybeBuildDeferred). Chunks
+// already built stay built when scrubbing back.
+const deferredChunks=[];   // {start, decade, gj} sorted by start
+const DEFER_MARGIN=0.1;    // years (~5 weeks): same margin for "build now" at load and for opening a chunk
+let _deferBusy=false;
+function deferFutureBuildings(gj){
+  if(!CONFIG.building.deferFuture||!/pastforward/i.test(gj._filename||'')) return gj;
+  const y0=yearFrac(currentViewDate), now=[], later=new Map();
+  const startOf=f=>{
+    const p=f.properties, g=f.geometry;
+    const ring=g&&(g.type==='MultiPolygon'?g.coordinates[0]:g.coordinates)[0];
+    return parseDateFrac(p.born,NO_BORN)-constructionYears(p,MATS[p.material]?p.material:'unknown',p.floors??1,p.area_m2||(ring?ringAreaM2(ring):100));
+  };
+  for(const f of gj.features){
+    const b=parseDateFrac(f.properties.born,NO_BORN);
+    const start=f._start=startOf(f);
+    if(b<=NO_BORN+1||start<=y0+DEFER_MARGIN){ now.push(f); continue; }
+    const dec=Math.floor(start/10)*10;
+    if(!later.has(dec)) later.set(dec,[]);
+    later.get(dec).push(f);
+  }
+  for(const[dec,feats]of later){
+    // Chunk starts when its EARLIEST building's construction can start (not the decade's first year)
+    const start=Math.min(...feats.map(f=>f._start));
+    deferredChunks.push({start,decade:dec,gj:{...gj,features:feats}});
+  }
+  deferredChunks.sort((a,b)=>a.start-b.start);
+  if(later.size) console.log(`Deferred ${gj.features.length-now.length} future buildings in ${later.size} decade chunk(s) from ${gj._filename.split('/').pop()}`);
+  return {...gj,features:now};
+}
+// Per frame: build the next chunk once the clock is within DEFER_MARGIN of its first construction start
+function maybeBuildDeferred(){
+  if(_deferBusy||!deferredChunks.length) return;
+  if(yearFrac(currentViewDate)<deferredChunks[0].start-DEFER_MARGIN) return;
+  const c=deferredChunks.shift();
+  _deferBusy=true;
+  window.pfDiag?.add('step',`building ${c.gj.features.length} buildings from the ${c.decade}s`);
+  buildCity(c.gj).then(n=>{
+    totalBuildings+=n;
+    buildLayerBar();          // visibility for the new group + road/ground-cover/haze refresh
+    applySeason(true);        // new roof materials pick up the season
+  }).catch(e=>console.error('Deferred build failed',e)).finally(()=>{_deferBusy=false;});
+}
+
 async function buildCity(geojson){
   const year=detectYear(geojson);
   const group=new THREE.Group();
@@ -1909,20 +2281,23 @@ async function buildCity(geojson){
   group.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
   group.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   scene.add(group);
-  const partyGrid=buildPartyWallGrid(geojson.features);
-  layerGroups.push({year,group,geojson,partyGrid});
+  let partyGrid=buildPartyWallGrid(geojson.features);   // only needed while placing windows — dropped after
+  layerGroups.push({year,group,geojson});
   if(geojson.attribution) dataAttributions.add(geojson.attribution);
   const yearRadius = year==='1880' ? 1000 : 3000;
   roadDrawRadius = Math.max(roadDrawRadius, yearRadius);
 
   const glassVerts=[];  // accumulated window glass vertex data
-  const glassLifespan=[];  // parallel [born,died] per glass vertex — see tagLifespan()
-  const glassBuild=[];     // parallel [baseY,topY,dur,demo] per glass vertex (construction level)
+  const glassIdx=[];       // building-table row per glass pane
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
   const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[];
   const lumberWallGeos=[];  // separate accumulator → own mesh → wallMaterials['lumber']
+  // Tile keys, parallel to each geometry list (and to wallInfos) — filled at the per-feature sweep
+  const wallKeys={},roofKeys={},infoKeys={};
+  for(const k of matKeys){wallKeys[k]=[];roofKeys[k]=[];infoKeys[k]=[];}
+  const parapetKeys=[],stoneParapetKeys=[],roofCapKeys=[],chimneyKeys=[],lumberKeys=[],walkwayKeys=[];
   const walkwayWallGeos=[];  // separate accumulator → own mesh with terrain lift + polygonOffset
   const lumberLog=[];  // [{name, floors}] for end-of-load console summary
   const chimneyStackGeos=[];  // CylinderGeometry stacks merged → one chimney mesh per layer
@@ -1935,7 +2310,7 @@ async function buildCity(geojson){
     // sweep right after the ring loop ends (see the matching block below), so
     // individual geometry-push sites don't each need their own tagging call.
     const _lifeBorn=parseYearOrSentinel(props.born,NO_BORN), _lifeDied=parseYearOrSentinel(props.died,NO_DIED);
-    const _wallStart0=wallGeos[mat].length, _roofStart0=roofGeos[mat].length;
+    const _wallStart0=wallGeos[mat].length, _roofStart0=roofGeos[mat].length, _infoStart0=wallInfos[mat].length;
     const _parapetStart0=parapetGeos.length, _stoneParapetStart0=stoneParapetGeos.length;
     const _roofCapStart0=roofCapGeos.length, _chimneyStart0=chimneyStackGeos.length;
     const _lumberWallStart0=lumberWallGeos.length, _walkwayWallStart0=walkwayWallGeos.length;
@@ -2110,6 +2485,7 @@ async function buildCity(geojson){
       catch(err){console.warn('earcut failed id:',props.id,err.message);continue;}
       wallGeom.rotateX(-Math.PI/2);
       if(baseH>0) wallGeom.translate(0,baseH,0);   // upper-storey volume (base_floors) sits on the storeys below
+      wallGeom=dropBottomCap(wallGeom);            // the base is never seen
       const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
       if(tris===0){wallGeom.dispose();continue;}
       // Bake per-building colour into vertex colours before merging
@@ -2156,7 +2532,10 @@ async function buildCity(geojson){
       const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
       const noWindows=isWall||isElevator||isLumberYard||isWalkway;
 
-      if(!isPlatform&&!isChurch&&!noWindows&&floors>0.5){
+      // No windows on outbuildings (tiny footprints, one-storey industrial sheds) —
+      // hundreds of thousands of panes nobody can see
+      const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);
+      if(!isPlatform&&!isChurch&&!noWindows&&!isOutbuilding&&floors>0.5){
         // Edges with outward normals (all of them, incl. the closing edge)
         const wEdges=wallEdgesOf(outer);
         // Register in spatial index for facade face selection (Up ≠ N: XZ only)
@@ -2358,12 +2737,12 @@ async function buildCity(geojson){
 
             // Emit position: top of this stack (apply same registration offset as the building group)
             const topY=buildingBaseY+height+chimH;
-            chimneyEmitters.push({
+            addChimneyEmitter({
               wx:cx3+(CONFIG.scene?.buildingOffsetX??0), wy:topY, wz:cz3+(CONFIG.scene?.buildingOffsetZ??0),
               type:sType,
               rate:baseRate*(0.85+((hc>>8&0xff)/255)*0.30),
               timer:Math.random()*baseRate,  // stagger first emit
-              year,
+              year, group,                   // group: its layer (visibility), no per-frame lookup
               born:_lifeBorn, died:_lifeDied,  // so a building hidden by the date scrubber stops smoking too
             });
           }
@@ -2396,17 +2775,36 @@ async function buildCity(geojson){
     const _bi=_minY<_maxY
       ?computeBuildInfo(props,mat,floors,_fArea,_minY,_maxY,height)
       :{born:parseDateFrac(props.born,NO_BORN),died:parseDateFrac(props.died,NO_DIED),build:NO_BUILD};
-    for(const g of _fGeos) tagLifespan(g,_bi.born,_bi.died,_bi.build);
-    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++){glassLifespan.push(_bi.born,_bi.died);glassBuild.push(..._bi.build);}
+    _bi.idx=addBuildingRow(_bi.born,_bi.died,_bi.build,glassVerts.length>_glassOuterStart0?1:0);
+    // Tile key for everything this feature added (see mergeByTile)
+    {
+      let _tx=0,_tz=0,_tn=0;
+      if(_fOuter) for(const c of _fOuter){const[sx,sy]=project(c[0],c[1]);_tx+=sx;_tz-=sy;_tn++;}
+      const _key=tileKeyOf(_tn?_tx/_tn:0,_tn?_tz/_tn:0);
+      const fill=(keys,from,to)=>{for(let k=from;k<to;k++)keys[k]=_key;};
+      fill(wallKeys[mat],_wallStart0,wallGeos[mat].length);
+      fill(roofKeys[mat],_roofStart0,roofGeos[mat].length);
+      fill(infoKeys[mat],_infoStart0,wallInfos[mat].length);
+      fill(parapetKeys,_parapetStart0,parapetGeos.length);
+      fill(stoneParapetKeys,_stoneParapetStart0,stoneParapetGeos.length);
+      fill(roofCapKeys,_roofCapStart0,roofCapGeos.length);
+      fill(chimneyKeys,_chimneyStart0,chimneyStackGeos.length);
+      fill(lumberKeys,_lumberWallStart0,lumberWallGeos.length);
+      fill(walkwayKeys,_walkwayWallStart0,walkwayWallGeos.length);
+    }
+    buildInfoByProps.set(props,_bi);
+    for(const g of _fGeos) tagBuildingIdx(g,_bi.idx);
+    for(let _gp=_glassOuterStart0/18;_gp<glassVerts.length/18;_gp++) glassIdx.push(_bi.idx);   // one per pane
     // Scaffolding/framing + fire records (see updateConstructionMeshes / tickFires)
     if(_fOuter&&_bi.build[2]!==0) constructionRecords.push({group,born:_bi.born,dur:Math.abs(_bi.build[2]),framed:_bi.build[2]<0,
-      baseY:_minY,wallTop:_minY+height,topY:_maxY,edges:wallEdgesOf(_fOuter),floors});
+      baseY:_minY,wallTop:_minY+height,topY:_maxY,outer:_fOuter,floors});   // edges computed only if it's ever under construction
     if(_fOuter&&_bi.build[3]<0){
       const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
       fireRecords.push({group,died:_bi.died,dur:-_bi.build[3],x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,radius:Math.sqrt(_fArea)/2});
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
+  partyGrid=null;   // party-wall index no longer needed — let it be collected
 
   // ── Fence/wall LineString renderer ──────────────────────────────
   // Only type:'fence' features — walkways/bridges are polygons handled elsewhere.
@@ -2558,7 +2956,7 @@ async function buildCity(geojson){
     return geos;
   }
 
-  const fenceGeos=[];
+  const fenceGeos=[], fenceKeys=[];   // fenceKeys: tile key per geo (mergeByTile)
   const creekRibbonVerts=[];  // Brown's Creek layer-tied ribbon (flat, terrain-sampled)
   for(const feat of features){
     if(feat.geometry.type!=='LineString'&&feat.geometry.type!=='MultiLineString') continue;
@@ -2603,26 +3001,29 @@ async function buildCity(geojson){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
+        const _fk=tileKeyOf((x1+x2)/2,(z1+z2)/2);
         for(const g of buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol)){
           tagLifespan(g,_fBorn,_fDied);
-          fenceGeos.push(g);
+          fenceGeos.push(g); fenceKeys.push(_fk);
         }
       }
     }
   }
-  if(fenceGeos.length>0){
+  if(fenceGeos.length>0&&!OFF.has('fences')){
     setProgress(73,'Merging fences…');await tick();
-    const fMerged=mergeGeometries(fenceGeos,false);
-    for(const g of fenceGeos)g.dispose();
-    if(fMerged){
-      fMerged.computeVertexNormals();
-      const fMesh=new THREE.Mesh(fMerged,tagMaterialForLifespan(new THREE.MeshPhongMaterial({
-        vertexColors:true,shininess:30,specular:CONFIG.building.fenceSpecular
-      })));
+    const nFence=fenceGeos.length;
+    const fMat3=tagMaterialForLifespan(new THREE.MeshPhongMaterial({
+      vertexColors:true,shininess:30,specular:CONFIG.building.fenceSpecular
+    }));
+    for(const{geom,x,z}of mergeByTile(fenceGeos,fenceKeys)){
+      geom.computeVertexNormals();
+      releaseAfterUpload(geom);
+      const fMesh=new THREE.Mesh(geom,fMat3);
       fMesh.name='fences';
       group.add(fMesh);
-      console.log(`Fences: ${fenceGeos.length} geos`);
+      detailTiles.push({mesh:fMesh,x:x+group.position.x,z:z+group.position.z});
     }
+    console.log(`Fences: ${nFence} geos`);
   }
   // ── Brown's Creek ribbon (layer-tied) ────────────────────────────────────
   if(creekRibbonVerts.length>0){
@@ -2649,22 +3050,30 @@ async function buildCity(geojson){
   }
   for(const mat of matKeys){
     if(wallGeos[mat].length===0)continue;
-    const wMerged=mergeGeometries(wallGeos[mat],false);
-    for(const g of wallGeos[mat])g.dispose();
-    if(!wMerged){console.warn(`Wall merge failed for material "${mat}" — skipping mesh (mismatched geometry attributes).`);continue;}
     const wMat=new THREE.MeshPhongMaterial({
       vertexColors:true,              // per-building colour baked in at merge time
       shininess:MATS[mat].shininess,
       specular:mat==='iron'?CONFIG.building.wallSpecular.iron:CONFIG.building.wallSpecular.default,  // iron gets slight metallic specular
     });
-    tagMaterialForLifespan(wMat);
+    tagMaterialForLifespan(wMat,0,true,true);   // + painted distant windows
     wallMaterials[mat]=wMat;
-    const wMesh=new THREE.Mesh(wMerged,wMat);
-    wMesh.customDepthMaterial=makeLifespanDepthMaterial();
-    wallMeshes[mat]=wMesh;
-    wMesh.userData={mat,cums:wallCums[mat],infos:wallInfos[mat]};
-    wMesh.castShadow=true;wMesh.receiveShadow=true;
-    group.add(wMesh);buildingMeshes.push(wMesh);
+    const wDepth=makeLifespanDepthMaterial(true);
+    // Hover lookup per tile: each tile's infos in global order, with cumulative
+    // triangle counts rebuilt from the global cums (infos ↔ cums stay 1:1)
+    const tileInfo=new Map();
+    wallInfos[mat].forEach((info,k)=>{
+      const key=infoKeys[mat][k]; let t=tileInfo.get(key); if(!t){t={infos:[],cums:[0]};tileInfo.set(key,t);}
+      t.infos.push(info); t.cums.push(t.cums[t.cums.length-1]+(wallCums[mat][k+1]-wallCums[mat][k]));
+    });
+    for(const{key,geom}of mergeByTile(wallGeos[mat],wallKeys[mat])){
+      const wMesh=new THREE.Mesh(geom,wMat);
+      wMesh.customDepthMaterial=wDepth;
+      const t=tileInfo.get(key)||{infos:[],cums:[0]};
+      wMesh.userData={mat,cums:t.cums,infos:t.infos};
+      wMesh.castShadow=true;wMesh.receiveShadow=true;
+      group.add(wMesh);buildingMeshes.push(wMesh);
+      wallMeshes[mat]=wMesh;
+    }
     // Collect centroids for mini-map — Goad's fire-atlas colours where set
     const col=CONFIG.minimap.materialColors?.[mat]??('#'+MATS[mat].color.toString(16).padStart(6,'0'));
     for(const info of wallInfos[mat]){
@@ -2673,95 +3082,107 @@ async function buildCity(geojson){
     const lcEl=document.getElementById(`lc-${mat}`);if(lcEl)lcEl.textContent=matCounts[mat].toLocaleString();
     if(roofGeos[mat].length>0){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
-      const rMerged=mergeGeometries(roofGeos[mat],false);
-      for(const g of roofGeos[mat])g.dispose();
-      if(!rMerged){console.warn(`Roof merge failed for material "${mat}" — skipping mesh (mismatched geometry attributes).`);continue;}
       const summerCol=roofColor(MATS[mat].color);
       const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:CONFIG.building.roofSpecular,side:THREE.DoubleSide});
-      tagMaterialForLifespan(rMat);
+      tagMaterialForLifespan(rMat,0,true);
       if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
-      const rMesh=new THREE.Mesh(rMerged,rMat);
-      rMesh.customDepthMaterial=makeLifespanDepthMaterial();
-      rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
+      const rDepth=makeLifespanDepthMaterial(true);
+      for(const{geom}of mergeByTile(roofGeos[mat],roofKeys[mat])){
+        releaseAfterUpload(geom);
+        const rMesh=new THREE.Mesh(geom,rMat);
+        rMesh.customDepthMaterial=rDepth;
+        rMesh.castShadow=true;rMesh.receiveShadow=true;group.add(rMesh);
+      }
     }
   }
   // ── Lumber yard walls (own mesh → wallMaterials['lumber'] for bump map) ──
   if(lumberWallGeos.length>0){
-    const lMerged=mergeGeometries(lumberWallGeos,false);
-    for(const g of lumberWallGeos)g.dispose();
     const lMat=new THREE.MeshPhongMaterial({
       vertexColors:true, shininess:MATS.lumber.shininess, specular:CONFIG.building.fenceSpecular,
     });
-    tagMaterialForLifespan(lMat);
+    tagMaterialForLifespan(lMat,0,true);
     wallMaterials['lumber']=lMat;
-    const lMesh=new THREE.Mesh(lMerged,lMat);
-    lMesh.customDepthMaterial=makeLifespanDepthMaterial();
-    lMesh.castShadow=true;lMesh.receiveShadow=true;
-    group.add(lMesh);
+    const lDepth=makeLifespanDepthMaterial(true);
+    for(const{geom}of mergeByTile(lumberWallGeos,lumberKeys)){
+      const lMesh=new THREE.Mesh(geom,lMat);
+      lMesh.customDepthMaterial=lDepth;
+      lMesh.castShadow=true;lMesh.receiveShadow=true;
+      group.add(lMesh);
+    }
   }
 
   // ── Brick parapet (raised brick border, 0.5m above roof) ──────────
   if(parapetGeos.length>0){
     setProgress(74,'Merging parapets…');await tick();
-    const pMerged=mergeGeometries(parapetGeos,false);
-    for(const g of parapetGeos)g.dispose();
     const pMat=new THREE.MeshPhongMaterial({
       vertexColors:true,shininess:MATS.brick.shininess,specular:CONFIG.building.parapetSpecular.brick,
       side:THREE.DoubleSide,
     });
-    tagMaterialForLifespan(pMat);
-    const pMesh=new THREE.Mesh(pMerged,pMat);
-    pMesh.customDepthMaterial=makeLifespanDepthMaterial();
-    pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
+    tagMaterialForLifespan(pMat,0,true);
+    const pDepth=makeLifespanDepthMaterial(true);
+    for(const{geom,x,z}of mergeByTile(parapetGeos,parapetKeys)){
+      releaseAfterUpload(geom);
+      const pMesh=new THREE.Mesh(geom,pMat);
+      pMesh.customDepthMaterial=pDepth;
+      pMesh.castShadow=true;pMesh.receiveShadow=true;group.add(pMesh);
+      detailTiles.push({mesh:pMesh,x:x+group.position.x,z:z+group.position.z});
+    }
   }
   if(stoneParapetGeos.length>0){
     setProgress(74,'Merging stone parapets…');await tick();
-    const spMerged=mergeGeometries(stoneParapetGeos,false);
-    for(const g of stoneParapetGeos)g.dispose();
     const spMat=new THREE.MeshPhongMaterial({
       vertexColors:true,shininess:MATS.stone.shininess,specular:CONFIG.building.parapetSpecular.stone,
       side:THREE.DoubleSide,
     });
-    tagMaterialForLifespan(spMat);
-    const spMesh=new THREE.Mesh(spMerged,spMat);
-    spMesh.customDepthMaterial=makeLifespanDepthMaterial();
-    spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
+    tagMaterialForLifespan(spMat,0,true);
+    const spDepth=makeLifespanDepthMaterial(true);
+    for(const{geom,x,z}of mergeByTile(stoneParapetGeos,stoneParapetKeys)){
+      releaseAfterUpload(geom);
+      const spMesh=new THREE.Mesh(geom,spMat);
+      spMesh.customDepthMaterial=spDepth;
+      spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
+      detailTiles.push({mesh:spMesh,x:x+group.position.x,z:z+group.position.z});
+    }
   }
 
   // ── Tar paper / gravel flat roof cap ──────────────────────────────
   if(roofCapGeos.length>0){
     setProgress(74,'Merging roof caps…');await tick();
-    const cMerged=mergeGeometries(roofCapGeos,false);
-    for(const g of roofCapGeos)g.dispose();
     const cMat=new THREE.MeshLambertMaterial({color:CONFIG.building.roofCap.tarPaperColor,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
-    tagMaterialForLifespan(cMat);
+    tagMaterialForLifespan(cMat,0,true);
     seasonalMats.push({mat3:cMat,summerCol:CONFIG.building.roofCap.tarPaperColor,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
-    const cMesh=new THREE.Mesh(cMerged,cMat);
-    cMesh.receiveShadow=true;group.add(cMesh);
+    for(const{geom,x,z}of mergeByTile(roofCapGeos,roofCapKeys)){
+      releaseAfterUpload(geom);
+      const cMesh=new THREE.Mesh(geom,cMat);
+      cMesh.receiveShadow=true;group.add(cMesh);
+      detailTiles.push({mesh:cMesh,x:x+group.position.x,z:z+group.position.z});
+    }
   }
 
   // ── Chimney stacks mesh ───────────────────────────────────────────
   if(chimneyStackGeos.length>0){
     setProgress(75,'Merging chimneys…');await tick();
-    const cMerged=mergeGeometries(chimneyStackGeos,false);
-    for(const g of chimneyStackGeos)g.dispose();
+    const nStacks=chimneyStackGeos.length;
     const chimMat=new THREE.MeshPhongMaterial({
       vertexColors:true, shininess:8, specular:0x111111,
     });
-    tagMaterialForLifespan(chimMat);
-    const cMesh=new THREE.Mesh(cMerged,chimMat);
-    cMesh.customDepthMaterial=makeLifespanDepthMaterial();
-    cMesh.castShadow=true; cMesh.receiveShadow=true;
-    group.add(cMesh);
-    console.log(`Chimneys: ${chimneyStackGeos.length} stacks, ${chimneyEmitters.filter(e=>e.year===year).length} emitters`);
+    tagMaterialForLifespan(chimMat,0,true);
+    const chDepth=makeLifespanDepthMaterial(true);
+    for(const{geom,x,z}of mergeByTile(chimneyStackGeos,chimneyKeys)){
+      releaseAfterUpload(geom);
+      const cMesh=new THREE.Mesh(geom,chimMat);
+      cMesh.customDepthMaterial=chDepth;
+      cMesh.castShadow=true; cMesh.receiveShadow=true;
+      group.add(cMesh);
+      detailTiles.push({mesh:cMesh,x:x+group.position.x,z:z+group.position.z});
+    }
+    console.log(`Chimneys: ${nStacks} stacks, ${chimneyEmitters.filter(e=>e.year===year).length} emitters`);
   }
 
   // ── Walkway mesh — terrain-lifted, draws over roads ───────────────
   if(walkwayWallGeos.length>0){
     setProgress(96,'Merging walkways…');await tick();
-    const wkMerged=mergeGeometries(walkwayWallGeos,false);
-    for(const g of walkwayWallGeos)g.dispose();
-    if(wkMerged){
+    {
       const wkMat=new THREE.MeshPhongMaterial({
         vertexColors:true,
         shininess:MATS['wood'].shininess,
@@ -2769,28 +3190,67 @@ async function buildCity(geojson){
         polygonOffsetFactor:-6,   // more negative than roads(-2), tracks(-3), rails(-4) → always on top
         polygonOffsetUnits:-6,
       });
-      tagMaterialForLifespan(wkMat);
-      const wkMesh=new THREE.Mesh(wkMerged,wkMat);
-      wkMesh.receiveShadow=true;
-      group.add(wkMesh);
+      tagMaterialForLifespan(wkMat,0,true);
+      for(const{geom}of mergeByTile(walkwayWallGeos,walkwayKeys)){
+        const wkMesh=new THREE.Mesh(geom,wkMat);
+        wkMesh.receiveShadow=true;
+        group.add(wkMesh);
+      }
     }
   }
 
-  // ── Glass window mesh ──────────────────────────────────────────────
+  // ── Glass window meshes (tiled) ────────────────────────────────────
   if(glassVerts.length>0){
     setProgress(96,'Adding windows…');await tick();
-    const gGeom=new THREE.BufferGeometry();
-    gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
-    gGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(new Float32Array(glassLifespan),2));
-    gGeom.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(glassBuild),4));
-    gGeom.computeVertexNormals();
-    const gMesh=new THREE.Mesh(gGeom,glassMat);
-    gMesh.renderOrder=1;   // draw after opaque walls
-    group.add(gMesh);
+    makeGlassMeshes(group,glassVerts,glassIdx);
     console.log(`Windows: ${glassVerts.length/18} panes`);
   }
+  refreshBuildingTable();
 
   return total;
+}
+
+// Window glass → indexed quads (4 corners, not 6) bucketed into map tiles:
+// the GPU skips off-screen tiles, and tiles beyond CONFIG.glass.maxDistance
+// are hidden each frame (tickGlassLOD). Panes arrive as 6 vertices
+// (bl,br,tr, bl,tr,tl) — every glass writer uses that order.
+const glassTiles=[];   // {mesh, x, z}
+function makeGlassMeshes(group, glassVerts, glassIdx){
+  const T=CONFIG.glass.tileMetres??400, buckets=new Map();
+  const nP=glassVerts.length/18;
+  for(let p=0;p<nP;p++){
+    const o=p*18;
+    const key=Math.floor(glassVerts[o]/T)+','+Math.floor(glassVerts[o+2]/T);
+    let b=buckets.get(key); if(!b){b=[];buckets.set(key,b);} b.push(p);
+  }
+  for(const panes of buckets.values()){
+    const n=panes.length, pos=new Float32Array(n*12), idx=new Float32Array(n*4), ind=new Uint32Array(n*6);
+    let cx=0,cz=0;
+    panes.forEach((p,k)=>{
+      const o=p*18, v=k*12;
+      for(const[dst,src]of[[0,0],[3,3],[6,6],[9,15]]){ pos[v+dst]=glassVerts[o+src];pos[v+dst+1]=glassVerts[o+src+1];pos[v+dst+2]=glassVerts[o+src+2]; }
+      idx.fill(glassIdx[p],k*4,k*4+4);
+      const q=k*4; ind.set([q,q+1,q+2,q,q+2,q+3],k*6);
+      cx+=glassVerts[o]; cz+=glassVerts[o+2];
+    });
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+    g.setAttribute('aBldIdx',new THREE.BufferAttribute(idx,1));
+    g.setIndex(new THREE.BufferAttribute(ind,1));
+    g.computeVertexNormals();
+    releaseAfterUpload(g);
+    const m=new THREE.Mesh(g,glassMat);
+    m.renderOrder=1;
+    if(OFF.has('glass')) m.visible=false;
+    group.add(m);
+    glassTiles.push({mesh:m,x:cx/n+(group.position.x||0),z:cz/n+(group.position.z||0)});
+  }
+}
+// Per frame: hide window tiles far from the camera
+function tickGlassLOD(){
+  if(OFF.has('glass')) return;
+  const D=CONFIG.glass.maxDistance??1800, D2=D*D, c=camera.position;
+  for(const t of glassTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2<D2;
 }
 
 // ── Ground-cover density map ───────────────────────────────────────
@@ -3294,6 +3754,7 @@ const plumeUniforms={
   uPlumeStrength:{value:1},   // 0 in winter (ice)
 };
 function installConfluencePlume(mat, offZ){
+  if(OFF.has('plume')) return;
   const C=CONFIG.water.confluence;
   if(!C) return;
   const pts=C.path.slice(0,PLUME_N);
@@ -3410,6 +3871,7 @@ function _treeArchetype(shape){
 }
 
 function buildRiverTrees(){
+  if(OFF.has('trees')) return;
   for(const{mesh}of riverTreeMeshes){scene.remove(mesh);mesh.geometry.dispose();}
   riverTreeMeshes=[];
   const T=CONFIG.trees;
@@ -3671,6 +4133,7 @@ async function buildWater(geojson){
     waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
     waterMesh.position.y = WATER_BASE;
     scene.add(waterMesh);
+    if(OFF.has('water')) waterMesh.visible=false;
     window.waterMesh = waterMesh;
 
     const fc = document.getElementById('flood-control');
@@ -3790,9 +4253,24 @@ function minimapRiverPath(){
   }
   return _mmRiverPath;
 }
+// Static part (background, river, building dots) is cached on an offscreen
+// canvas and redrawn only when the year, layer or dot set changes — was every
+// frame, ~50k dots.
+let _mmCache=null, _mmCacheKey=null;
 function drawMinimap(){
   if(!minimapVisible||!minimapCtx)return;
+  const key=Math.floor(buildingYearUniform.value*4)+'|'+activeLayer+'|'+minimapDots.length+'|'+riverRings.length;
+  if(key!==_mmCacheKey){
+    _mmCacheKey=key;
+    if(!_mmCache){_mmCache=document.createElement('canvas');_mmCache.width=_mmCache.height=MAP_SIZE;}
+    drawMinimapStatic(_mmCache.getContext('2d'));
+  }
   const ctx=minimapCtx;
+  ctx.clearRect(0,0,MAP_SIZE,MAP_SIZE);
+  ctx.drawImage(_mmCache,0,0);
+  drawMinimapArrow(ctx);
+}
+function drawMinimapStatic(ctx){
   ctx.clearRect(0,0,MAP_SIZE,MAP_SIZE);
   ctx.fillStyle=CONFIG.minimap.backgroundColor;ctx.fillRect(0,0,MAP_SIZE,MAP_SIZE);
   if(riverRings.length){ctx.fillStyle=CONFIG.minimap.riverColor??'#2B4A5C';ctx.fill(minimapRiverPath(),'evenodd');}
@@ -3813,6 +4291,8 @@ function drawMinimap(){
     if(cx<0||cx>MAP_SIZE||cz<0||cz>MAP_SIZE)continue;
     ctx.fillStyle=col;ctx.fillRect(cx-1.5,cz-1.5,3,3);
   }
+}
+function drawMinimapArrow(ctx){
   const[camX,camZ]=minimapW2C(camera.position.x,camera.position.z);
   // Forward direction in world XZ, per mode. FPS: fwd = Ry(yaw)·(0,0,−1) =
   // (−sin yaw, −cos yaw) (same derivation the start-position code uses for
@@ -5121,6 +5601,50 @@ const scHeadMat=new THREE.MeshPhongMaterial({color:SC_COL_HEAD,emissive:SC_COL_H
 const scTailGeo=new THREE.CylinderGeometry(0.18,0.18,0.10,12);
 const scTailMat=new THREE.MeshPhongMaterial({color:SC_COL_TAIL,emissive:SC_COL_TAIL,emissiveIntensity:1.0,shininess:80});
 
+// ── Vehicle part baking ─────────────────────────────────────────────
+// Vehicles are built from many small meshes (a streetcar ≈ 10, a cart ≈ 20),
+// each its own draw call — thousands per frame. After building, bake every
+// static part into one lit mesh (+ one unlit mesh for emissive lamps) per
+// vehicle, colours as vertex colours. Animated parts (`keep`: wheels, legs,
+// paddlewheel) stay separate. Baked parts move to a render layer no camera
+// draws, so anchors/children under them still update and still work.
+const BAKED_LAYER=31;
+const _bakeLitMat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:30,specular:0x222222});
+const _bakeGlowMat=new THREE.MeshBasicMaterial({vertexColors:true});
+const _bakeM=new THREE.Matrix4();
+function bakeStaticParts(root, keep=[]){
+  root.updateMatrixWorld(true);
+  const inv=new THREE.Matrix4().copy(root.matrixWorld).invert();
+  const skip=new Set();
+  for(const k of keep) if(k&&k.traverse) k.traverse(o=>skip.add(o));
+  const lit=[], glow=[];
+  root.traverse(o=>{
+    if(!o.isMesh||skip.has(o)||!o.visible||o.isInstancedMesh) return;
+    const m=Array.isArray(o.material)?o.material[0]:o.material;
+    if(!m||!m.color) return;
+    let g=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();
+    for(const name of Object.keys(g.attributes)) if(name!=='position'&&name!=='normal') g.deleteAttribute(name);
+    if(!g.attributes.normal) g.computeVertexNormals();
+    g.applyMatrix4(_bakeM.multiplyMatrices(inv,o.matrixWorld));
+    const isGlow=m.emissive&&(m.emissive.r+m.emissive.g+m.emissive.b)>0.2;
+    const c=isGlow?m.emissive:m.color, n=g.attributes.position.count, col=new Float32Array(n*3);
+    for(let i=0;i<n;i++){col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;}
+    g.setAttribute('color',new THREE.BufferAttribute(col,3));
+    (isGlow?glow:lit).push(g);
+    o.layers.set(BAKED_LAYER);
+  });
+  for(const[list,mat,shadow]of[[lit,_bakeLitMat,true],[glow,_bakeGlowMat,false]]){
+    if(!list.length) continue;
+    const merged=mergeGeometries(list,false);
+    for(const g of list) g.dispose();
+    if(!merged) continue;
+    const mesh=new THREE.Mesh(merged,mat);
+    mesh.castShadow=shadow; mesh.receiveShadow=shadow;
+    root.add(mesh);
+  }
+  return root;
+}
+
 function buildStreetcarGroup(){
   const group=new THREE.Group();
   const bodyY = SC_Y_BASE + SC_SKIRT_H + SC_H*0.5;
@@ -5154,6 +5678,7 @@ function buildStreetcarGroup(){
   tail.position.set(0, bodyY-SC_H*0.1, -SC_L*0.5-0.07);
 
   group.add(body,skirt,roof,winL,winR,winF,winB,head,tail);
+  bakeStaticParts(group);
   return{group};
 }
 
@@ -5412,6 +5937,7 @@ function buildCartGroup(seed){
   group.userData.wheels=wheels;
   group.userData.legs=animal.userData.legs;
   group.userData.rearAnchor=animal.userData.rearAnchor;
+  bakeStaticParts(group,[...(group.userData.wheels||[]),...(group.userData.legs||[])]);   // wheels + legs animate
   return group;
 }
 
@@ -5524,6 +6050,7 @@ function buildCartRouteWaypoints(roadGJ, stName){
 }
 
 function initCarts(roadGJ){
+  if(OFF.has('vehicles')) return;
   const r=buildCartRouteWaypoints(roadGJ,'Main');
   if(!r||r.totalLen<10){console.warn('Cart route "Main" failed');return;}
   console.log(`Cart route "Main": ${r.pts.length} waypoints, ${r.totalLen.toFixed(0)}m (downtown clip)`);
@@ -5598,6 +6125,7 @@ function tickCarts(dt){
 }
 
 function initStreetcars(roadGJ){
+  if(OFF.has('vehicles')) return;
   // One route per road name tagged with a streetcar_start year (see
   // add_streetcar_dates.py / data/wpg_roads_streetcar.geojson). Car count
   // per direction is proportional to that route's total track length —
@@ -5827,6 +6355,7 @@ function buildLocoGroup(){
   coal.position.set(0,baseY+0.05+TENDER_H*0.5+0.02,-LOCO_BODY_L*0.5-CAR_GAP-TENDER_L*0.32);
   g.add(boiler,cab,stack,dome,pilot,head,tender,coal);
   g.userData.stackAnchor=stack;  // smoke emission point
+  bakeStaticParts(g);   // stackAnchor mesh stays in the tree (baked layer) for smoke positions
   return g;
 }
 
@@ -5846,6 +6375,7 @@ function buildPassengerCar(idx){
   const winL=new THREE.Mesh(passWinGeo,passWinMat); winL.position.set(PASS_CAR_W*0.5+0.01,baseY+PASS_CAR_H*0.06,0);
   const winR=new THREE.Mesh(passWinGeo,passWinMat); winR.position.set(-PASS_CAR_W*0.5-0.01,baseY+PASS_CAR_H*0.06,0);
   g.add(body,roof,winL,winR);
+  bakeStaticParts(g);
   return g;
 }
 
@@ -5865,6 +6395,7 @@ function buildFreightCar(seed){
   const mesh=new THREE.Mesh(freightBodyGeo,mat);
   mesh.scale.y=h; mesh.position.y=0.16+h*0.5;
   const g=new THREE.Group(); g.add(mesh);
+  bakeStaticParts(g);
   return g;
 }
 
@@ -6052,6 +6583,7 @@ void main(){
 }`;
 
 function buildCityHaze(){
+  if(OFF.has('haze')) return;
   if(cityHazeGroup) return;
   const H=CONFIG.chimneys.cityHaze;
   hazeUniforms.uWind.value.set(H.wind[0],H.wind[1]).normalize();
@@ -6140,10 +6672,12 @@ function tickChimneySmoke(dt){
   // Build sorted candidate list — visible emitters only, sorted by distance²
   const _chimYr=currentViewDate.getFullYear();
   const cands=[];
-  for(const e of chimneyEmitters){
+  const _cr=Math.ceil(CHIM.farDist/CHIM_CELL), _gx=Math.floor(CAM.x/CHIM_CELL), _gz=Math.floor(CAM.z/CHIM_CELL);
+  for(let _i=-_cr;_i<=_cr;_i++)for(let _j=-_cr;_j<=_cr;_j++){
+  const _cell=chimneyGrid.get((_gx+_i)+','+(_gz+_j)); if(!_cell) continue;
+  for(const e of _cell){
     // Skip emitters whose layer is not currently visible
-    const lg=layerGroups.find(l=>l.year===e.year);
-    if(lg&&!lg.group.visible) continue;
+    if(e.group&&!e.group.visible) continue;
     // Skip emitters on a building that's hidden by the date scrubber
     // (born/died) — a not-yet-built or already-demolished building
     // shouldn't smoke, even though its (shader-hidden) chimney mesh still
@@ -6156,7 +6690,7 @@ function tickChimneySmoke(dt){
     const d2=dx*dx+dy*dy+dz*dz;
     if(d2>farD2) continue;   // too far to read as individual puffs
     cands.push({e, d2});
-  }
+  }}
   cands.sort((a,b)=>a.d2-b.d2);
 
   // ── Emit from nearest candidates ────────────────────────────
@@ -6288,6 +6822,7 @@ function spawnTrain(route,kind,seed){
 }
 
 function initTrains(geojson){
+  if(OFF.has('vehicles')) return;
   for(const train of trainConsists){
     scene.remove(train.loco);
     for(const c of train.cars) scene.remove(c);
@@ -6389,6 +6924,7 @@ function buildSteamboatGroup(){
   add(new THREE.BoxGeometry(0.3,3.2,5.5),mat(C.trim),-3.6,2.2,-SB_L/2-1.5);        // wheel support beams
   add(new THREE.BoxGeometry(0.3,3.2,5.5),mat(C.trim), 3.6,2.2,-SB_L/2-1.5);
   g.userData={wheel,smokeAnchors};
+  bakeStaticParts(g,[g.userData.wheel]);   // paddlewheel turns
   return g;
 }
 
@@ -6457,6 +6993,7 @@ function sbRouteFromLonLat(list){
 }
 
 function initSteamboats(){
+  if(OFF.has('vehicles')) return;
   if(!SB||sbRoutes) return;
   const red=SB.routes.red, ass=SB.routes.assiniboine;
   // Assiniboine trips continue down the Red from the nearest point to the Forks
@@ -6602,9 +7139,60 @@ function tickTrains(dt){
   }
 }
 
+let _frameN=0, _prevFrame=0, _progSeen=0;
+// Diagnostics: estimate what the scene will put on the GPU (vertex/index
+// buffers and textures), grouped by object name, so a memory-limited device's
+// context loss can be traced to its biggest consumers. Arrays already released
+// after upload are counted from their stored count × itemSize.
+function gpuCensus(label){
+  const groups=new Map(), texSeen=new Set(); let texBytes=0, draws=0;
+  const attrBytes=a=>a?(a.array?a.array.byteLength:(a.count*a.itemSize*4)):0;
+  const nameOf=o=>{ for(let p=o;p;p=p.parent) if(p.name) return p.name;
+    const m=Array.isArray(o.material)?o.material[0]:o.material;
+    return (m&&m.name)||`${o.type}/${m?.type||''}/${o.parent?.type||''}${o.parent?.parent===scene?'@scene':''}`; };
+  scene.traverse(o=>{
+    const g=o.geometry; if(!g) return;
+    let b=0; for(const k in g.attributes) b+=attrBytes(g.attributes[k]);
+    b+=attrBytes(g.index); if(o.isInstancedMesh) b+=o.instanceMatrix.array.byteLength;
+    const k=nameOf(o), e=groups.get(k)||{b:0,n:0,v:0,vis:0};
+    e.b+=b; e.n++; e.v+=g.attributes.position?.count||0; if(o.visible) e.vis++; draws++;
+    groups.set(k,e);
+    for(const m of [].concat(o.material||[])) for(const key in m){
+      const t=m[key]; if(t&&t.isTexture&&!texSeen.has(t)){ texSeen.add(t);
+        const im=t.image; if(im&&im.width) texBytes+=im.width*im.height*4*(t.generateMipmaps?1.33:1); }
+    }
+  });
+  const rows=[...groups.entries()].sort((a,b)=>b[1].b-a[1].b);
+  const MB=x=>(x/1048576).toFixed(1)+' MB', tot=rows.reduce((s,r)=>s+r[1].b,0);
+  const sm=renderer.shadowMap.enabled?(CONFIG.lighting?.sun?.shadowMapSize||0):0;
+  window.pfDiag.add('gpu',`${label}: buffers ${MB(tot)} in ${draws} meshes · textures ≈${MB(texBytes)} (${texSeen.size}) · shadow map ${sm}² · canvas ${renderer.domElement.width}×${renderer.domElement.height}`);
+  for(const [k,e] of rows.slice(0,14)) window.pfDiag.add('gpu',`  ${MB(e.b).padStart(9)}  ${e.v.toLocaleString()} verts  ${e.n} meshes (${e.vis} visible)  ${k}`);
+}
+window.gpuCensus=gpuCensus;
 function startLoop(){
   function loop(now){
     requestAnimationFrame(loop);
+    // Diagnostics: first frames' spacing, and any long gap (a GPU stall shows up as a late frame)
+    if(_prevFrame){
+      const gap=now-_prevFrame;
+      if(_frameN<20) window.pfDiag?.add('frame',`#${_frameN} ${gap.toFixed(0)} ms`);
+      else if(gap>500) window.pfDiag?.add('SLOW',`frame #${_frameN} took ${gap.toFixed(0)} ms`);
+    }
+    _prevFrame=now; _frameN++;
+    // Diagnostics: name each shader program as it is first compiled, with GPU
+    // object counts — the last one before a context loss is the prime suspect
+    if(window.pfDiag){
+      const progs=renderer.info.programs||[];
+      if(progs.length!==_progSeen){
+        for(let i=_progSeen;i<progs.length;i++){
+          const pr=progs[i];
+          const key=String(pr.cacheKey||''), t0=key.split(',')[0], type=/^\d+$/.test(t0)?'shader-material (city haze)':t0;
+          const custom=(key.match(/lifespan\w*|bankDirt|plainGround|confluencePlume/)||[''])[0]||(key.length>2000?'shader-material':'');
+          window.pfDiag.add('shader',`#${i} ${type}${custom?' ['+custom+']':''} · geoms ${renderer.info.memory.geometries} texs ${renderer.info.memory.textures}`);
+        }
+        _progSeen=progs.length;
+      }
+    }
     const dt=Math.max(0,Math.min((now-lastTime)*0.001,0.1));lastTime=now;   // ≥0: first rAF stamp can predate lastTime after a long load
     if(fpsMode){
       const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
@@ -6656,14 +7244,18 @@ function startLoop(){
     tickTrains(dt);
     tickSteamboats(dt);
     updateWaterLevel();
+    maybeBuildDeferred();
     updateConstructionMeshes();
+    tickGlassLOD();
+    tickDetailLOD();
     tickFires(dt);
     applySeason();
     tickFloes(dt);
     tickTrainAudio(dt);
     tickChimneySmoke(dt);
     plumeUniforms.uPlumeTime.value=now*0.001;
-    renderer.render(scene,camera);
+    if(_frameN===1 && window.pfDiag) gpuCensus('first render');
+    if(!_glLost) renderer.render(scene,camera);   // after a context loss, rendering only throws
   drawMinimap();
   }
   lastTime=performance.now();requestAnimationFrame(loop);
@@ -7066,12 +7658,12 @@ function rebuildGlassMesh(layerEntry){
     if(child.isMesh&&child.material===glassMat) toRemove.push(child);
   });
   for(const child of toRemove){child.geometry.dispose();group.remove(child);}
+  for(let i=glassTiles.length-1;i>=0;i--) if(toRemove.includes(glassTiles[i].mesh)) glassTiles.splice(i,1);
 
   // Re-collect glass verts using same logic as buildCity
   const glassVerts=[];
-  const glassLifespan=[];  // parallel [born,died] per glass vertex — see tagLifespan()/buildCity()
-  const glassBuild=[];     // parallel construction info, from buildCity's cached buildInfoByProps
-  const partyGrid=layerEntry.partyGrid??(layerEntry.partyGrid=buildPartyWallGrid(geojson.features));
+  const glassIdx=[];       // building-table row per pane, from buildCity's cached buildInfoByProps
+  const partyGrid=buildPartyWallGrid(geojson.features);   // rebuilt on demand (rare: a window mask loaded), not kept
   for(let _featIdx=0;_featIdx<geojson.features.length;_featIdx++){
     const feat=geojson.features[_featIdx];
     const props=feat.properties;
@@ -7102,7 +7694,8 @@ function rebuildGlassMesh(layerEntry){
       for(let j=0;j<_rbNPts;j+=_rbStep){const[sx,sy]=project(outer[j][0],outer[j][1]);_rbTSum+=sampleTerrainY(sx,-sy);_rbTN++;}
       const _rbBaseY=_rbTSum/_rbTN;
       const _rbGlassStart=glassVerts.length;
-      if(!isPlatform&&!isChurch&&!isBridge&&!noWindows&&floors>0.5&&areaOk){
+      const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);   // same rule as buildCity
+      if(!isPlatform&&!isChurch&&!isBridge&&!noWindows&&!isOutbuilding&&floors>0.5&&areaOk){
         const wEdges=wallEdgesOf(outer);
         if(wEdges.length===0) continue;
         let primaryIdx=0,bestDot=-Infinity;
@@ -7159,19 +7752,12 @@ function rebuildGlassMesh(layerEntry){
         for(let _gi=_rbGlassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=_rbBaseY;
       }
     }
-    const _bi=buildInfoByProps.get(props)??{born:_lifeBorn,died:_lifeDied,build:NO_BUILD};
-    for(let _gv=_glassOuterStart0/3;_gv<glassVerts.length/3;_gv++){glassLifespan.push(_bi.born,_bi.died);glassBuild.push(..._bi.build);}
+    const _row=buildInfoByProps.get(props)?.idx??0;
+    for(let _gp=_glassOuterStart0/18;_gp<glassVerts.length/18;_gp++) glassIdx.push(_row);
   }
 
   if(glassVerts.length>0){
-    const gGeom=new THREE.BufferGeometry();
-    gGeom.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(glassVerts),3));
-    gGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(new Float32Array(glassLifespan),2));
-    gGeom.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(glassBuild),4));
-    gGeom.computeVertexNormals();
-    const gMesh=new THREE.Mesh(gGeom,glassMat);
-    gMesh.renderOrder=1;
-    group.add(gMesh);
+    makeGlassMeshes(group,glassVerts,glassIdx);
     console.log(`Glass rebuilt: ${glassVerts.length/18} panes`);
   }
 }
@@ -7307,7 +7893,7 @@ async function liveLoad(fileList){
     gj._filename=f.name;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water'){await buildWater(gj);}
-    else if(kind==='building'){await applyBuildingHistory(gj);const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
+    else if(kind==='building'){await prepareBuildings(gj);const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
     else if(kind==='road'){roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true;}
     else if(kind==='rail'){railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true;}
     else console.warn(`Unrecognised GeoJSON: ${f.name} — no matching properties found in first 10 features`);
@@ -7336,7 +7922,7 @@ async function loadFiles(fileList){
     else console.warn(`Unrecognised GeoJSON: ${f.name}`);
   }
   let n=0;
-  if(buildingGJ){await applyBuildingHistory(buildingGJ);n=await buildCity(buildingGJ);}
+  if(buildingGJ){await prepareBuildings(buildingGJ);n=await buildCity(buildingGJ);}
   if(roadGJ){roadGeojson=roadGJ;await buildRoads(roadGJ);initStreetcars(roadGJ);initCarts(roadGJ);}
   if(railGJ){railGeojson=railGJ;buildRailTracks(railGJ);initTrains(railGJ);railsLoaded=true;}
   if(waterGJ)await buildWater(waterGJ);
@@ -7456,7 +8042,11 @@ renderer.render(scene,camera);
     gj._filename=url;  // lets detectYear identify combined.geojson by name
     const kind=sniffGeoJSON(gj);
     if(kind==='water')        await buildWater(gj);
-    else if(kind==='building'){ await applyBuildingHistory(gj); const n=await buildCity(gj);totalBuildings+=n; }
+    else if(kind==='building'){
+      await prepareBuildings(gj);
+      const now=deferFutureBuildings(gj);   // future decades wait until the clock gets near them
+      const n=await buildCity(now);totalBuildings+=n;
+    }
     else if(kind==='road')   { roadGeojson=gj;window.roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
     else if(kind==='rail')   { railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
@@ -7487,6 +8077,7 @@ renderer.render(scene,camera);
   // ./data/facades.json: array of filenames, images loaded from ./images/
   // e.g. ["Dominion_Bank_Facade.png","CNR_Building.png"]
   try{
+    if(OFF.has('facades')) throw 0;   // ?off=facades — skip facade images (a GPU driver chokes on their shader)
     const mres=await fetch(CONFIG.dataFiles.facadeConfig);
     if(mres.ok){
       const manifest=await mres.json();

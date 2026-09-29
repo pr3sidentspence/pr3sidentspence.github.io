@@ -221,10 +221,11 @@ export const CONFIG = {
   // The window-glass material — this is the closest thing to a shader
   // effect in this renderer (a tinted, glossy, semi-transparent surface).
   glass: {
-    color: 0x1A2530,
+    color: 0x283038,   // opaque now (was 0x1A2530 at 72% opacity over the wall) — a touch lighter to compensate
     shininess: 90,
     specular: 0x4868A0,
-    opacity: 0.72,
+    tileMetres: 400,      // windows are grouped in map tiles of this size…
+    maxDistance: 1800,    // …and tiles farther than this from the camera are hidden
     // Warm amber glow added to glass at night, scaled by darkness (0..1).
     nightGlowColor: { r: 0.47, g: 0.19, b: 0.02 },
   },
@@ -263,6 +264,16 @@ export const CONFIG = {
 
   // ── Building heights & roads ───────────────────────────────────────
   building: {
+    tileMetres: 1000,      // building meshes are merged per map tile (culling; shadow pass only draws nearby tiles)
+    deferFuture: true,     // PastForward buildings are built only once the clock nears their construction start (false = all at launch)
+    detailDistance: 1500,  // parapets, roof caps, chimneys hidden beyond this (m)
+    // Feature properties kept in memory after load (everything else in the
+    // data files is dropped at load — add a name here if new code needs it)
+    keepProps: ['id','uid','pf_uid','name','address','material','floors','type','roof_type','area_m2',
+                'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','replaced_by',
+                'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
+                'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
+                'st_name','st_type','streetcar_start','rail_class'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     platformHeight: 0.6, // low platform/loading-dock structures
     minHeight: 2.0,
@@ -403,7 +414,10 @@ export const CONFIG = {
   // After water GeoJSON loads, terrain vertices near river paths are depressed
   // so the flood plane (water) becomes visible in the channel at low water levels.
   terrain: {
-    segments: 1200,         // mesh subdivisions — higher = smoother channel edges, heavier
+    segments: 600,          // mesh subdivisions (20 m grid; the 1201² DEM is resampled) — was 1200, ~2.2M triangles more
+    // DEM smoothing at load: removes modern street/lot relief (the "waffle" the
+    // dirt line traced) while keeping riverbanks — see smoothDEM in index.html
+    smooth: { radiusM: 30, keepBelowM: 0.5, keepAboveM: 1.5 },
     noiseAmplitude: 0.80,   // metres of prairie undulation — enough for interesting flood spread
     noiseBaseY: 0.0,        // baseline Y for terrain surface (buildings sit at y=0)
     channelDepth: 5.5,      // metres the channel floor sits below bank level (y=0)
@@ -872,7 +886,12 @@ export const CONFIG = {
   // Deep-merged over this config on touch devices (or ?profile=mobile);
   // ?profile=desktop skips it. Same shape as the settings it overrides.
   mobile: {
-    terrain:  { segments: 400 },                 // 30 m grid instead of 10 m (DEM is resampled)
+    terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
+    // Only buildings within 3 km. Small details and real window glass only near the camera:
+    // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
+    // (painted windows cover the distance). Phones share one GPU process across all tabs.
+    building: { loadRadius: 3000, detailDistance: 600 },
+    glass:    { maxDistance: 700 },
     camera:   { pixelRatioCap: 1.25 },
     lighting: { sun: { shadowMapSize: 1024 } },
     trees:    { spacing: 14 },

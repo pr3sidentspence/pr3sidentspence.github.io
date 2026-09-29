@@ -10,9 +10,10 @@ Run after build_pastforward.py:
 Inputs:
   data/pastforward_2026.geojson            growth master (Goad 1906 / McPhillips 1880).
   data/wpg_roads.geojson                   used to find which lot edge faces the street.
-  <assess-dir>/assessment_to_1906.geojson  assessment parcels, year_built <= 1906
-                                           (residential only — the roll has no year for
-                                           commercial/institutional parcels).
+  <assess-dir>/assessment_to_<cutoff>.geojson  assessment parcels, year_built <= --cutoff
+                                           (default 1939; residential only — the roll has no
+                                           year for commercial/institutional parcels).
+                                           Made by assessment_import/extract_pre1907.py <cutoff>.
   <assess-dir>/osm_buildings.geojson       OpenStreetMap footprints (fetch_osm.py). ODbL.
   <assess-dir>/historical_resources.json   City of Winnipeg Historical Resources (ptpx-kgiu).
 
@@ -36,6 +37,13 @@ Rules:
   assessment and procedural dates; they add non-residential buildings where an OSM
   footprint exists outside Goad coverage.
   Assessment year 1905 is treated as a likely assessor default: born spread over 1900-1905.
+  4. Parcels built AFTER the Goad survey (1907..cutoff): the roll's year_built is the
+     building standing today, so it is new — footprint from OSM (else synthetic, rule 2),
+     inside Goad coverage too (a 1906 map wouldn't show it; no review hold). Any existing
+     building overlapping that footprint and born earlier is taken to have been demolished
+     for it: died just before construction (never overwriting an earlier died date).
+     Heritage buildings dated after 1906 get the same treatment.
+  Only parcels / heritage points within --max-radius-m of the viewer origin are used.
 """
 
 import os
@@ -60,6 +68,9 @@ GOAD_SURVEY_ISO = '1906-06-30'
 NON_BUILDING = re.compile(r'\b(gates?|monument|cairn|pillars?|bridge|fence|statue|plaque|sign)\b', re.I)
 NEW_ID_BASE = 100001            # pastforward ids top out ~19k; keep new ones clear of them
 COVERAGE_BUFFER_M = 60          # Goad coverage ≈ Goad 1906 buildings buffered by this
+GOAD_YEAR = 1906                # rules 1–3 apply up to here; later years are rule 4 (replacement)
+VIEWER_ORIGIN = (-97.135515, 49.895396)   # pfviewer C_LON/C_LAT — its terrain spans ±6 km
+REPLACE_OVERLAP = 0.2           # rule 4: old building counts as replaced at this overlap (either area)
 SECONDARY_OSM = {'garage', 'garages', 'shed', 'carport', 'roof', 'construction', 'hut', 'kiosk'}
 OSM_MATERIAL = {'brick': 'brick', 'wood': 'wood', 'timber_framing': 'wood', 'stone': 'stone',
                 'concrete': 'concrete', 'sandstone': 'stone', 'limestone': 'stone'}
@@ -94,9 +105,10 @@ def clean(props):
 
 
 def iso_in_years(uid, salt, lo, hi):
-    """Deterministic ISO date within years lo..hi inclusive, never after the Goad survey
-    (pfviewer's 1906 view is 1906-07-01, so later 1906 dates wouldn't appear on it)."""
-    return min(iso_from_fraction(unit_hash(uid, salt), lo, hi + 1), GOAD_SURVEY_ISO)
+    """Deterministic ISO date within years lo..hi inclusive. Pre-survey years are never
+    placed after the Goad survey (pfviewer's 1906 view is 1906-07-01)."""
+    iso = iso_from_fraction(unit_hash(uid, salt), lo, hi + 1)
+    return min(iso, GOAD_SURVEY_ISO) if hi <= GOAD_YEAR else iso
 
 
 def born_from_year(uid, year, circa=False, basis='assessment_year_built'):
@@ -104,7 +116,7 @@ def born_from_year(uid, year, circa=False, basis='assessment_year_built'):
     if basis == 'assessment_year_built' and year == 1905:
         lo, hi, basis = 1900, 1905, 'assessment_year_built_1905_default'
     elif circa:
-        lo, hi = year - 3, min(year + 3, 1906)
+        lo, hi = year - 3, (min(year + 3, GOAD_YEAR) if year <= GOAD_YEAR else year + 3)
     else:
         lo = hi = year
     iso = iso_in_years(uid, 'assess_born', lo, hi)
@@ -208,12 +220,17 @@ def main():
     ap.add_argument('--roads', default=os.path.join(DATA_DIR, 'wpg_roads.geojson'))
     ap.add_argument('--out', default=os.path.join(DATA_DIR, 'pastforward_2026_assessment.geojson'))
     ap.add_argument('--out-osm', default=os.path.join(DATA_DIR, 'pastforward_2026_osm.geojson'))
+    ap.add_argument('--cutoff', type=int, default=1939, help='latest year_built / heritage year to include')
+    ap.add_argument('--max-radius-m', type=float, default=6000, help='only parcels within this of the viewer origin')
     a = ap.parse_args()
     A = lambda n: os.path.join(a.assess_dir, n)
 
     master = json.load(open(a.master))
     pf = master['features']
-    parcels = json.load(open(A('assessment_to_1906.geojson')))['features']
+    origin = Point(to_m(*VIEWER_ORIGIN))
+    in_range = lambda g: g.centroid.distance(origin) <= a.max_radius_m
+    parcels = [p for p in json.load(open(A(f'assessment_to_{a.cutoff}.geojson')))['features']
+               if int(p['properties']['born_low']) <= a.cutoff and in_range(geom_m(p['geometry']))]
     osm = json.load(open(A('osm_buildings.geojson')))
     heritage = json.load(open(A('historical_resources.json')))
     roads = [geom_m(f['geometry']) for f in json.load(open(a.roads))['features'] if f.get('geometry')]
@@ -234,9 +251,13 @@ def main():
     main_year = {}          # pf index -> (year, parcel props)
     out_floor = {}          # pf index -> earliest year its house was built
     no_goad = []
+    post = []               # rule 4: parcels built after the Goad survey
     for p in parcels:
         lot = geom_m(p['geometry'])
         pp = p['properties']
+        if int(pp['born_low']) > GOAD_YEAR:
+            post.append((p, lot))
+            continue
         members = []
         for k in goad_tree.query(lot):
             i = goad[k]
@@ -302,9 +323,9 @@ def main():
     # ── Rule 2/3: new structures outside Goad coverage ──────────────────────
     new = {}                # key (osm id or roll) -> dict(geom, props)
     osm_used = {}
-    for p, lot in no_goad:
+    for p, lot in no_goad + post:
         pp = p['properties']
-        if coverage.contains(lot.centroid):
+        if int(pp['born_low']) <= GOAD_YEAR and coverage.contains(lot.centroid):
             review.append({'type': 'Feature', 'geometry': p['geometry'],
                            'properties': {**pp, 'review_reason': 'inside Goad coverage but no Goad structure on parcel'}})
             stats['held_for_review'] += 1
@@ -345,7 +366,8 @@ def main():
         else:
             pb = p_brick(pp)
             mat = 'brick' if unit_hash(uid, 'material') < pb else 'wood'
-            notes.append(f'material inferred from Goad 1906 brick rates for similar houses (p_brick={pb:.2f}); actual material unknown')
+            notes.append(f'material inferred from Goad 1906 brick rates for similar houses (p_brick={pb:.2f}); actual material unknown'
+                         + ('; post-1906 house, rates from pre-1907 houses' if year > GOAD_YEAR else ''))
             stats['material_inferred_' + mat] += 1
         if fp_src != 'osm':
             notes.append(f'footprint synthetic ({fp_src}) from assessment parcel; real footprint unknown')
@@ -370,7 +392,9 @@ def main():
     new_tree = STRtree([new[k]['geom'] for k in new_tree_keys]) if new else None
     for r in heritage:
         m = re.search(r'(1[6-9]\d\d)', r.get('construction_date') or '')
-        if not m or int(m.group(1)) > 1906 or not r.get('point') or NON_BUILDING.search(r.get('historical_name') or ''):
+        if not m or int(m.group(1)) > a.cutoff or not r.get('point') or NON_BUILDING.search(r.get('historical_name') or ''):
+            continue
+        if not in_range(transform(to_m, shape(r['point']))):
             continue
         year = int(m.group(1))
         circa = bool(re.match(r'\s*\d{4}\s*c', r.get('construction_date') or ''))
@@ -389,8 +413,9 @@ def main():
             props.update(born=iso, born_low=str(lo), born_high=str(hi), born_basis=basis)
             return True
 
-        # (a) a Goad building at the point
-        hit = [goad[k] for k in goad_tree.query(pt.buffer(5)) if pg[goad[k]].distance(pt) <= 5]
+        # (a) a Goad building at the point (pre-survey heritage only — a later heritage
+        # building standing there now replaced whatever Goad shows; rule 4 below)
+        hit = [goad[k] for k in goad_tree.query(pt.buffer(5)) if pg[goad[k]].distance(pt) <= 5] if year <= GOAD_YEAR else []
         if hit:
             i = min(hit, key=lambda i: pg[i].distance(pt))
             props = pf[i]['properties']
@@ -412,8 +437,8 @@ def main():
                     n['props']['notes'] = [x for x in n['props']['notes'] if not x.startswith('material inferred')] + ['material from Historical Resources description']
                 stats['heritage_assessment_updated'] += 1
                 continue
-        # (c) inside Goad coverage but nothing there — review
-        if coverage.contains(pt):
+        # (c) inside Goad coverage but nothing there — review (pre-survey only)
+        if year <= GOAD_YEAR and coverage.contains(pt):
             review.append({'type': 'Feature', 'geometry': r['point'], 'properties': {
                 **clean(heritage_props), 'address': addr, 'review_reason': 'heritage point inside Goad coverage with no Goad structure'}})
             stats['heritage_review'] += 1
@@ -455,6 +480,34 @@ def main():
         props.update(born=iso, born_low=str(lo), born_high=str(hi), born_basis=basis)
         new[t['osm_id']] = {'geom': og[k], 'years': [year], 'props': props}
         stats['heritage_new_osm'] += 1
+
+    # ── Rule 4: buildings replaced by post-survey ones ──────────────────────
+    # Existing (master) buildings under a new building's footprint, born before it,
+    # die just before its construction starts. Earlier died dates are kept.
+    pf_tree = STRtree(pg)
+    for key, n in new.items():
+        if int(n['props']['born_low']) <= GOAD_YEAR:
+            continue
+        g, new_born = n['geom'], n['props']['born']
+        died_y = int(new_born[:4]) - 1          # demolished during the year before completion
+        for i in pf_tree.query(g):
+            if pg[i].area == 0:
+                continue
+            inter = pg[i].intersection(g).area
+            if inter / pg[i].area < REPLACE_OVERLAP and inter / g.area < REPLACE_OVERLAP:
+                continue
+            props = pf[i]['properties']
+            if props.get('born') and props['born'] >= new_born:
+                continue
+            died = iso_in_years(props.get('pf_uid') or str(i), 'replaced', died_y, died_y)
+            if props.get('died') and props['died'] <= died:
+                stats['replace_kept_earlier_died'] += 1
+                continue
+            if props.get('born') and died <= props['born']:
+                continue
+            props.update(died=died, died_low=str(died_y), died_high=str(died_y + 1), died_basis='replaced_by_later_building',
+                         replaced_by=n['props'].get('address') or n['props'].get('name'))
+            stats['replaced_by_post1906'] += 1
 
     # ── Write ───────────────────────────────────────────────────────────────
     # Anything with OSM geometry (or OSM tags) goes ONLY to the ODbL file.
