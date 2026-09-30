@@ -595,19 +595,25 @@ export const CONFIG = {
 
   // ── River steamboats ─────────────────────────────────────────────────
   // Sternwheelers plying the Red/Assiniboine, with stack smoke and a foam +
-  // Kelvin-arm wake. One roaming boat at most; `presence` is the fraction of
-  // time one is on the river for a given year (linear between keyframes):
-  // first boat 1859 (Anson Northup), ~50% through the 1860s, ~90% at the
-  // 1872–78 peak, collapsing after the Pembina Branch rail link (Dec 1878)
-  // and CPR (1881), then occasional Assiniboine freight / excursion boats.
-  // Only while the river is open (CONFIG.seasons ice/floes). One boat is
-  // always moored at the Steamboat Landing south of Upper Fort Garry while
-  // presence > 0 (frozen in over winter, no smoke).
+  // Kelvin-arm wake. `boats` = how many can be out at once (by year);
+  // `presence` = fraction of time each of those is on the river (linear
+  // between keyframes). First boat: the Anson Northup reached Fort Garry
+  // 10 June 1859 (nothing before). ~50% through the 1860s (International
+  // from 1862), the 1872–78 peak (several boats), collapse after the Pembina
+  // Branch rail link (Dec 1878) and CPR (1881); Assiniboine freight boom
+  // 1879–85; occasional freight / excursion boats after, with Hyland's
+  // excursion steamers Winnitoba (launched 7 July 1909) and Bonnitoba (1910)
+  // busy until the 1915 season. Only while the river is open (CONFIG.seasons
+  // ice/floes). A boat is moored at the Steamboat Landing south of Upper Fort
+  // Garry through `dockedYears` (frozen in over winter, no smoke).
   steamboats: {
-    presence: [[1858,0],[1859,0.5],[1869,0.5],[1872,0.9],[1878,0.9],[1879,0.5],[1882,0.3],[1886,0.12],[1905,0.08],[1912,0.04],[1913,0]],
+    presence: [[1859.43,0],[1859.44,0.5],[1869,0.5],[1872,0.9],[1878,0.9],[1879,0.6],[1882,0.45],[1886,0.3],
+               [1905,0.25],[1909.5,0.25],[1909.52,0.55],[1915.7,0.55],[1916.2,0.15],[1960,0.1]],
+    boats: [[1859,1],[1869.9,1],[1870,2],[1872,3],[1878.9,3],[1879,2],[1886,2],[1886.1,1],[1909.5,1],[1909.52,2],[1915.7,2],[1916.2,1]],
+    dockedYears: [1859.44, 1890],
     // Share of trips that come down the Assiniboine (then continue down the
     // Red) rather than running the Red — Assiniboine boom 1879–85 (to Portage/Brandon).
-    assiniboineShare: [[1859,0.15],[1878,0.2],[1879,0.55],[1885,0.55],[1887,0.3]],
+    assiniboineShare: [[1859,0.15],[1878,0.2],[1879,0.55],[1885,0.55],[1887,0.3],[1900,0.15]],
     speed: { upstream: 3.0, downstream: 4.2 },   // m/s; the Red flows north, the Assiniboine east
     draft: 0.45,                                 // metres of hull below the waterline
     dock: { lon: -97.13226, lat: 49.88590, heading: 90 },   // moored against the landing's T-head; heading ° (0=N, 90=E)
@@ -649,6 +655,44 @@ export const CONFIG = {
       ],
     },
   },
+
+  // ── Small craft ─────────────────────────────────────────────────────
+  // Canoes (birchbark to ~1900, painted canvas after), HBC York boats
+  // (Red River brigades, fading out once steamboats took the freight, gone by
+  // the late 1870s), rowboats / skiffs (pleasure boating from the 1870s;
+  // Winnipeg Rowing Club 1881) and gasoline launches (from ~1905). Each boat
+  // works a stretch of river back and forth, off the centreline. Open water
+  // only. count = [[year, boats], …] (linear, rounded).
+  smallCraft: {
+    canoe:   { count: [[1850,6],[1880,3],[1900,4],[1960,5]],  speed: 1.3, length: 5.2, beam: 0.9,
+               birchUntil: 1900, birch: 0x9A7A52, canvas: [0x2E5E3A,0x8B2A1E,0xC9B98F,0x2A4A6A,0x6E6A5E] },
+    york:    { count: [[1850,2],[1865,2],[1872,1],[1878,0]],     speed: 1.1, length: 12, beam: 3.0, color: 0x7A5E3E, sail: 0xE2DCC8 },
+    rowboat: { count: [[1868,0],[1882,3],[1912,5],[1935,3],[1960,2]], speed: 0.9, length: 4.4, beam: 1.3,
+               colors: [0xE6E0CE,0x3E5A6E,0x7A5E3E,0x8B2A1E] },
+    launch:  { count: [[1904,0],[1910,2],[1930,3],[1960,3]],      speed: 3.5, length: 8, beam: 2.1, color: 0xEDE8DA, cabin: 0x7A5E3E },
+    redShare: 0.65,          // share on the Red (rest on the Assiniboine)
+    stretch: [350, 1400],    // metres of river each boat works back and forth
+    rower: 0x2A2622,         // people
+  },
+
+  // ── Ferries ─────────────────────────────────────────────────────────
+  // Crossings before the bridges. lon/lat = a point mid-river on the crossing;
+  // the ferry runs perpendicular to the river there, bank to bank.
+  //  • Winnipeg–St Boniface (Red): scow ferry by the 1860s (Duncan
+  //    Macdougall), west landing at the foot of Notre Dame East (Pioneer
+  //    Ave) → Provencher side; Robert Tait's franchise from 15 Mar 1878 and
+  //    his steam ferry Adelaide (side-wheel double-ender, 90×30 ft) from
+  //    9 June 1878; ended when the Broadway Bridge opened 16 Apr 1882.
+  //    (Start year approximate — "1860s".)
+  //  • Assiniboine, just below Upper Fort Garry (Main St line): replaced by
+  //    the first Main Street Bridge, 1881. Start date not found — assumed in
+  //    service from the start of the timeline.
+  ferries: [
+    { name: 'St Boniface ferry', river: 'red',         lon: -97.1287, lat: 49.8933, from: '1860-01-01', to: '1878-06-09', kind: 'scow' },
+    { name: 'Adelaide',          river: 'red',         lon: -97.1287, lat: 49.8933, from: '1878-06-09', to: '1882-04-16', kind: 'steam' },
+    { name: 'Assiniboine ferry', river: 'assiniboine', lon: -97.1338, lat: 49.8856, from: '1850-01-01', to: '1881-06-01', kind: 'scow' },
+  ],
+  ferryTiming: { crossSeconds: 70, dwellSeconds: 25 },
 
   // ── Construction / demolition / fire ─────────────────────────────────
   // Buildings with a born date go up over [born − duration, born] (so they

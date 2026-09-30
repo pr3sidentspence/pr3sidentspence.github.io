@@ -7137,14 +7137,14 @@ function initTrains(geojson){
 }
 
 // ── River steamboats ───────────────────────────────────────────────
-// See CONFIG.steamboats. One roaming sternwheeler at most, scheduled as a
-// duty cycle: after each trip the idle gap is drawn so that, on average,
-// trip / (trip + gap) = presence(year). A docked boat sits at the Steamboat
-// Landing for the whole era. Boats ride the flood plane (waterMesh.position.y),
+// See CONFIG.steamboats. Up to boats(year) roaming sternwheelers, each slot
+// scheduled as a duty cycle: after each trip the idle gap is drawn so that,
+// on average, trip / (trip + gap) = presence(year). A docked boat sits at the
+// Steamboat Landing through dockedYears. Boats ride the flood plane (waterMesh.position.y),
 // so they rise with the flood slider. Local boat axes: +Z = bow, +Y = up.
 const SB=CONFIG.steamboats;
 const SB_L=38, SB_B=8.5;                 // hull length / beam (m) — ~ the International (137 ft)
-let sbRoutes=null, sbRoaming=null, sbDocked=null, sbIdle=0, sbLastP=null;
+let sbRoutes=null, sbDocked=null;
 const _sbVec=new THREE.Vector3();
 
 function sbKey(keys,year){
@@ -7284,71 +7284,57 @@ function initSteamboats(){
   console.log(`Steamboats: routes red ${sbRoutes.red.totalLen.toFixed(0)}m, assiniboine ${sbRoutes.assiniboine.totalLen.toFixed(0)}m`);
 }
 
-function spawnRoamingBoat(startT){
+// Roaming steamboats: up to sbKey(SB.boats) slots, each its own duty cycle
+const sbSlots=[];   // {boat, idle, lastP}
+function spawnRoamingBoat(slot,startT){
   const yr=sbFractionalYear(currentViewDate);
   const onAss=Math.random()<sbKey(SB.assiniboineShare,yr);
   const route=onAss?sbRoutes.assiniboine:sbRoutes.red;
   const dir=Math.random()<0.5?1:-1;              // +1 = downstream
   const g=buildSteamboatGroup(); scene.add(g);
-  sbRoaming={group:g,route,dir,t:startT??(dir>0?0:1),trail:[],wake:buildWakeMesh(),wakeFade:1,
+  slot.boat={group:g,route,dir,t:startT??(dir>0?0:1),trail:[],wake:buildWakeMesh(),wakeFade:1,
              emitters:sbSmokePools(),speed:dir>0?SB.speed.downstream:SB.speed.upstream};
 }
-function removeRoamingBoat(){
-  if(!sbRoaming) return;
-  const b=sbRoaming; sbRoaming=null;
+function removeRoamingBoat(slot){
+  if(!slot.boat) return;
+  const b=slot.boat; slot.boat=null;
   scene.remove(b.group); b.group.traverse(o=>{if(o.isMesh)o.geometry.dispose();});
   scene.remove(b.wake); b.wake.geometry.dispose(); b.wake.material.dispose();
   sbDisposeSmoke(b.emitters);
 }
-
-function tickSteamboats(dt){
-  if(!sbRoutes||!waterMesh) return;
-  const yr=sbFractionalYear(currentViewDate);
-  const p=sbKey(SB.presence,yr);
-  const waterY=waterMesh.position.y;
-  const sailing=p>0&&season.ice<0.01&&season.floes<0.15;   // river open (CONFIG.seasons)
-
-  // Docked boat: whole era; smokes only in the sailing season
-  sbDocked.group.visible=p>0;
-  if(p>0){
-    sbDocked.group.position.y=waterY-SB.draft;
-    for(const e of sbDocked.emitters){
-      const a=sbDocked.group.userData.smokeAnchors[sbDocked.emitters.indexOf(e)];
-      a.getWorldPosition(_sbVec); tickSmoke(e,dt,_sbVec,sailing);
-    }
-  }
-
-  if(!sailing){ removeRoamingBoat(); sbIdle=Math.max(sbIdle,5); return; }
-  if(!sbRoaming){
+function tickRoamingSlot(slot,dt,p,waterY){
+  if(!slot.boat){
     // First tick, or the date moved to a different presence (scrubbing): re-roll
     // as if arriving at a random moment — a boat is already out with probability p,
     // otherwise wait a random slice of an average gap.
-    if(sbLastP===null||Math.abs(p-sbLastP)>0.05){
-      sbLastP=p;
-      if(Math.random()<p){ spawnRoamingBoat(Math.random()); return; }
+    if(slot.lastP===null||Math.abs(p-slot.lastP)>0.05){
+      slot.lastP=p;
+      if(Math.random()<p){ spawnRoamingBoat(slot,Math.random()); return; }
       const avgTrip=sbRoutes.red.totalLen/((SB.speed.upstream+SB.speed.downstream)/2);
-      sbIdle=Math.random()*avgTrip*(1-p)/Math.max(p,0.01);
+      slot.idle=Math.random()*avgTrip*(1-p)/Math.max(p,0.01);
     }
-    sbIdle-=dt;
-    if(sbIdle<=0) spawnRoamingBoat();
+    slot.idle-=dt;
+    if(slot.idle<=0) spawnRoamingBoat(slot);
     return;
   }
-  sbLastP=p;
-  const b=sbRoaming, r=b.route;
+  slot.lastP=p;
+  const b=slot.boat, r=b.route;
   b.t+=b.dir*b.speed*dt/r.totalLen;
   if(b.t>1||b.t<0){
     // Trip over — idle gap so trip/(trip+gap) ≈ presence on average
     const trip=r.totalLen/b.speed;
-    sbIdle=trip*(1-p)/Math.max(p,0.01)*(-Math.log(1-Math.random()*0.999));
-    removeRoamingBoat(); return;
+    slot.idle=trip*(1-p)/Math.max(p,0.01)*(-Math.log(1-Math.random()*0.999));
+    removeRoamingBoat(slot); return;
   }
   const s=sampleRoute(r,b.t);
   const yaw=b.dir>0?s.yaw:s.yaw+Math.PI;
-  b.group.position.set(s.x,waterY-SB.draft,s.z);
+  // Keep to the right of the channel so two boats don't sail through each other
+  const side=b.dir>0?-6:6;
+  b.group.position.set(s.x+s.px*side,waterY-SB.draft,s.z+s.pz*side);
   b.group.rotation.y=yaw;
   b.group.userData.wheel.rotation.x+=b.speed*1.25/2.3*dt;   // wheel turns a bit faster than hull speed (slip)
   // Stern trail for the wake (a point every ~3 m)
-  const sx=s.x-Math.sin(yaw)*(SB_L/2+2), sz=s.z-Math.cos(yaw)*(SB_L/2+2);
+  const sx=b.group.position.x-Math.sin(yaw)*(SB_L/2+2), sz=b.group.position.z-Math.cos(yaw)*(SB_L/2+2);
   const last=b.trail[0];
   if(!last||Math.hypot(last.x-sx,last.z-sz)>3){ b.trail.unshift({x:sx,z:sz}); if(b.trail.length>SB_WAKE_PTS) b.trail.pop(); }
   else{ last.x=sx; last.z=sz; }
@@ -7356,6 +7342,226 @@ function tickSteamboats(dt){
   for(let i=0;i<b.emitters.length;i++){
     b.group.userData.smokeAnchors[i].getWorldPosition(_sbVec);
     tickSmoke(b.emitters[i],dt,_sbVec,true);
+  }
+}
+
+function tickSteamboats(dt){
+  if(!sbRoutes||!waterMesh) return;
+  const yr=sbFractionalYear(currentViewDate);
+  const p=yr<SB.presence[0][0]?0:sbKey(SB.presence,yr);
+  const nBoats=p>0?Math.round(sbKey(SB.boats,yr)):0;
+  const waterY=waterMesh.position.y;
+  const sailing=p>0&&season.ice<0.01&&season.floes<0.15;   // river open (CONFIG.seasons)
+
+  // Docked boat at the landing: its own era; smokes only in the sailing season
+  const [dk0,dk1]=SB.dockedYears??[1859.44,1890];
+  const docked=yr>=dk0&&yr<dk1;
+  sbDocked.group.visible=docked;
+  if(docked){
+    sbDocked.group.position.y=waterY-SB.draft;
+    for(const e of sbDocked.emitters){
+      const a=sbDocked.group.userData.smokeAnchors[sbDocked.emitters.indexOf(e)];
+      a.getWorldPosition(_sbVec); tickSmoke(e,dt,_sbVec,sailing);
+    }
+  }
+  tickSmallCraft(dt,waterY);
+  tickFerries(dt,waterY);
+
+  while(sbSlots.length<nBoats) sbSlots.push({boat:null,idle:0,lastP:null});
+  for(let i=0;i<sbSlots.length;i++){
+    const slot=sbSlots[i];
+    if(!sailing||i>=nBoats){ removeRoamingBoat(slot); slot.idle=Math.max(slot.idle,5+i*40); continue; }
+    tickRoamingSlot(slot,dt,p,waterY);
+  }
+}
+
+window._debugBoats=()=>({steam:sbSlots.filter(s=>s.boat).length+'/'+sbSlots.length,docked:!!sbDocked?.group.visible,
+  small:scBoats.map(b=>b.kind).join(','),ferries:(ferries||[]).filter(f=>f.group?.visible).map(f=>f.F.name+' '+Math.hypot(f.cross.x1-f.cross.x0,f.cross.z1-f.cross.z0).toFixed(0)+'m').join('; ')});
+
+// ── Small craft (CONFIG.smallCraft) ────────────────────────────────
+// Canoes, York boats, rowboats, launches. Each works a stretch of river
+// back and forth at an offset from the centreline (kept inside the river
+// polygons), turning around at the ends. Open water only.
+const SC=CONFIG.smallCraft;
+const scBoats=[];   // {kind, group, route, t0, t1, t, dir, off, speed, phase}
+function _inRiver(x,z){ return !riverRings.length||riverRings.some(r=>pointInPolygon(x,z,r)); }
+function _lensHull(len,beam,depth,color,innerColor){
+  // Pointed-both-ends hull (plan: two arcs), with a darker open interior on top
+  const g=new THREE.Group();
+  const shape=(L,B)=>{const s=new THREE.Shape();s.moveTo(0,-L/2);s.quadraticCurveTo(B,0,0,L/2);s.quadraticCurveTo(-B,0,0,-L/2);return s;};
+  const outer=new THREE.ExtrudeGeometry(shape(len,beam),{depth,bevelEnabled:false,curveSegments:8}); outer.rotateX(-Math.PI/2);
+  const m=new THREE.Mesh(outer,new THREE.MeshLambertMaterial({color})); m.castShadow=true; g.add(m);
+  if(innerColor!==undefined){
+    const inner=new THREE.ShapeGeometry(shape(len*0.9,beam*0.8),8); inner.rotateX(-Math.PI/2);
+    const mi=new THREE.Mesh(inner,new THREE.MeshLambertMaterial({color:innerColor})); mi.position.y=depth*0.55; g.add(mi);
+  }
+  return g;
+}
+function _person(g,x,y,z,col){
+  const m=new THREE.MeshLambertMaterial({color:col});
+  const b=new THREE.Mesh(new THREE.BoxGeometry(0.42,0.6,0.3),m); b.position.set(x,y+0.3,z); b.castShadow=true; g.add(b);
+  const h=new THREE.Mesh(new THREE.SphereGeometry(0.13,6,5),new THREE.MeshLambertMaterial({color:0xC89878})); h.position.set(x,y+0.72,z); g.add(h);
+  return b;
+}
+function buildSmallCraft(kind,yr){
+  const K=SC[kind], g=new THREE.Group(), pick=a=>a[Math.floor(Math.random()*a.length)];
+  const oars=[];
+  if(kind==='canoe'){
+    const col=yr<K.birchUntil?K.birch:pick(K.canvas);
+    g.add(_lensHull(K.length,K.beam,0.38,col,0x5A4630));
+    const n=Math.random()<0.7?2:3;
+    for(let i=0;i<n;i++){
+      const z=(i-(n-1)/2)*1.6; _person(g,0,0.1,z,SC.rower);
+      const pd=new THREE.Mesh(new THREE.BoxGeometry(0.05,0.05,1.3),new THREE.MeshLambertMaterial({color:0x6A5030}));
+      pd.position.set(i%2?-0.45:0.45,0.55,z); g.add(pd); oars.push(pd);
+    }
+  }else if(kind==='york'){
+    g.add(_lensHull(K.length,K.beam,0.9,K.color,0x4A3A28));
+    for(let i=0;i<4;i++) for(const sx of[-1,1]){
+      _person(g,sx*0.5,0.35,-3.5+i*2.2,SC.rower);
+      const o=new THREE.Mesh(new THREE.BoxGeometry(3.2,0.07,0.07),new THREE.MeshLambertMaterial({color:0x8A6A45}));
+      o.position.set(sx*1.9,0.7,-3.5+i*2.2); g.add(o); oars.push(o);
+    }
+    _person(g,0,0.35,5.2,SC.rower);   // steersman
+    const mast=new THREE.Mesh(new THREE.CylinderGeometry(0.08,0.1,7,6),new THREE.MeshLambertMaterial({color:0x6A5030}));
+    mast.position.set(0,4,1.8); g.add(mast);
+    const sail=new THREE.Mesh(new THREE.PlaneGeometry(3.6,4.2),new THREE.MeshLambertMaterial({color:K.sail,side:THREE.DoubleSide}));
+    sail.position.set(0,4.6,1.75); sail.rotation.y=Math.PI/2*0.15; g.add(sail);
+  }else if(kind==='rowboat'){
+    const col=pick(K.colors);
+    // square-sterned skiff: lens hull with the stern cut off by a transom box
+    g.add(_lensHull(K.length,K.beam,0.45,col,0x6A5A44));
+    _person(g,0,0.12,0.2,SC.rower);
+    for(const sx of[-1,1]){
+      const o=new THREE.Mesh(new THREE.BoxGeometry(2.2,0.05,0.05),new THREE.MeshLambertMaterial({color:0x8A6A45}));
+      o.position.set(sx*1.0,0.5,0.2); g.add(o); oars.push(o);
+    }
+    if(Math.random()<0.5) _person(g,0,0.12,-1.3,0x5A3A4A);   // passenger
+  }else{ // launch
+    g.add(_lensHull(K.length,K.beam,0.8,K.color,0x6A5A44));
+    const cab=new THREE.Mesh(new THREE.BoxGeometry(K.beam*0.7,1.2,2.8),new THREE.MeshLambertMaterial({color:K.cabin}));
+    cab.position.set(0,1.3,0.6); cab.castShadow=true; g.add(cab);
+    const roof=new THREE.Mesh(new THREE.BoxGeometry(K.beam*0.85,0.1,3.4),new THREE.MeshLambertMaterial({color:0xEDE8DA}));
+    roof.position.set(0,1.95,0.6); g.add(roof);
+    _person(g,0,0.5,-2.2,SC.rower);
+  }
+  g.userData.oars=oars;
+  return g;
+}
+function spawnSmallCraft(kind,yr){
+  const route=Math.random()<SC.redShare?sbRoutes.red:sbRoutes.assiniboine;
+  const [a,b]=SC.stretch, len=Math.min(route.totalLen*0.9,a+Math.random()*(b-a));
+  const t0=Math.random()*(1-len/route.totalLen), t1=t0+len/route.totalLen;
+  const g=buildSmallCraft(kind,yr); scene.add(g);
+  const K=SC[kind];
+  scBoats.push({kind,group:g,route,t0,t1,t:t0+Math.random()*(t1-t0),dir:Math.random()<0.5?1:-1,
+    off:(Math.random()*2-1)*(route===sbRoutes.red?28:14),speed:K.speed*(0.8+Math.random()*0.4),phase:Math.random()*6.28,yaw:null});
+}
+function removeSmallCraft(i){
+  const b=scBoats[i]; scene.remove(b.group);
+  b.group.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});
+  scBoats.splice(i,1);
+}
+let _scYear=null;
+function tickSmallCraft(dt,waterY){
+  if(!SC||!sbRoutes) return;
+  const yr=sbFractionalYear(currentViewDate), open=season.ice<0.01&&season.floes<0.15;
+  // Rebuild the fleet when the year changes (or the river freezes/opens)
+  const key=open?Math.floor(yr):-1;
+  if(key!==_scYear){
+    _scYear=key;
+    while(scBoats.length) removeSmallCraft(scBoats.length-1);
+    if(open) for(const kind of['canoe','york','rowboat','launch']){
+      const n=Math.round(sbKey(SC[kind].count,yr));
+      for(let i=0;i<n;i++) spawnSmallCraft(kind,yr);
+    }
+  }
+  for(const b of scBoats){
+    const r=b.route;
+    b.t+=b.dir*b.speed*dt/r.totalLen;
+    if(b.t>b.t1){b.t=b.t1;b.dir=-1;} else if(b.t<b.t0){b.t=b.t0;b.dir=1;}
+    const s=sampleRoute(r,b.t);
+    let off=b.off; while(Math.abs(off)>2&&!_inRiver(s.x+s.px*off,s.z+s.pz*off)) off*=0.7;   // stay off the bank
+    const x=s.x+s.px*off, z=s.z+s.pz*off, want=b.dir>0?s.yaw:s.yaw+Math.PI;
+    // turn smoothly at the ends instead of snapping
+    if(b.yaw===null) b.yaw=want;
+    let d=want-b.yaw; d=Math.atan2(Math.sin(d),Math.cos(d)); b.yaw+=d*Math.min(1,dt*1.2);
+    b.phase+=dt*(b.kind==='launch'?0:2.4);
+    b.group.position.set(x,waterY-0.12+Math.sin(b.phase*0.5)*0.03,z);
+    b.group.rotation.y=b.yaw;
+    b.group.rotation.z=Math.sin(b.phase*0.5)*0.02;
+    for(const o of b.group.userData.oars) o.rotation.y=Math.sin(b.phase)*0.35;   // paddle/oar stroke
+  }
+}
+
+// ── Ferries (CONFIG.ferries) ────────────────────────────────────────
+// Cable scows and Tait's steam ferry Adelaide, shuttling bank to bank on a
+// perpendicular to the river at the configured point, with a cable strung
+// across. Built on first use; shown only within each ferry's dates and while
+// the river is open (the ferry is pulled up in winter).
+let ferries=null;
+function _ferryCrossing(F){
+  const route=F.river==='red'?sbRoutes.red:sbRoutes.assiniboine;
+  const offZ=CONFIG.water.offsetZ??0, [fx,fy]=project(F.lon,F.lat), cx=fx, cz=-fy+offZ;
+  let bt=0,bd=Infinity;
+  for(let i=0;i<=400;i++){const s=sampleRoute(route,i/400),d=(s.x-cx)**2+(s.z-cz)**2;if(d<bd){bd=d;bt=i/400;}}
+  const s=sampleRoute(route,bt);
+  // March out each way to the bank (river polygons); fall back to ±50 m
+  const reach=sgn=>{let d=4;while(d<260&&_inRiver(s.x+s.px*sgn*d,s.z+s.pz*sgn*d))d+=3;return d>=260?50:d-6;};
+  const a=reach(1), b=reach(-1);
+  return{x0:s.x+s.px*a,z0:s.z+s.pz*a,x1:s.x-s.px*b,z1:s.z-s.pz*b,yaw:s.yaw};
+}
+function buildFerry(F){
+  const g=new THREE.Group(), steam=F.kind==='steam';
+  const L=steam?27:13, B=steam?9:5.5;
+  const mat=c=>new THREE.MeshLambertMaterial({color:c});
+  const add=(geo,m,x,y,z)=>{const me=new THREE.Mesh(geo,m);me.position.set(x,y,z);me.castShadow=true;me.receiveShadow=true;g.add(me);return me;};
+  // Deck runs across the river: local +X = along the crossing
+  add(new THREE.BoxGeometry(L,0.7,B),mat(steam?0xE6E0CE:0x6E5838),0,0.35,0);
+  add(new THREE.BoxGeometry(L,0.08,B*0.92),mat(0x8A7250),0,0.74,0);
+  for(const sz of[-1,1]) add(new THREE.BoxGeometry(L*0.9,0.5,0.1),mat(0x5A4630),0,1.0,sz*B*0.46);   // side rails
+  if(steam){
+    add(new THREE.BoxGeometry(6,2.4,3.2),mat(0xF1EDE1),0,2.0,0);           // engine house, centred (double-ender)
+    add(new THREE.BoxGeometry(6.6,0.2,3.8),mat(0x6B6255),0,3.3,0);
+    add(new THREE.CylinderGeometry(0.35,0.4,5,8),mat(0x1E1C1A),0,5.5,0);
+    for(const sz of[-1,1]){                                             // side wheels in boxes
+      add(new THREE.BoxGeometry(4.2,2.4,1.2),mat(0x8B2A1E),0,1.4,sz*(B/2+0.6));
+    }
+  }else{
+    // a team and wagon waiting on the scow now and then
+    if(Math.random()<0.6){ add(new THREE.BoxGeometry(2.6,1.1,1.5),mat(0x7A5E3E),-1.5,1.3,0); add(new THREE.BoxGeometry(1.8,1.3,0.7),mat(0x4A3426),2.2,1.4,0); }
+    _person(g,L/2-1.2,0.8,1.8,SC.rower);   // ferryman at the cable
+  }
+  return g;
+}
+function tickFerries(dt,waterY){
+  const FL=CONFIG.ferries; if(!FL||!sbRoutes) return;
+  if(!ferries){
+    if(!riverRings.length) return;   // wait for the river polygons
+    ferries=FL.map(F=>({F,from:parseLocalISODate(F.from).getTime(),to:parseLocalISODate(F.to).getTime(),
+      cross:_ferryCrossing(F),group:null,cable:null,t:Math.random(),phase:0}));
+  }
+  const now=currentViewDate.getTime(), open=season.ice<0.01&&season.floes<0.15, T=CONFIG.ferryTiming;
+  for(const f of ferries){
+    const live=now>=f.from&&now<f.to;
+    const c=f.cross;
+    if(live&&!f.group){
+      f.group=buildFerry(f.F); scene.add(f.group);
+      const g=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(c.x0,0,c.z0),new THREE.Vector3(c.x1,0,c.z1)]);
+      f.cable=new THREE.Line(g,new THREE.LineBasicMaterial({color:0x2A2622})); scene.add(f.cable);
+    }
+    if(!f.group) continue;
+    f.group.visible=live&&open; f.cable.visible=live;
+    if(!live||!open) continue;
+    // shuttle: dwell · cross · dwell · cross back
+    const cyc=2*(T.crossSeconds+T.dwellSeconds);
+    f.phase=(f.phase+dt/cyc)%1;
+    const u=f.phase*cyc, D=T.dwellSeconds, X=T.crossSeconds;
+    const ease=v=>v*v*(3-2*v);
+    const k=u<D?0:u<D+X?ease((u-D)/X):u<2*D+X?1:1-ease((u-2*D-X)/X);
+    f.group.position.set(c.x0+(c.x1-c.x0)*k,waterY-0.3,c.z0+(c.z1-c.z0)*k);
+    f.group.rotation.y=Math.atan2(c.z0-c.z1,c.x1-c.x0);   // local +X along the crossing
+    f.cable.position.y=waterY+1.2;
   }
 }
 
@@ -7486,6 +7692,11 @@ function startLoop(){
       // Terrain-aware floor: eye height above the ground surface at camera XZ.
       const _groundFloor = sampleTerrainY(camera.position.x, camera.position.z) + EYE_H;
 
+      // Any movement input mid-fall stops the drop: fly on from this spot in the sky
+      if(falling&&(['KeyW','KeyA','KeyS','KeyD','KeyQ','KeyE','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].some(k=>keys[k])
+                   ||udUp||udDown||Math.abs(joyVec.x)>0.15||Math.abs(joyVec.y)>0.15)){
+        falling=false; fallVelocity=0; fpsGrounded=false;
+      }
       if(falling){
         // 4× gravity, straight down — no XZ drift, no heading change
         fallVelocity=Math.max(fallVelocity-39.2*dt,-120);
