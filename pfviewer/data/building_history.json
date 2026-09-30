@@ -1,5 +1,5 @@
 {
-  "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON. wall_stripes adds stone/brick bands over the wall colour: a colour alone (one band per storey on the floor lines), or {color, every, height, offset, base} in metres (base = solid course at the bottom). roof_type 'dome', 'bell' (ogee) or 'conical' gives a curved tower roof; roof_height (m) and roof_color (named colour incl. slate/copper/newCopper, or hex) are optional.",
+  "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON. wall_stripes adds stone/brick bands over the wall colour: a colour alone (one band per storey on the floor lines), or {color, every, height, offset, base} in metres (base = solid course at the bottom). roof_type 'dome', 'bell' (ogee) or 'conical' gives a curved tower roof; roof_height (m) and roof_color (named colour incl. slate/copper/newCopper, or hex) are optional. remove: true drops the feature entirely (duplicate or bad model).",
   "buildings": {
     "76e52ce7-2b91-4411-ad15-e526e36f7087": {
       "name": "Leland Hotel",
@@ -101,6 +101,503 @@
           "base": 1.2
         },
         "roof_type": "bell"
+      }
+    },
+    "6c27ad24-51fc-4ec2-8f1a-d25c860f8eeb": {
+      "name": "Fort Garry Gate (Governor's Gate)",
+      "notes": "The better of two models of the gate (Mike, 2026-09-29). Built 1853 with the fort's northern extension; still standing.",
+      "set": {
+        "born": "1853-08-01",
+        "died": null,
+        "died_basis": "still_standing",
+        "date_precision": {
+          "born": "year"
+        }
+      }
+    },
+    "802ae591-76d8-4586-92e3-a2980b09a4bc": {
+      "name": "Fort Garry Gate (duplicate)",
+      "notes": "Second, worse model of the gate from Goad 1906 sheet 1 — misplaced, dates suspect (Mike, 2026-09-29). The 6c27ad24 model is kept.",
+      "remove": true
+    },
+    "fe1217df-844b-45f6-89f3-cc6ee49fbe67": {
+      "name": "Upper Fort Garry — Fur Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "c633940f-18b0-43be-9ff7-ec44b2b80713": {
+      "name": "Upper Fort Garry — Fur Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "ad2b37f8-a94d-4ff0-83dc-ea207d399d92": {
+      "name": "Upper Fort Garry — Men's House",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "825b138b-a718-49e4-8a1c-1297676a9777": {
+      "name": "Upper Fort Garry — Clerk's Residence",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Removed for the straightening of Main Street after the 1882 sale (1881–1884).",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "bed80a47-4371-41ef-9de2-ed3fc7b09a94": {
+      "name": "Upper Fort Garry — Pemmican Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "28d2a1cd-7887-49ed-90bd-c234f7f6b8ae": {
+      "name": "Upper Fort Garry — Flour Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "6bf3748b-ca64-44a3-ab2b-0590537fed6f": {
+      "name": "Upper Fort Garry — Governor's Residence",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Lieutenant Governor's residence 1871–1883; stood until the HBC tore it down in 1888. Build year: original-fort placeholder.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1888-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "e2616f20-00b6-46ae-a957-873939b205d5": {
+      "name": "Upper Fort Garry — Office Buillding [Former Governor's Residence?]",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "51067c1d-11b5-48f0-8f5b-c8945350d51c": {
+      "name": "Upper Fort Garry — Fire Engine",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "90e68d9b-57dc-48dd-8679-976290802d47": {
+      "name": "Upper Fort Garry — Well House",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "5205dd9f-2565-4fc2-af31-b9bbe337914e": {
+      "name": "Upper Fort Garry — Power Magazine",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "4f7533a1-5e40-4e06-b1f5-381c0cb01076": {
+      "name": "Upper Fort Garry — General Depot",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Built 1860. Fort sold/auctioned 1882 (four buildings moved to the HBC mill; some stood to 1888 — which is unrecorded).",
+      "set": {
+        "born": "1860-06-01",
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "5616f7c6-e2ac-490c-987f-e953eb2aeba6": {
+      "name": "Upper Fort Garry — HBC Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Removed for the straightening of Main Street after the 1882 sale (1881–1884).",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "fb3929de-53b3-419f-885f-c9ab5bcebe31": {
+      "name": "Upper Fort Garry — Upper Fort Gaarry Addition Wall",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Wooden (oak) wall of the northern extension, early 1850s (gate 1853). Walls demolished 1881, stone reused for the new HBC store (opened Oct 1881).",
+      "set": {
+        "born": "1853-06-01",
+        "construction_months": 24,
+        "died": "1881-06-01",
+        "died_basis": "demolished",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "5d3e0f53-8bcf-4368-b0d0-2d8d5aa5810d": {
+      "name": "Upper Fort Garry — Upper Fort Gaarry Original North Wall",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original stone north wall, 1835–1851; replaced by the northern extension.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1851-08-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "5da328da-2f42-42bc-b391-0d07a5afb407": {
+      "name": "Upper Fort Garry — Bastion",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1881-06-01",
+        "died_basis": "demolished",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "90a5b6ba-e7d9-40f2-81c9-419cf3e82eef": {
+      "name": "Upper Fort Garry — Bastion",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1881-06-01",
+        "died_basis": "demolished",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "ec0da9be-a369-42ff-aa59-989d3c27e96c": {
+      "name": "Upper Fort Garry — Upper Fort Garry Original SEW Wall",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1881-06-01",
+        "died_basis": "demolished",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "2b57cd50-01ec-4e94-8b90-59928c255e61": {
+      "name": "Upper Fort Garry — Bastion",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1881-06-01",
+        "died_basis": "demolished",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "6698d4bb-636c-45b0-ad58-4469ed60ae3a": {
+      "name": "Upper Fort Garry — Bastion",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1881-06-01",
+        "died_basis": "demolished",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "5ac2827b-e071-4db1-a30f-04ef2a6388c6": {
+      "name": "Upper Fort Garry — Summer Kitchen",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "257deb71-906d-451e-86e2-8d5b5f198f94": {
+      "name": "Upper Fort Garry — Kitchen Garden",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "af0cf838-0642-4a2d-86e0-102505f87690": {
+      "name": "Upper Fort Garry — Yellow Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "8623f64d-093c-4f6c-aed0-3e18385d6e4e": {
+      "name": "Upper Fort Garry — Fur Store",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
+      }
+    },
+    "c268bebe-7d33-4f7f-8631-9c8cb8a2fad1": {
+      "name": "Upper Fort Garry — Governor's Garden",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+        "https://en.wikipedia.org/wiki/Fort_Garry"
+      ],
+      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+      "set": {
+        "born": "1837-06-01",
+        "construction_months": 24,
+        "died": "1882-06-01",
+        "date_precision": {
+          "born": "year",
+          "died": "year"
+        }
       }
     }
   }

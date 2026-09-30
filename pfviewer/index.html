@@ -2277,6 +2277,7 @@ async function applyBuildingHistory(geojson){
     const p=f.properties||{}, key=p.uid??p.pf_uid??p.id;   // same ID the info panel shows
     const h=key!=null?H[key]:null;
     if(!h) return [f];
+    if(h.remove) return [];   // a duplicate or bad model, dropped by hand
     n++;
     // `set`: plain property corrections merged onto the feature
     const base=h.set?{...f,properties:{...f.properties,...h.set}}:f;
@@ -3772,13 +3773,23 @@ let waterHistory=null;          // [{t:ms, y:worldY}] sorted, or null
 let waterManualOffset=0;        // metres, from the flood slider
 let demRefElev=null;            // m ASL of world y=0 (from dem.json), for 'asl'/'james_ft' data
 const JAMES_DATUM_M=727.57*0.3048;   // James Avenue gauge datum, m ASL
-const _wlKeys=CONFIG.water.levels.seasonal.map(([md,v])=>{const[m,d]=md.split('-').map(Number);return[_dayOfYear(m,d),v];}).sort((a,b)=>a[0]-b[0]);
-const _wlPeak=Math.max(..._wlKeys.map(k=>k[1])), _wlLow=Math.min(..._wlKeys.map(k=>k[1]));
+const _mdKeys=list=>list.map(([md,v])=>{const[m,d]=md.split('-').map(Number);return[_dayOfYear(m,d),v];}).sort((a,b)=>a[0]-b[0]);
+let _wlKeys=_mdKeys(CONFIG.water.levels.seasonal), _wlLow=Math.min(..._wlKeys.map(k=>k[1]));
+// Real data: world Y of the river's normal open-water level (null = no data;
+// the fake curve is then relative to startY directly)
+let waterNormalAbs=null;
+// Real world-Y level → water-surface Y (see CONFIG.water.levels.trueAbove)
+function waterPlaneY(abs){
+  if(waterNormalAbs==null) return abs;
+  const T=CONFIG.water.levels.trueAbove??-2, off=CONFIG.water.startY-waterNormalAbs;
+  return abs+off*Math.max(0,Math.min(1,(T-abs)/Math.max(0.1,T-waterNormalAbs)));
+}
 function seasonalWaterLevel(d){
   const rel=_seasonChannel(_wlKeys,viewDayOfYear(d));
   // Scale the rise above the low by a per-year factor (seeded → repeatable)
   const f=1+(seededRand(d.getFullYear()*1.37)*2-1)*CONFIG.water.levels.yearVariation;
-  return CONFIG.water.startY+_wlLow+(rel-_wlLow)*f;
+  const r=_wlLow+(rel-_wlLow)*f;
+  return waterNormalAbs==null?CONFIG.water.startY+r:waterPlaneY(waterNormalAbs+r);
 }
 function waterLevelAt(d){
   if(waterHistory){
@@ -3806,9 +3817,20 @@ async function loadWaterLevels(){
                :j.datum==='james_ft'?JAMES_DATUM_M+v*0.3048-(demRefElev??0)
                :CONFIG.water.startY+v;
     if(j.datum!=='relative'&&demRefElev==null) console.warn('🌊 Water levels: absolute datum but no DEM refElev — levels will be off');
-    waterHistory=j.records.map(([ds,v])=>({t:parseLocalISODate(ds).getTime(),y:conv(v)})).sort((a,b)=>a.t-b.t);
+    if(j.normal!=null&&j.datum==='asl'&&demRefElev!=null){
+      // The file's own climatology replaces the fake seasonal curve
+      waterNormalAbs=conv(j.normal);
+      if(Array.isArray(j.seasonal)&&j.seasonal.length){ _wlKeys=_mdKeys(j.seasonal); _wlLow=Math.min(..._wlKeys.map(k=>k[1])); }
+    }
+    waterHistory=j.records.map(([ds,v])=>({t:parseLocalISODate(ds).getTime(),y:waterPlaneY(conv(v)),real:conv(v)})).sort((a,b)=>a.t-b.t);
     console.log(`🌊 Water levels: ${waterHistory.length} records (${j.datum}) from ${L.historyFile}`);
   }catch(e){console.warn('🌊 Water levels: failed to load',e);}
+}
+// Inverse of waterPlaneY (monotonic) — for the level label
+function _realFromPlane(y){
+  let lo=y-10, hi=y+10;
+  for(let i=0;i<30;i++){ const m=(lo+hi)/2; if(waterPlaneY(m)<y) lo=m; else hi=m; }
+  return (lo+hi)/2;
 }
 // Per frame: move the flood plane to the date's level (+ slider offset) and
 // retint for flood depth. Cheap no-op when nothing changed.
@@ -3830,7 +3852,7 @@ function updateWaterLevel(){
   delete _applied.water;   // applySeason blends this with river ice next frame
   const lbl=document.getElementById('flood-label');
   if(lbl){
-    const rel=y-CONFIG.water.startY;
+    const rel=(waterNormalAbs!=null?_realFromPlane(y):y)-(waterNormalAbs??CONFIG.water.startY);   // real metres vs normal
     lbl.textContent=(rel>=0?'+':'')+rel.toFixed(1)+'m'+(Math.abs(waterManualOffset)>0.05?' *':'');
     lbl.title='River level vs normal'+(Math.abs(waterManualOffset)>0.05?` (incl. ${waterManualOffset.toFixed(1)} m manual offset — double-click slider to reset)`:' (from date)');
   }
@@ -7645,15 +7667,20 @@ function applySeason(force){
   if(force) _applied={};
   winterMode=S.snow>0.5;   // legacy flag (button label, anything still reading it)
 
-  // Ground: dormant brown ↔ summer green, then → snow
-  if(groundMatRef&&_changed('ground',S.green*7+S.snow,0.002)){
-    const g=_sc.a.set(SEASON.dormantColor).lerp(_sc.b.set(CONFIG.scene.ground.summerColor),S.green)
+  // Summer moisture (drought ↔ wet year) — only matters while things are green
+  const M=CONFIG.seasons.moisture||{}, wet=moistureAt(currentViewDate);
+  // Ground: dormant brown ↔ summer green (drought/lush-shifted), then → snow
+  if(groundMatRef&&_changed('ground',S.green*7+S.snow+wet*13,0.002)){
+    const G=CONFIG.scene.ground, k=Math.abs(wet)*(M.strength??0.85);
+    _sc.b.set(G.summerColor).lerp(_sc.c.set(wet<0?G.droughtColor:G.lushColor),k);
+    const g=_sc.a.set(SEASON.dormantColor).lerp(_sc.b,S.green)
       .lerp(_sc.c.set(CONFIG.scene.ground.winterColor),S.snow);
     groundMatRef.color.copy(g);
     if(channelMatRef) channelMatRef.color.copy(g);
     bankDirtUniforms.uBankDirtStrength.value=1-S.snow;
     groundCoverUniforms.uGcStrength.value=1-S.snow;
-    groundCoverUniforms.uGcGreen.value=S.green;
+    groundCoverUniforms.uGcGreen.value=S.green*(1-Math.max(0,-wet)*0.5);
+    groundCoverUniforms.uGcDryAmount.value=CONFIG.terrain.groundCover.dryAmount*(1+Math.max(0,-wet)*(M.dryPatches??0.9)-Math.max(0,wet)*0.5);
     const gr=CONFIG.scene.grid;
     grid.material.color.copy(_sc.a.set(gr.summerTint).lerp(_sc.b.set(gr.winterTint),S.snow));
     grid.material.opacity=gr.summerOpacity+(gr.winterOpacity-gr.summerOpacity)*S.snow;
@@ -7683,9 +7710,31 @@ function applySeason(force){
   plumeUniforms.uPlumeStrength.value=(1-S.ice)*(1-S.floes);
   // Sun declination + heating smoke follow the day of year (setTimeOfDay reads season)
   if(_changed('doy',Math.floor(S.doy),0.5)) setTimeOfDay(currentTodFraction);
-  if(_changed('trees',S.leaf*3+S.autumn,0.004)) updateTreeSeason(S.leaf,S.autumn);
+  const autumn=Math.max(S.autumn,Math.max(0,-wet)*(M.treeYellowing??0.3)*S.leaf);   // drought: early yellowing
+  if(_changed('trees',S.leaf*3+autumn,0.004)) updateTreeSeason(S.leaf,autumn);
   const btn=document.getElementById('winter-btn');
   if(btn&&_changed('btn',S.snow>0.5?1:0,0.5)) btn.textContent=S.snow>0.5?'☀ Summer':'❄ Winter';
+}
+
+// Summer moisture index for a date (data/moisture.json): -1 drought … +1 wet,
+// interpolated weekly from April 1; held at the season's ends; 0 with no data.
+let moistureData=null;
+async function loadMoisture(){
+  const f=CONFIG.seasons.moisture?.file; if(!f) return;
+  try{
+    const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return;
+    moistureData=await r.json();
+    console.log(`🌾 Moisture: ${Object.keys(moistureData.years).length} years`);
+    applySeason(true);
+  }catch(e){ console.warn('Moisture: failed to load',e); }
+}
+function moistureAt(d){
+  const row=moistureData?.years?.[d.getFullYear()]; if(!row) return 0;
+  const [m0,d0]=moistureData.start.split('-').map(Number);
+  const k=(viewDayOfYear(d)-_dayOfYear(m0,d0))/moistureData.stepDays;
+  if(k<=0) return row[0];
+  if(k>=row.length-1) return row[row.length-1];
+  const i=Math.floor(k); return row[i]+(row[i+1]-row[i])*(k-i);
 }
 
 // Button: jump to mid-winter / mid-summer of the current year
@@ -8288,6 +8337,7 @@ renderer.render(scene,camera);
   setProgress(35,'Loading terrain…');await tick();
   await applyDEM();
   await loadWaterLevels();   // after the DEM: absolute datums need its refElev
+  loadMoisture();
 
   for(let i=0;i<found.length;i++){
     const{url,gj}=found[i];

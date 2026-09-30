@@ -165,6 +165,10 @@ export const CONFIG = {
     ground: {
       summerColor: 0x2D4A1A,
       winterColor: 0xF5F6FA,
+      // Summer moisture (data/moisture.json — season-to-date rainfall vs
+      // normal, + flood years): the summer colour leans toward these.
+      droughtColor: 0x6A6436,   // parched, straw-olive
+      lushColor:    0x2A5E1E,   // wet-year green
     },
     // Reference grid lines drawn over the ground.
     grid: {
@@ -492,8 +496,13 @@ export const CONFIG = {
       //   { "datum": "relative" | "asl" | "james_ft", "records": [["1913-04-28", 12.4], ...] }
       //   relative: metres vs startY · asl: metres above sea level (via the DEM's refElev)
       //   james_ft: feet on the James Avenue gauge (datum 727.57 ft ASL — verify before relying on it)
-      historyFile: './data/water_levels.json',
-      maxGapDays: 45,          // interpolate between records at most this far apart; else fall back to seasonal
+      historyFile: './data/water_levels.json',   // real Red River levels 1912–, pre-1912 great floods (tools/build_water_climate.py)
+      maxGapDays: 75,          // interpolate between records at most this far apart; else fall back to seasonal
+      // One flat water surface serves both rivers, and the Assiniboine's bed
+      // sits ~2 m above the Red's — so at normal/low water the surface is held
+      // at startY (the real level + an offset), blending to the TRUE elevation
+      // as the river rises to `trueAbove` (world Y). Floods rise to real heights.
+      trueAbove: -2.0,
     },
     // Assiniboine → Red confluence plume (faked in the water shader). The
     // lighter, siltier Assiniboine water hugs the Red's west bank heading
@@ -737,6 +746,13 @@ export const CONFIG = {
   // Sept–early Oct, bare by late Oct; snow builds through November while the
   // river stays open until freeze-up at month's end.
   seasons: {
+    // Summer moisture index: -1 drought … +1 wet (data/moisture.json).
+    moisture: {
+      file: './data/moisture.json',
+      strength: 0.85,          // how far the summer colour moves toward drought/lush at ±1
+      dryPatches: 0.9,         // extra straw patches at -1 (× groundCover.dryAmount)
+      treeYellowing: 0.3,      // early autumn tint in trees at -1
+    },
     snow:    [['01-01',1],['03-25',1],['04-12',0],['10-28',0],['11-20',1]],
     green:   [['04-12',0],['05-02',0.05],['05-28',1],['09-05',1],['10-10',0.35],['11-01',0.2]],   // ~3 weeks of bare brown after melt
     ice:     [['01-01',1],['04-14',1],['04-17',0],['11-25',0],['11-30',1]],
