@@ -656,6 +656,41 @@ export const CONFIG = {
     },
   },
 
+  // ── Road history ────────────────────────────────────────────────────
+  // segments: segment_id (wpg_roads_streetcar.geojson) → [born, died] ISO
+  //   dates (null = open), intersected with the usual nearby-building span.
+  // extra: period roads that aren't in the modern data — lon/lat path.
+  // Main St ran through the site of Upper Fort Garry's east wall/bastions,
+  // which came down at the start of 1881 (Main St straightened, 1881–82);
+  // until then the road went round the outside of the east wall.
+  roadHistory: {
+    segments: {
+      12728: ['1881-01-01', null],   // Main St, bridge head → through the SE wall
+      12729: ['1881-01-01', null],   // Main St, through the NE bastion → north
+    },
+    extra: [
+      { name: 'Main St detour east of Upper Fort Garry', born: null, died: '1881-01-01', width: 9,
+        path: [[-97.13347,49.88643],[-97.13290,49.88668],[-97.13280,49.88700],[-97.13370,49.88772],[-97.13446,49.88808]] },
+    ],
+  },
+
+  // ── Street lights ───────────────────────────────────────────────────
+  // First electric arc street lamps: Main St, October 1882 (Manitoba
+  // Electric Light & Power, P.V. Carroll); the North West Electric Light &
+  // Power Co. lit the streets from June 1883 (MHS). Arc lamps on tall poles
+  // at intersections from arcFrom; smaller lamp posts along the blocks from
+  // postsFrom (approximate). Heads glow and the ground under them is lit
+  // (additive discs) after dark — no real lights, so they're cheap.
+  streetLights: {
+    arcFrom: '1883-06-01',
+    postsFrom: '1908-01-01',
+    radius: 2600,              // metres from the scene origin
+    spacing: 45,               // metres between block lamps (alternating sides)
+    poolOpacity: 0.55,
+    arc:  { height: 9.0, arm: 1.6, headSize: 0.32, color: 0x2A2622, glow: 0xF2F0FF, poolRadius: 16 },   // arc light: bluish white
+    post: { height: 4.6, arm: 0.5, headSize: 0.24, color: 0x1E2A22, glow: 0xFFD49A, poolRadius: 9 },     // incandescent: warm
+  },
+
   // ── Floating docks ──────────────────────────────────────────────────
   // Flat (floors ≤ 0.2) river structures named dock / landing / wharf / pier
   // are pulled out of the merged city mesh and ride the river level. In a
@@ -729,6 +764,20 @@ export const CONFIG = {
     fireDays: 20,            // burn + charred ruin (stylised — long enough to see at slow play)
     randomFireShare: 0,      // fraction of dated demolitions shown as fires anyway (0 = only when the data says so)
     frameColor: 0xC8A66E,    // fresh lumber
+    // Material stacks at the kerb of the nearest road while a building goes up
+    stacks: {
+      maxRoadDistance: 25,     // metres past the building's half-size to look for a road
+      kerbInset: 1.2,          // metres in from the road edge
+      metresPerStack: 7,       // bigger building → more stacks
+      maxPerSite: 5,
+      gap: 0.6,
+      brick:  { size: [1.1, 0.9, 1.2], color: 0xA0503A },   // [across, high, along the road] metres
+      stone:  { size: [1.2, 0.8, 1.4], color: 0x9A948A },
+      lumber: { size: [1.3, 0.7, 4.2], color: 0xC8A66E },
+      sand:   { radius: 1.3, height: 1.0, color: 0xB8A080 },
+    },
+    // Hammering / sawing one-shots from the nearest sites (sfx constructionHammer / constructionSaw)
+    sound: { every: [0.5, 2.5], hours: [7, 18], hammerShare: 0.75 },
     scaffoldColor: 0x8B7B60, // weathered timber poles
     maxFires: 6,             // simultaneous fires with flame/smoke particles (nearest first)
     fire: {
@@ -1017,6 +1066,8 @@ export const CONFIG = {
     // maxDistance; rolloffPower 3 = inverse-cube (sharp, local sounds).
     sfx: {
       dockBreak: { path: './sounds/dock-break.mp3', gain: 1.0, refDistance: 25, rolloffPower: 2, maxDistance: 900 },
+      constructionHammer: { path: './sounds/construction-hammer.mp3', gain: 0.7, refDistance: 12, rolloffPower: 3, maxDistance: 250 },
+      constructionSaw:    { path: './sounds/construction-saw.mp3',    gain: 0.6, refDistance: 12, rolloffPower: 3, maxDistance: 250 },
     },
     ambient: {
       windNoise: {
@@ -1055,6 +1106,7 @@ export const CONFIG = {
     lighting: { sun: { shadowMapSize: 1024 } },
     trees:    { spacing: 14 },
     seasons:  { floeCount: 450 },
+    streetLights: { spacing: 70, radius: 1800 },
   },
 
   // ── Minimap ─────────────────────────────────────────────────────────

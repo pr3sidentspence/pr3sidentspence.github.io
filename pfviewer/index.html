@@ -474,6 +474,7 @@ function viewDayOfYear(d){
 // un-stormed sky last set by setTimeOfDay(), which tickWeather() tints.
 let stormList=[];
 const _skyBase={sky:0,fog:0,sunInt:1,ambInt:1};
+let _nightness=0;   // 0 day … 1 night, set by setTimeOfDay (street lights)
 function seasonState(d){
   const doy=viewDayOfYear(d), S={doy};
   for(const ch in _seasonKeys) S[ch]=Math.max(0,Math.min(1,_seasonChannel(_seasonKeys[ch],doy)));
@@ -532,6 +533,7 @@ function setTimeOfDay(t){
   if(lbl)lbl.textContent=`${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}`;
   // Oil-lamp night glow on windows — warm amber when sun below horizon
   const nightness = Math.max(0, Math.min(1, 1 - sUp * 10));
+  _nightness = nightness;
   glassMat.emissive.setRGB(CONFIG.glass.nightGlowColor.r * nightness, CONFIG.glass.nightGlowColor.g * nightness, CONFIG.glass.nightGlowColor.b * nightness);
   // Painted distant windows: same glass colour + night glow as the real panes
   windowPaintUniforms.uWinNight.value = nightness;
@@ -1264,13 +1266,111 @@ function _buildConstructionGeometry(recs){
   const C=CONFIG.construction;
   return [mk(groups.frame,C.frameColor,2),mk(groups.scaf,C.scaffoldColor,1)].filter(Boolean);
 }
+// ── Building-material stacks at construction sites (CONFIG.construction.stacks) ──
+// While a building is going up, a few stacks of its material (brick pallets,
+// stone blocks, lumber) and a sand pile sit at the edge of the nearest road,
+// on the building's side, strung along the kerb. Road segments come from
+// buildRoads (roadSegs, 40 m grid). Rebuilt with the scaffolding each month.
+const roadSegs=[], _roadSegGrid=new Map(), RSEG_CELL=40;
+function _addRoadSeg(x1,z1,x2,z2,w,span){
+  const s={x1,z1,x2,z2,w,span}; roadSegs.push(s);
+  const n=Math.max(1,Math.ceil(Math.hypot(x2-x1,z2-z1)/RSEG_CELL));
+  const seen=new Set();
+  for(let i=0;i<=n;i++){
+    const k=`${Math.floor((x1+(x2-x1)*i/n)/RSEG_CELL)},${Math.floor((z1+(z2-z1)*i/n)/RSEG_CELL)}`;
+    if(seen.has(k)) continue; seen.add(k);
+    if(!_roadSegGrid.has(k)) _roadSegGrid.set(k,[]); _roadSegGrid.get(k).push(s);
+  }
+}
+function _nearestRoad(x,z,yr,maxD){
+  let best=null;
+  const gx=Math.floor(x/RSEG_CELL), gz=Math.floor(z/RSEG_CELL), r=Math.ceil(maxD/RSEG_CELL);
+  for(let i=-r;i<=r;i++) for(let j=-r;j<=r;j++){
+    for(const s of _roadSegGrid.get(`${gx+i},${gz+j}`)||[]){
+      if(yr<s.span[0]||yr>=s.span[1]) continue;
+      const dx=s.x2-s.x1, dz=s.z2-s.z1, L2=dx*dx+dz*dz||1;
+      const t=Math.max(0,Math.min(1,((x-s.x1)*dx+(z-s.z1)*dz)/L2));
+      const qx=s.x1+dx*t, qz=s.z1+dz*t, d=Math.hypot(x-qx,z-qz);
+      if(d<maxD&&(!best||d<best.d)) best={d,qx,qz,s};
+    }
+  }
+  return best;
+}
+const _stackBox=new THREE.BoxGeometry(1,1,1), _stackCone=new THREE.ConeGeometry(1,1,9);
+let constructionSites=[];   // {x,y,z} of each active site's stacks — construction sfx pick from these
+function _buildMaterialStacks(recs,yr){
+  const S=CONFIG.construction.stacks; constructionSites=[];
+  if(!S||!recs.length) return [];
+  const boxes=[], cones=[];
+  for(const r of recs){
+    let cx=0,cz=0,minx=1e9,maxx=-1e9,minz=1e9,maxz=-1e9;
+    const pts=r.outer.slice(0,-1).map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];});
+    for(const[x,z]of pts){cx+=x;cz+=z;minx=Math.min(minx,x);maxx=Math.max(maxx,x);minz=Math.min(minz,z);maxz=Math.max(maxz,z);}
+    cx/=pts.length; cz/=pts.length;
+    const size=Math.max(4,Math.hypot(maxx-minx,maxz-minz)/1.4), rnd=k=>seededRand(r.born*977+cx*0.37+k);
+    const road=_nearestRoad(cx,cz,yr,size/2+S.maxRoadDistance);
+    let bx,bz,tx,tz;
+    if(road){
+      let nx=cx-road.qx, nz=cz-road.qz; const nl=Math.hypot(nx,nz)||1; nx/=nl; nz/=nl;
+      const s=road.s, sl=Math.hypot(s.x2-s.x1,s.z2-s.z1)||1; tx=(s.x2-s.x1)/sl; tz=(s.z2-s.z1)/sl;
+      const edge=Math.max(0,Math.min(road.d-1,road.s.w/2-S.kerbInset));   // kerb on the building's side
+      bx=road.qx+nx*edge; bz=road.qz+nz*edge;
+    }else{
+      const a=rnd(1)*6.283; bx=cx+Math.cos(a)*(size/2+3); bz=cz+Math.sin(a)*(size/2+3); tx=-Math.sin(a); tz=Math.cos(a);
+    }
+    const kind=['brick','stone','concrete'].includes(r.mat)?(r.mat==='brick'?'brick':'stone'):'lumber';
+    const K=S[kind], n=Math.max(1,Math.min(S.maxPerSite,Math.round(size/S.metresPerStack)));
+    const yaw=Math.atan2(tx,tz);
+    for(let i=0;i<n;i++){
+      const off=(i-(n-1)/2)*(K.size[2]+S.gap);
+      const x=bx+tx*off, z=bz+tz*off, gy=sampleTerrainY(x,z)+0.18;
+      const layers=kind==='lumber'?1:1+Math.floor(rnd(10+i)*2);
+      for(let l=0;l<layers;l++)
+        boxes.push({x,y:gy+K.size[1]*(l+0.5),z,sx:K.size[0],sy:K.size[1],sz:K.size[2],yaw:yaw+(rnd(20+i+l)-0.5)*0.12,color:K.color});
+    }
+    // sand / gravel pile at the end of the row
+    const off=((n+1)/2)*(K.size[2]+S.gap)+1, x=bx+tx*off, z=bz+tz*off, gy=sampleTerrainY(x,z)+0.18;
+    cones.push({x,y:gy+S.sand.height/2,z,sx:S.sand.radius,sy:S.sand.height,sz:S.sand.radius,yaw:0,color:S.sand.color});
+    constructionSites.push({x:bx,y:sampleTerrainY(bx,bz)+1,z:bz,big:size});
+  }
+  const out=[], m4=new THREE.Matrix4(), q=new THREE.Quaternion(), c=new THREE.Color(), up=new THREE.Vector3(0,1,0);
+  for(const[list,geo]of[[boxes,_stackBox],[cones,_stackCone]]){
+    if(!list.length) continue;
+    const im=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:0xffffff}),list.length);
+    list.forEach((b,i)=>{
+      m4.compose(new THREE.Vector3(b.x,b.y,b.z),q.setFromAxisAngle(up,b.yaw),new THREE.Vector3(b.sx,b.sy,b.sz));
+      im.setMatrixAt(i,m4); im.setColorAt(i,c.setHex(b.color));
+    });
+    im.castShadow=true; im.receiveShadow=true;
+    im.geometry=geo;   // shared — don't dispose
+    im.userData.sharedGeo=true;
+    out.push(im);
+  }
+  return out;
+}
+// Construction sounds: irregular hammering / sawing from the nearest active
+// sites, working hours only (7–18 h), not on Sundays.
+let _csfxT=1;
+function tickConstructionSfx(dt){
+  if(!audioCtx||!constructionSites.length) return;
+  _csfxT-=dt; if(_csfxT>0) return;
+  const S=CONFIG.construction.sound??{};
+  _csfxT=(S.every?.[0]??0.5)+Math.random()*((S.every?.[1]??2.5)-(S.every?.[0]??0.5));
+  const hour=TOD_START_H+currentTodFraction*TOD_RANGE_H;
+  if(hour<(S.hours?.[0]??7)||hour>(S.hours?.[1]??18)||currentViewDate.getDay()===0) return;
+  const near=constructionSites.map(s=>({s,d:Math.hypot(s.x-camera.position.x,s.z-camera.position.z)})).sort((a,b)=>a.d-b.d).slice(0,3);
+  const pick=near[Math.floor(Math.random()*near.length)].s;
+  playSfx(Math.random()<(S.hammerShare??0.75)?'constructionHammer':'constructionSaw',pick.x,pick.y,pick.z);
+}
+
 // Per frame: rebuild when the viewed month or the active layer changes.
 function updateConstructionMeshes(){
   if(!CONFIG.construction) return;
   const y=buildingYearUniform.value, key=activeLayer+':'+Math.floor(y*12);
   if(key===_constructionKey) return;
   _constructionKey=key;
-  if(constructionMesh){scene.remove(constructionMesh);constructionMesh.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});constructionMesh=null;}
+  if(constructionMesh){scene.remove(constructionMesh);constructionMesh.traverse(o=>{if(o.isMesh){if(!o.userData.sharedGeo)o.geometry.dispose();o.material.dispose();if(o.isInstancedMesh)o.dispose();}});constructionMesh=null;}
+  constructionSites=[];
   const recs=[];
   for(const r of constructionRecords){
     if(r.group.visible&&y>r.born-r.dur-0.1&&y<r.born+0.1) recs.push(r);
@@ -1281,6 +1381,7 @@ function updateConstructionMeshes(){
   constructionMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
   constructionMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
   for(const m of _buildConstructionGeometry(recs)) constructionMesh.add(m);
+  for(const m of _buildMaterialStacks(recs.filter(r=>y>r.born-r.dur&&y<r.born-0.01),y)) constructionMesh.add(m);   // only while actually going up
   scene.add(constructionMesh);
 }
 
@@ -2908,7 +3009,7 @@ async function buildCity(geojson){
     for(let _gp=_glassOuterStart0/18;_gp<glassVerts.length/18;_gp++) glassIdx.push(_bi.idx);   // one per pane
     // Scaffolding/framing + fire records (see updateConstructionMeshes / tickFires)
     if(_fOuter&&_bi.build[2]!==0) constructionRecords.push({group,born:_bi.born,dur:Math.abs(_bi.build[2]),framed:_bi.build[2]<0,
-      baseY:_minY,wallTop:_minY+height,topY:_maxY,outer:_fOuter,floors});   // edges computed only if it's ever under construction
+      baseY:_minY,wallTop:_minY+height,topY:_maxY,outer:_fOuter,floors,mat});   // edges computed only if it's ever under construction
     if(_fOuter&&_bi.build[3]<0){
       const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
       fireRecords.push({group,died:_bi.died,dur:-_bi.build[3],x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,radius:Math.sqrt(_fArea)/2});
@@ -3452,6 +3553,7 @@ async function buildRoads(geojson){
   buildGroundCover();
   if(cityHazeGroup) buildHazeSources();   // same active-layer centroids
   setProgress(88,'Building road network…');await tick();
+  roadSegs.length=0; _roadSegGrid.clear();   // rebuilt below (construction stacks, street lights)
   // Dispose previous road mesh if rebuilding for layer change
   if(roadMatRef){
     const toRemove=[];
@@ -3524,8 +3626,21 @@ async function buildRoads(geojson){
     if(isAlways(stName))return ALWAYS_SPAN;
     return nearbyLifespan(mx,mz);
   }
+  // CONFIG.roadHistory: dated overrides by segment_id (clipped to the usual
+  // span), and extra period roads with their own dates (e.g. the trail that
+  // went round the east side of Upper Fort Garry until its walls came down).
+  const RH=CONFIG.roadHistory||{}, segSpans=new Map();
+  for(const[id,[b,d]]of Object.entries(RH.segments||{})) segSpans.set(String(id),[_isoYearFrac(b,NO_BORN),_isoYearFrac(d,NO_DIED)]);
+  const roadFeats=[...geojson.features,...(RH.extra||[]).map(e=>({properties:{st_name:e.name,st_type:'RD',
+    _span:[_isoYearFrac(e.born,NO_BORN),_isoYearFrac(e.died,NO_DIED)],_width:e.width},geometry:{coordinates:[e.path]}}))];
+  function featSpan(feat,stName,mx,mz){
+    const P=feat.properties; if(P._span) return P._span;
+    const span=segmentLifespan(stName,mx,mz), o=segSpans.get(String(P.segment_id));
+    if(!span||!o) return span;
+    return[Math.max(span[0],o[0]),Math.min(span[1],o[1])];
+  }
 
-  for(const feat of geojson.features){
+  for(const feat of roadFeats){
     const baseW=ROAD_W[feat.properties.st_type]??9;
     const stName=feat.properties.st_name||'';
     if(isNever(stName)) continue;  // quick skip for always-hidden roads
@@ -3534,7 +3649,7 @@ async function buildRoads(geojson){
     // Portage proper and Main get 4x. All others 2x.
     const isPortageEast=stName==='Portage'&&fr<200;
     const isMajor=(stName==='Portage'&&!isPortageEast)||stName==='Main';
-    const w=baseW*(isMajor?4:2);
+    const w=feat.properties._width??baseW*(isMajor?4:2);
     for(const line of feat.geometry.coordinates){
       for(let i=0;i<line.length-1;i++){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
@@ -3545,8 +3660,9 @@ async function buildRoads(geojson){
         if(len<0.1)continue;
         // Per-segment building proximity check (Up ≠ N: midpoint in world XZ)
         const mx=(x1+x2)/2, mz=(z1+z2)/2;
-        const span=segmentLifespan(stName,mx,mz);
+        const span=featSpan(feat,stName,mx,mz);
         if(!span)continue;
+        _addRoadSeg(x1,z1,x2,z2,w,span);
         const pxu=(-dz/len),pzu=(dx/len);
         // Lift road slightly above terrain; use each chunk's own mean so the
         // quad sits flush rather than twisting on sloped ground.
@@ -3624,11 +3740,12 @@ async function buildRoads(geojson){
   roadMesh.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
   roadMesh.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   roadMesh.receiveShadow=true;roadMesh.renderOrder=-1;scene.add(roadMesh);   // first of the transparents (it fades)
+  buildStreetLights();   // placed from the segments just recorded
 
   // Cart tracks — two narrow ruts per segment, visible in winter only
   const trackPos=[], trackLife=[];
   const TW=0.18,TG=0.55;   // track width, half-gauge
-  for(const feat of geojson.features){
+  for(const feat of roadFeats){
     const stName=feat.properties.st_name||'';
     if(isNever(stName)) continue;
     for(const line of feat.geometry.coordinates){
@@ -3639,7 +3756,7 @@ async function buildRoads(geojson){
         if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
-        const span=segmentLifespan(stName,(x1+x2)/2,(z1+z2)/2);
+        const span=featSpan(feat,stName,(x1+x2)/2,(z1+z2)/2);
         if(!span)continue;
         const px=(-dz/len),pz=(dx/len);
         const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
@@ -7421,6 +7538,9 @@ function tickSteamboats(dt){
   }
 }
 
+window._debugStreet=()=>({lights:streetLights?Object.fromEntries(Object.entries(streetLights.kinds).map(([k,v])=>[k,v.meshes[0].count+'/'+v.list.length])):null,
+  poolOpacity:streetLights?.kinds.post?.meshes[2].material.opacity, sites:constructionSites.length, roadSegs:roadSegs.length,
+  detour:roadSegs.filter(s=>s.span[1]<1882&&s.span[1]>1880).length});
 window._debugBoats=()=>({steam:sbSlots.filter(s=>s.boat).length+'/'+sbSlots.length,docked:!!sbDocked?.group.visible,
   small:scBoats.map(b=>b.kind).join(','),docks:floatingDocks.map(d=>d.name+':'+d.state+(d.mesh.visible?'':'(hidden)')+'@'+d.mesh.position.y.toFixed(1)).join('; '),ferries:(ferries||[]).filter(f=>f.group?.visible).map(f=>f.F.name+' '+Math.hypot(f.cross.x1-f.cross.x0,f.cross.z1-f.cross.z0).toFixed(0)+'m').join('; ')});
 
@@ -7490,6 +7610,95 @@ function tickDocks(dt,waterY){
       const s=sampleRoute(d.route,d.t);
       d.mesh.visible=true; d.mesh.position.set(s.x+d.ox,y,s.z+d.oz); d.mesh.rotation.y=d.rot;
     }else d.mesh.visible=false;
+  }
+}
+
+// ── Street lights (CONFIG.streetLights) ────────────────────────────
+// Tall arc lamps at intersections (from the 1883 contract) and shorter lamp
+// posts along the blocks (later), placed from the road segments buildRoads
+// kept (roadSegs), each dated by its road's span. No real lights: the lamp
+// heads glow and an additive "pool" disc lights the ground under each lamp,
+// both scaled by night-ness. Instances are re-filtered by date each month.
+let streetLights=null;   // {kinds:{arc,post}, key}
+function _poolTexture(){
+  const c=document.createElement('canvas'); c.width=c.height=64;
+  const g=c.getContext('2d'), gr=g.createRadialGradient(32,32,0,32,32,32);
+  gr.addColorStop(0,'rgba(255,255,255,1)'); gr.addColorStop(0.45,'rgba(255,255,255,0.45)'); gr.addColorStop(1,'rgba(255,255,255,0)');
+  g.fillStyle=gr; g.fillRect(0,0,64,64);
+  return new THREE.CanvasTexture(c);
+}
+function buildStreetLights(){
+  const L=CONFIG.streetLights; if(!L||OFF.has('vehicles')) return;
+  if(streetLights){ for(const k of Object.values(streetLights.kinds)) for(const m of k.meshes){scene.remove(m);m.geometry.dispose();m.material.dispose();} streetLights=null; }
+  const R2=L.radius*L.radius, arcFrom=_isoYearFrac(L.arcFrom,1883), postFrom=_isoYearFrac(L.postsFrom,1908);
+  const lamps={arc:[],post:[]};
+  // Intersections: segment endpoints shared by ≥3 segments
+  const ends=new Map();
+  const key=(x,z)=>`${Math.round(x)},${Math.round(z)}`;
+  for(const s of roadSegs) for(const[x,z]of[[s.x1,s.z1],[s.x2,s.z2]]){
+    const k=key(x,z); let e=ends.get(k); if(!e){e={x,z,n:0,b:1e9,d:-1e9,w:0};ends.set(k,e);}
+    e.n++; e.b=Math.min(e.b,s.span[0]); e.d=Math.max(e.d,s.span[1]); e.w=Math.max(e.w,s.w);
+  }
+  for(const e of ends.values()){
+    if(e.n<3||e.x*e.x+e.z*e.z>R2) continue;
+    // on the corner, clear of the carriageway
+    lamps.arc.push({x:e.x+e.w*0.35,z:e.z+e.w*0.35,born:Math.max(arcFrom,e.b),died:e.d});
+  }
+  // Along the blocks
+  for(const s of roadSegs){
+    const dx=s.x2-s.x1, dz=s.z2-s.z1, len=Math.hypot(dx,dz); if(len<L.spacing*0.8) continue;
+    const px=-dz/len, pz=dx/len;
+    for(let d=L.spacing/2,i=0;d<len-L.spacing*0.3;d+=L.spacing,i++){
+      const side=i%2?1:-1, x=s.x1+dx*d/len+px*side*(s.w/2+0.6), z=s.z1+dz*d/len+pz*side*(s.w/2+0.6);
+      if(x*x+z*z>R2) continue;
+      lamps.post.push({x,z,born:Math.max(postFrom,s.span[0]),died:s.span[1]});
+    }
+  }
+  const poolTex=_poolTexture(), kinds={};
+  for(const kind of['arc','post']){
+    const K=L[kind], list=lamps[kind]; if(!list.length) continue;
+    for(const l of list) l.y=sampleTerrainY(l.x,l.z)+0.18;
+    const pole=new THREE.CylinderGeometry(0.07,0.11,K.height,6); pole.translate(0,K.height/2,0);
+    const arm=new THREE.BoxGeometry(0.08,0.08,K.arm); arm.translate(0,K.height-0.15,K.arm/2);
+    const head=new THREE.SphereGeometry(K.headSize,8,6); head.translate(0,K.height-0.35,K.arm);
+    const pool=new THREE.PlaneGeometry(1,1); pool.rotateX(-Math.PI/2);
+    const meshes=[
+      new THREE.InstancedMesh(mergeGeometries([pole,arm],false),new THREE.MeshLambertMaterial({color:K.color}),list.length),
+      new THREE.InstancedMesh(head,new THREE.MeshLambertMaterial({color:0xE8E4D8,emissive:K.glow,emissiveIntensity:0}),list.length),
+      new THREE.InstancedMesh(pool,new THREE.MeshBasicMaterial({map:poolTex,color:K.glow,transparent:true,opacity:0,depthWrite:false,
+        blending:THREE.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}),list.length),
+    ];
+    meshes[0].castShadow=true; meshes[2].renderOrder=1;
+    for(const m of meshes){ m.count=0; m.frustumCulled=false; scene.add(m); }
+    kinds[kind]={list,meshes,K};
+  }
+  streetLights={kinds,key:null};
+  console.log(`💡 Street lights: ${lamps.arc.length} arc (intersections), ${lamps.post.length} posts`);
+}
+const _slM=new THREE.Matrix4(), _slP=new THREE.Vector3(), _slQ=new THREE.Quaternion(), _slS=new THREE.Vector3(), _slU=new THREE.Vector3(0,1,0);
+function tickStreetLights(){
+  if(!streetLights) return;
+  const yr=yearFrac(currentViewDate), key=Math.floor(yr*12);
+  const rebuild=key!==streetLights.key; streetLights.key=key;
+  const night=_nightness*(1-0.5*Math.min(1,(_weatherActive?1:0)));   // (storms keep the pools but dim them a touch)
+  for(const k of Object.values(streetLights.kinds)){
+    const[posts,heads,pools]=k.meshes;
+    if(rebuild){
+      let n=0;
+      for(const l of k.list){
+        if(yr<l.born||yr>=l.died) continue;
+        const yaw=Math.atan2(l.x,l.z)*7%6.283;   // arms point any which way — stable per lamp
+        _slQ.setFromAxisAngle(_slU,yaw);
+        _slM.compose(_slP.set(l.x,l.y,l.z),_slQ,_slS.set(1,1,1)); posts.setMatrixAt(n,_slM); heads.setMatrixAt(n,_slM);
+        const r=k.K.poolRadius, ox=Math.sin(yaw)*k.K.arm, oz=Math.cos(yaw)*k.K.arm;
+        _slM.compose(_slP.set(l.x+ox,l.y+0.05,l.z+oz),_slQ.identity(),_slS.set(r*2,1,r*2)); pools.setMatrixAt(n,_slM);
+        n++;
+      }
+      for(const m of k.meshes){ m.count=n; m.instanceMatrix.needsUpdate=true; }
+    }
+    heads.material.emissiveIntensity=night*1.4;
+    pools.material.opacity=night*CONFIG.streetLights.poolOpacity;
+    pools.visible=night>0.02;
   }
 }
 
@@ -7856,6 +8065,8 @@ function startLoop(){
     updateWaterLevel();
     maybeBuildDeferred();
     updateConstructionMeshes();
+    tickConstructionSfx(dt);
+    tickStreetLights();
     tickGlassLOD();
     tickDetailLOD();
     tickFires(dt);
