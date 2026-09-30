@@ -862,7 +862,9 @@ export const CONFIG = {
     { name: 'Adelaide',          river: 'red',         lon: -97.1273, lat: 49.8920, from: '1878-06-09', to: '1882-04-16', kind: 'steam' },
     { name: 'Assiniboine ferry', river: 'assiniboine', lon: -97.1335, lat: 49.8852, from: '1850-01-01', to: '1881-06-01', kind: 'scow' },
   ],
-  ferryTiming: { crossSeconds: 70, dwellSeconds: 25 },
+  ferryTiming: { crossSeconds: 70, dwellSeconds: 25,
+    bankAboveWaterM: 0.4,   // a landing is where the ground rises this far above normal water
+    onBankM: 1 },            // …plus this far onto it (the ramp touches the bank)
 
   // ── Construction / demolition / fire ─────────────────────────────────
   // Buildings with a born date go up over [born − duration, born] (so they

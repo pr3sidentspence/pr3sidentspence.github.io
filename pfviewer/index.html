@@ -7772,6 +7772,9 @@ function tickSteamboats(dt){
 window._debugStreet=()=>({lights:streetLights?Object.fromEntries(Object.entries(streetLights.kinds).map(([k,v])=>[k,v.meshes[0].count+'/'+v.list.length])):null,
   poolOpacity:streetLights?.kinds.post?.meshes[2].material.opacity, sites:constructionSites.length, roadSegs:roadSegs.length,
   detour:roadSegs.filter(s=>s.span[1]<1882&&s.span[1]>1880).length});
+window._debugFerryProfile=()=>(ferries||[]).filter(f=>f.group).map(f=>{const c=f.cross,dx=c.x1-c.x0,dz=c.z1-c.z0,L=Math.hypot(dx,dz),out=[];
+  for(let d=-60;d<=L+60;d+=10){const x=c.x0+dx/L*d,z=c.z0+dz/L*d;out.push(d.toFixed(0)+':'+(sampleTerrainY(x,z)-waterMesh.position.y).toFixed(1));}
+  return f.F.name+' ['+c.x0.toFixed(0)+','+c.z0.toFixed(0)+']→['+c.x1.toFixed(0)+','+c.z1.toFixed(0)+'] water '+waterMesh.position.y.toFixed(2)+' | '+out.join(' ');});
 window._debugBoats=()=>({steam:sbSlots.filter(s=>s.boat).length+'/'+sbSlots.length,docked:!!sbDocked?.group.visible,
   small:scBoats.map(b=>b.kind).join(','),docks:floatingDocks.map(d=>d.name+':'+d.state+(d.mesh.visible?'':'(hidden)')+'@'+d.mesh.position.y.toFixed(1)).join('; '),ferries:(ferries||[]).filter(f=>f.group?.visible).map(f=>f.F.name+' '+Math.hypot(f.cross.x1-f.cross.x0,f.cross.z1-f.cross.z0).toFixed(0)+'m').join('; ')});
 
@@ -8511,10 +8514,14 @@ function _ferryCrossing(F){
   let bt=0,bd=Infinity;
   for(let i=0;i<=400;i++){const s=sampleRoute(route,i/400),d=(s.x-cx)**2+(s.z-cz)**2;if(d<bd){bd=d;bt=i/400;}}
   const s=sampleRoute(route,bt);
-  // March out each way to the bank (river polygons); fall back to ±50 m
-  const reach=sgn=>{let d=4;while(d<260&&_inRiver(s.x+s.px*sgn*d,s.z+s.pz*sgn*d))d+=3;return d>=260?50:d-6;};
+  // March out each way to the bank: where the terrain rises above normal
+  // water (the river you see is carved by the DEM, which doesn't line up
+  // exactly with the OSM polygons); without the DEM, the river polygons.
+  const bankY=CONFIG.water.startY+(CONFIG.ferryTiming?.bankAboveWaterM??0.4);
+  const wet=(x,z)=>_demLoaded?sampleTerrainY(x,z)<bankY:_inRiver(x,z);
+  const reach=sgn=>{let d=2;while(d<300&&wet(s.x+s.px*sgn*d,s.z+s.pz*sgn*d))d+=1;return d>=300?50:d+(CONFIG.ferryTiming?.onBankM??1);};
   const a=reach(1), b=reach(-1);
-  return{x0:s.x+s.px*a,z0:s.z+s.pz*a,x1:s.x-s.px*b,z1:s.z-s.pz*b,yaw:s.yaw};
+  return{x0:s.x+s.px*a,z0:s.z+s.pz*a,x1:s.x-s.px*b,z1:s.z-s.pz*b,yaw:s.yaw,dem:_demLoaded};
 }
 function buildFerry(F){
   const g=new THREE.Group(), steam=F.kind==='steam';
@@ -8545,6 +8552,12 @@ function tickFerries(dt,waterY){
     if(!riverRings.length) return;   // wait for the river polygons
     ferries=FL.map(F=>({F,from:parseLocalISODate(F.from).getTime(),to:parseLocalISODate(F.to).getTime(),
       cross:_ferryCrossing(F),group:null,cable:null,t:Math.random(),phase:0}));
+  }
+  // The DEM can arrive after the ferries were set up — redo the landings then
+  for(const f of ferries) if(_demLoaded&&!f.cross.dem){
+    f.cross=_ferryCrossing(f.F);
+    if(f.cable){ scene.remove(f.cable); f.cable.geometry.dispose(); f.cable.material.dispose(); f.cable=null; }
+    if(f.group){ scene.remove(f.group); f.group=null; }
   }
   const now=currentViewDate.getTime(), open=season.ice<0.01&&season.floes<0.15, T=CONFIG.ferryTiming;
   for(const f of ferries){
