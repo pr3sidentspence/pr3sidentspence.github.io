@@ -691,6 +691,70 @@ export const CONFIG = {
     post: { height: 4.6, arm: 0.5, headSize: 0.24, color: 0x1E2A22, glow: 0xFFD49A, poolRadius: 9 },     // incandescent: warm
   },
 
+  // ── Parades (recorded dates) ────────────────────────────────────────
+  // A marching column (band in front, flags) loops the route all day, with
+  // crowds lining both sidewalks. Slow play lingers on parade days like
+  // storms (storms.dwellDaysPerSecond). Routes are lon/lat along the street
+  // centrelines; halfWidth = metres from centreline to where crowds stand.
+  parades: {
+    routes: {
+      mainFromCPR: [[-97.13454,49.90449],[-97.13503,49.90362],[-97.13585,49.90258],[-97.13661,49.90163],[-97.13734,49.90077],
+                    [-97.13792,49.90008],[-97.13853,49.89938],[-97.13921,49.89858],[-97.13885,49.89706],[-97.13848,49.89553]],
+      cityHallToPortage: [[-97.13853,49.89938],[-97.13921,49.89858],[-97.13885,49.89706],[-97.13848,49.89553],[-97.13982,49.89501],
+                    [-97.14227,49.89411],[-97.14472,49.8932],[-97.14718,49.8923],[-97.14962,49.8914]],
+    },
+    halfWidth: 15,
+    speed: 1.3,                 // m/s marching
+    list: [
+      { date: '1885-07-15', to: '1885-07-17', route: 'mainFromCPR', marchers: 400, uniforms: [0x1E2E22, 0x9A2A22, 0x1A1C22], crowd: 1600,
+        note: 'North West Field Force returns from the 1885 Resistance — the 17th: "the biggest day Winnipeg has ever seen"' },
+      { date: '1914-08-06', route: 'cityHallToPortage', marchers: 350, uniforms: [0x2A3A2A], crowd: 2000, kilts: true,
+        note: '79th Cameron Highlanders parade before 50,000, two days after war is declared' },
+      { date: '1914-08-23', route: 'cityHallToPortage', marchers: 400, uniforms: [0x6E6446], crowd: 1800, kilts: true,
+        note: 'The 79th Cameron Highlanders leave Winnipeg for Valcartier' },
+      { date: '1918-11-11', route: 'cityHallToPortage', marchers: 500, uniforms: [0x6E6446], crowd: 2200,
+        note: 'Armistice — 3,000 in uniform march from Market Square past City Hall to Portage and Main' },
+      { date: '1919-03-24', route: 'cityHallToPortage', marchers: 450, uniforms: [0x6E6446], crowd: 1800, kilts: true,
+        note: 'The 43rd Cameron Highlanders come home, parade, and march to Minto Armoury for discharge' },
+      { date: '1942-02-19', route: 'cityHallToPortage', marchers: 250, uniforms: [0x3A3A3A, 0x6E6446], crowd: 1600,
+        note: 'If Day — mock Nazi occupation, then the Victory Bond parade down Portage ("It MUST Not Happen Here!")' },
+      { date: '1945-05-08', route: 'cityHallToPortage', marchers: 400, uniforms: [0x6E6446, 0x2A3450], crowd: 2400,
+        note: 'VE Day — crowds at Portage and Main' },
+      { date: '1945-08-14', route: 'cityHallToPortage', marchers: 300, uniforms: [0x6E6446, 0x2A3450], crowd: 2600,
+        note: 'VJ Day — "a jammed Portage Avenue and Main Street … well on past midnight"' },
+    ],
+  },
+
+  // ── Mosquitoes ──────────────────────────────────────────────────────
+  // Faint swirling specks over still water (Brown's Creek, while it exists),
+  // only visible within `fade` metres. seasonDays = day-of-year ramp
+  // [start, full, full-until, end] (≈ May 20 · Jun 10 · Aug 10 · Sep 5).
+  mosquitoes: {
+    perAnchor: 40, maxAnchors: 400,
+    color: 0x121212, opacity: 0.6,
+    fade: [18, 55],
+    seasonDays: [140, 161, 222, 248],
+    wetBoost: 0.8,            // × (1 + wet) in wet summers (seasons.moisture)
+    dayLevel: 0.35, duskBoost: 1.6,
+  },
+
+  // ── Utility poles and wires (walk mode only, around the camera) ──────
+  // Telegraph reached the settlement in 1871 (Main St here); Winnipeg's
+  // first telephone exchange 1881 — early lines ran roof to roof, poles only
+  // "when the phone people ran out of roofs" (MHS) — and electric light
+  // 1882–83: poles on the major streets from majorFrom, every street from
+  // allFrom (approximate).
+  utilityPoles: {
+    telegraphFrom: 1871.85, majorFrom: 1882, allFrom: 1900,
+    majorStreets: ['Main','Portage','Provencher','Broadway','Notre Dame','William','Logan','Higgins','Princess','Market','Bannatyne','McDermot','Graham','Donald','Fort','Garry','Kennedy','Selkirk'],
+    wires: { telegraph: 2, major: 4, all: 8 },
+    radius: 350, rebuildDistance: 90,
+    spacing: 38, kerbOffset: 1.0,
+    height: 9.5, armLength: 2.2,
+    sag: 0.7, sagSegments: 4,
+    color: 0x5A4A3A, wireColor: 0x1A1816,
+  },
+
   // ── Fire engines ────────────────────────────────────────────────────
   // Run in along the nearest street when a building catches fire and park
   // there until it's out. Winnipeg: volunteer brigade 1874 (from); first
@@ -1105,6 +1169,9 @@ export const CONFIG = {
       fireGallop:      { path: './sounds/fire-gallop.mp3',      loop: true, maxConcurrent: 2, gain: 0.8, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
       fireSirenLoop:   { path: './sounds/fire-siren.mp3',       loop: true, maxConcurrent: 2, gain: 1.0, refDistance: 40, rolloffPower: 1.3, maxDistance: 2500 },
       firePump:        { path: './sounds/fire-pump.mp3',        loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
+      paradeBand:      { path: './sounds/parade-band.mp3',      loop: true, maxConcurrent: 1, gain: 0.9, refDistance: 25, rolloffPower: 1.5, maxDistance: 900 },
+      crowdCheer:      { path: './sounds/crowd-cheer.mp3',      loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 1.5, maxDistance: 600 },
+      mosquitoes:      { path: './sounds/mosquitoes.mp3',       loop: true, maxConcurrent: 1, gain: 0.5, refDistance: 3,  rolloffPower: 3, maxDistance: 40 },
     },
     ambient: {
       windNoise: {

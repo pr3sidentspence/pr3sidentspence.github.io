@@ -1272,8 +1272,8 @@ function _buildConstructionGeometry(recs){
 // on the building's side, strung along the kerb. Road segments come from
 // buildRoads (roadSegs, 40 m grid). Rebuilt with the scaffolding each month.
 const roadSegs=[], _roadSegGrid=new Map(), RSEG_CELL=40;
-function _addRoadSeg(x1,z1,x2,z2,w,span){
-  const s={x1,z1,x2,z2,w,span}; roadSegs.push(s);
+function _addRoadSeg(x1,z1,x2,z2,w,span,name){
+  const s={x1,z1,x2,z2,w,span,name}; roadSegs.push(s);
   const n=Math.max(1,Math.ceil(Math.hypot(x2-x1,z2-z1)/RSEG_CELL));
   const seen=new Set();
   for(let i=0;i<=n;i++){
@@ -3172,6 +3172,7 @@ async function buildCity(geojson){
 
   const fenceGeos=[], fenceKeys=[];   // fenceKeys: tile key per geo (mergeByTile)
   const creekRibbonVerts=[];  // Brown's Creek layer-tied ribbon (flat, terrain-sampled)
+  const creekRibbonLife=[];   // [born, died, startIndex] per creek feature — its lifespan
   for(const feat of features){
     if(feat.geometry.type!=='LineString'&&feat.geometry.type!=='MultiLineString') continue;
     if(feat.properties.type!=='fence') continue;
@@ -3182,6 +3183,9 @@ async function buildCity(geojson){
       // Width and colour come from config so they're easy to tweak.
       const hw=CONFIG.water.widths.brownsCreek;  // half-width in metres
       const lines2=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
+      const _cb=_isoYearFrac(feat.properties.born,NO_BORN), _cd=_isoYearFrac(feat.properties.died,NO_DIED);
+      creekRibbonLife.push(_cb,_cd,creekRibbonVerts.length);   // span for the verts pushed below
+      let _acc=20;
       for(const line of lines2){
         for(let i=0;i<line.length-1;i++){
           const[sx1,sy1]=project(line[i][0],  line[i][1]);
@@ -3192,6 +3196,7 @@ async function buildCity(geojson){
           const px=(-dz/len)*hw, pz=(dx/len)*hw;
           const y1=sampleTerrainY(x1,z1)+0.12;
           const y2=sampleTerrainY(x2,z2)+0.12;
+          for(_acc+=len;_acc>=20;_acc-=20){ const f=1-(_acc-20)/len; mosquitoAnchors.push({x:x1+dx*f,y:y1,z:z1+dz*f,born:_cb,died:_cd,group}); }
           creekRibbonVerts.push(
             x1+px,y1,z1+pz,  x2+px,y2,z2+pz,  x1-px,y1,z1-pz,
             x2+px,y2,z2+pz,  x2-px,y2,z2-pz,  x1-px,y1,z1-pz
@@ -3244,13 +3249,21 @@ async function buildCity(geojson){
     const bcGeo=new THREE.BufferGeometry();
     bcGeo.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(creekRibbonVerts),3));
     bcGeo.computeVertexNormals();
-    const bcMat=new THREE.MeshLambertMaterial({
+    // Lifespan per vertex (the creek was filled in — hide it after its died date)
+    { const nV=creekRibbonVerts.length/3, life=new Float32Array(nV*2).fill(0);
+      for(let k=0;k<creekRibbonLife.length;k+=3){
+        const end=k+5<creekRibbonLife.length?creekRibbonLife[k+5]/3:nV;
+        for(let v=creekRibbonLife[k+2]/3;v<end;v++){ life[v*2]=creekRibbonLife[k]; life[v*2+1]=creekRibbonLife[k+1]; }
+      }
+      bcGeo.setAttribute('aLifespan',new THREE.BufferAttribute(life,2));
+      bcGeo.setAttribute('aBuild',new THREE.BufferAttribute(new Float32Array(nV*4),4)); }
+    const bcMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({
       color: CONFIG.water.brownsCreekColor,
       side:  THREE.DoubleSide,
       polygonOffset:      true,
       polygonOffsetFactor: -5,
       polygonOffsetUnits:  -5,
-    });
+    }));
     group.add(new THREE.Mesh(bcGeo,bcMat));
     console.log(`Brown's Creek: ${creekRibbonVerts.length/18} ribbon segments`);
   }
@@ -3664,7 +3677,7 @@ async function buildRoads(geojson){
         const mx=(x1+x2)/2, mz=(z1+z2)/2;
         const span=featSpan(feat,stName,mx,mz);
         if(!span)continue;
-        _addRoadSeg(x1,z1,x2,z2,w,span);
+        _addRoadSeg(x1,z1,x2,z2,w,span,stName);
         const pxu=(-dz/len),pzu=(dx/len);
         // Lift road slightly above terrain; use each chunk's own mean so the
         // quad sits flush rather than twisting on sloped ground.
@@ -5890,7 +5903,7 @@ function tickTimeline(dt){
     const cyc=CONFIG.timeline.seasonCycle;
     const y=currentViewDate.getFullYear();
     const C=CONFIG.storms, floodRel=waterMesh?floodRelForPlaneY(waterLevelAt(currentViewDate)):0;
-    const rate=stormAt(currentViewDate)?(C?.dwellDaysPerSecond??0.1)                       // linger on storm days
+    const rate=stormAt(currentViewDate)||paradeAt(currentViewDate)?(C?.dwellDaysPerSecond??0.1)   // linger on storm / parade days
               :floodRel>(C?.floodSlowAboveMetres??99)?(C?.floodDaysPerSecond??0.5)         // and through floods
               :(cyc?.daysPerSecond??2);
     const d=new Date(currentViewDate.getTime()+dt*rate*86400000);
@@ -7801,6 +7814,8 @@ function tickSoundHooks(dt){
     if(e.moving) (e.horse?gallop:e.siren?siren:[]).push(src);
     else if(!e.leaving) pump.push(src);
   }
+  sfxLoopUpdate('paradeBand',parade?.head?[{id:'band',...parade.head}]:[]);
+  sfxLoopUpdate('crowdCheer',parade?parade.crowdAnchors:[]);
   sfxLoopUpdate('fireGallop',gallop); sfxLoopUpdate('fireSirenLoop',siren); sfxLoopUpdate('firePump',pump);
 }
 
@@ -7907,7 +7922,251 @@ function tickFireEngines(dt){
     }
   }
 }
+window._debugParade=()=>parade?{note:parade.p.note.slice(0,30),t:parade.t.toFixed(0),len:parade.route.totalLen.toFixed(0),n:parade.nM,crowd:parade.p.crowd}:null;
 window._debugFire=()=>({fires:activeFireSpots.length,engines:fireEngineList().map(e=>(e.horse?'horse':'motor')+(e.moving?' moving':' parked')+(e.beacon?' beacon':e.lights?' lamps':''))});
+
+// ── Parades (CONFIG.parades) ───────────────────────────────────────
+// On a listed date, a column of marchers (band and flags in front) loops
+// the route and crowds line both sidewalks. Figures are two instanced
+// meshes (bodies coloured per instance, heads); marchers' matrices update
+// each frame, the crowd once. Hidden in the fast timeline modes.
+function paradeAt(d){
+  const P=CONFIG.parades; if(!P) return null;
+  const iso=isoLocal(d);
+  return P.list.find(p=>iso>=p.date&&iso<=(p.to??p.date))||null;
+}
+let parade=null;   // {p, route, meshes, marchers:[{rank,file}], crowdAnchors, t}
+const _pdM=new THREE.Matrix4(), _pdQ=new THREE.Quaternion(), _pdP=new THREE.Vector3(), _pdS=new THREE.Vector3(1,1,1), _pdC=new THREE.Color(), _pdU=new THREE.Vector3(0,1,0);
+let _figGeo=null;
+function _figureGeos(){
+  if(_figGeo) return _figGeo;
+  const legs=new THREE.BoxGeometry(0.34,0.8,0.24); legs.translate(0,0.4,0);
+  const body=new THREE.BoxGeometry(0.46,0.66,0.3); body.translate(0,1.13,0);
+  const head=new THREE.SphereGeometry(0.12,7,5); head.translate(0,1.6,0);
+  const hat=new THREE.CylinderGeometry(0.11,0.13,0.14,7); hat.translate(0,1.74,0);
+  return(_figGeo={body:mergeGeometries([legs,body,hat],false),head,brass:new THREE.BoxGeometry(0.22,0.18,0.3).translate(0,1.2,0.24)});
+}
+function _paradeRoute(list){
+  const pts=list.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx,z:-sy};});
+  const dists=[0]; for(let i=1;i<pts.length;i++) dists.push(dists[i-1]+Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z));
+  return{pts,dists,totalLen:dists[dists.length-1]};
+}
+function _clearParade(){
+  if(!parade) return;
+  for(const m of parade.meshes){
+    scene.remove(m);
+    if(m.isInstancedMesh){ m.material.dispose(); m.dispose(); }   // shared figure geometry stays
+    else m.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});
+  }
+  parade=null;
+}
+function _buildParade(p){
+  const P=CONFIG.parades, route=_paradeRoute(P.routes[p.route]), G=_figureGeos(), rnd=mulberry(p.date);
+  const files=6, ranks=Math.ceil(p.marchers/files), bandRanks=4;
+  const nM=ranks*files, nC=p.crowd;
+  const bodies=new THREE.InstancedMesh(G.body,new THREE.MeshLambertMaterial({color:0xffffff}),nM+nC);
+  const heads=new THREE.InstancedMesh(G.head,new THREE.MeshLambertMaterial({color:0xC89878}),nM+nC);
+  const brass=new THREE.InstancedMesh(G.brass,new THREE.MeshLambertMaterial({color:0xD0A840,emissive:0x302000}),bandRanks*files);
+  const marchers=[];
+  for(let r=0;r<ranks;r++) for(let f=0;f<files;f++){
+    const i=marchers.length;
+    bodies.setColorAt(i,_pdC.setHex(r<bandRanks?0x2A2230:p.uniforms[Math.floor(r/Math.max(1,ranks/p.uniforms.length))%p.uniforms.length]));
+    marchers.push({r,f});
+  }
+  // Crowd: both sidewalks, 1–3 deep, anywhere along the route
+  const civ=[0x2A2622,0x3A3440,0x5A4A3A,0x6E5A48,0x1E2430,0x7A6A58,0x4A3A2E,0x8A7A6A,0x3E4A3A,0x6A3A34];
+  const crowdAnchors=[];
+  for(let c=0;c<nC;c++){
+    const s=sampleRoute(route,rnd()), side=rnd()<0.5?-1:1, depth=P.halfWidth+rnd()*2.6;
+    const x=s.x+s.px*side*depth, z=s.z+s.pz*side*depth;
+    _pdQ.setFromAxisAngle(_pdU,Math.atan2(-s.px*side,-s.pz*side)+(rnd()-0.5)*0.8);   // facing the street
+    _pdM.compose(_pdP.set(x,sampleTerrainY(x,z)+0.18,z),_pdQ,_pdS.set(1,0.9+rnd()*0.2,1));
+    bodies.setMatrixAt(nM+c,_pdM); heads.setMatrixAt(nM+c,_pdM);
+    bodies.setColorAt(nM+c,_pdC.setHex(civ[Math.floor(rnd()*civ.length)]));
+    if(c%80===0) crowdAnchors.push({id:'crowd'+c,x,y:1.5,z});
+  }
+  // Flags at the head of the column
+  const flagGroup=new THREE.Group(), flags=[];
+  for(let i=0;i<3;i++){
+    const pole=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,3,5),new THREE.MeshLambertMaterial({color:0x6A5030})); pole.position.y=1.5;
+    const flag=new THREE.Mesh(new THREE.PlaneGeometry(1.4,0.9),new THREE.MeshLambertMaterial({color:i===1?0xB02020:0x1A2A6A,side:THREE.DoubleSide}));
+    flag.position.set(0.72,2.5,0); flag.rotation.y=Math.PI/2;
+    const g=new THREE.Group(); g.add(pole,flag); flagGroup.add(g); flags.push(g);
+  }
+  const meshes=[bodies,heads,brass,flagGroup];
+  bodies.instanceColor.needsUpdate=true;
+  for(const m of[bodies,heads,brass]){ m.frustumCulled=false; m.castShadow=true; }
+  for(const m of meshes) scene.add(m);
+  parade={p,route,meshes,marchers,files,bandRanks,flags,crowdAnchors,t:rnd()*route.totalLen,nM,head:null};
+}
+function mulberry(seedStr){
+  let a=0; for(const ch of seedStr) a=(a*31+ch.charCodeAt(0))|0;
+  return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};
+}
+function tickParades(dt){
+  const fast=timelineMode==='years'||timelineMode==='yearsWalk'||timelineMode==='fast';
+  const p=fast?null:paradeAt(currentViewDate);
+  if(!p){ _clearParade(); return; }
+  if(parade?.p!==p){ _clearParade(); _buildParade(p); }
+  const P=CONFIG.parades, R=parade.route, [bodies,heads,brass]=parade.meshes;
+  const colLen=(parade.marchers.length/parade.files)*1.4+8;
+  parade.t=(parade.t+P.speed*dt)%(R.totalLen+colLen);
+  const stepPh=parade.t/0.7*Math.PI;
+  let bi=0;
+  for(let i=0;i<parade.marchers.length;i++){
+    const m=parade.marchers[i], d=parade.t-8-m.r*1.4;
+    if(d<0||d>R.totalLen){ _pdM.makeScale(0,0,0); bodies.setMatrixAt(i,_pdM); heads.setMatrixAt(i,_pdM); if(m.r<parade.bandRanks) brass.setMatrixAt(bi++,_pdM); continue; }
+    const s=sampleRoute(R,d/R.totalLen), lat=(m.f-(parade.files-1)/2)*1.2;
+    const x=s.x+s.px*lat, z=s.z+s.pz*lat;
+    _pdQ.setFromAxisAngle(_pdU,s.yaw);
+    _pdM.compose(_pdP.set(x,sampleTerrainY(x,z)+0.18+Math.abs(Math.sin(stepPh+m.f*0.1))*0.05,z),_pdQ,_pdS.set(1,1,1));
+    bodies.setMatrixAt(i,_pdM); heads.setMatrixAt(i,_pdM);
+    if(m.r<parade.bandRanks) brass.setMatrixAt(bi++,_pdM);
+  }
+  for(const m of[bodies,heads,brass]) m.instanceMatrix.needsUpdate=true;
+  // Flags lead the column
+  const hd=Math.min(R.totalLen,Math.max(0,parade.t-3)), hs=sampleRoute(R,hd/R.totalLen);
+  parade.flags.forEach((g,i)=>{ const lat=(i-1)*2.4; g.position.set(hs.x+hs.px*lat,sampleTerrainY(hs.x,hs.z)+0.18,hs.z+hs.pz*lat); g.rotation.y=hs.yaw; g.visible=parade.t>3&&parade.t-3<R.totalLen; });
+  const bd=Math.min(R.totalLen,Math.max(0,parade.t-10)), bs=sampleRoute(R,bd/R.totalLen);
+  parade.head={x:bs.x,y:2,z:bs.z};
+}
+
+// ── Mosquitoes (CONFIG.mosquitoes) ─────────────────────────────────
+// Faint dark specks swirling low over still water — Brown's Creek (anchors
+// every ~20 m, dated with the creek). Visible only close up. Density:
+// June–August, higher in wet summers and at dusk, gone in storms. All motion
+// is in the vertex shader. Sound hook: mosquitoes (loop, inverse-cube).
+const mosquitoAnchors=[];   // {x,y,z,born,died,group}
+let _mosq=null;
+function _buildMosquitoes(){
+  const M=CONFIG.mosquitoes, n=M.perAnchor, A=mosquitoAnchors.slice(0,M.maxAnchors);
+  const anc=new Float32Array(A.length*n*3), seed=new Float32Array(A.length*n*4), life=new Float32Array(A.length*n*2);
+  A.forEach((a,i)=>{ for(let k=0;k<n;k++){ const o=i*n+k;
+    anc.set([a.x,a.y,a.z],o*3); seed.set([Math.random(),Math.random(),Math.random(),Math.random()],o*4); life.set([a.born,a.died],o*2); }});
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(anc,3));
+  g.setAttribute('aSeed',new THREE.BufferAttribute(seed,4));
+  g.setAttribute('aLife',new THREE.BufferAttribute(life,2));
+  g.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1e9);
+  const u={uTime:{value:0},uYear:{value:0},uDensity:{value:0},uColor:{value:new THREE.Color(M.color)},uOpacity:{value:M.opacity},uFade:{value:new THREE.Vector2(M.fade[0],M.fade[1])}};
+  const mat=new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,fog:false,
+    vertexShader:`uniform float uTime,uYear,uDensity; uniform vec2 uFade; attribute vec4 aSeed; attribute vec2 aLife; varying float vA;
+    void main(){
+      vec4 s=aSeed; float t=uTime;
+      vec3 p=position+vec3(sin(t*(1.3+s.x)+s.y*6.28)*(0.8+1.6*s.z), 0.3+s.w*2.0+sin(t*2.3+s.x*9.0)*0.25, cos(t*(1.1+s.y)+s.z*6.28)*(0.8+1.6*s.x));
+      p+=vec3(sin(t*17.0+s.x*40.0),sin(t*19.0+s.y*40.0),sin(t*23.0+s.z*40.0))*0.06;   // the jitter
+      vec4 mv=modelViewMatrix*vec4(p,1.0); gl_Position=projectionMatrix*mv;
+      float d=-mv.z;
+      vA=step(aLife.x,uYear)*step(uYear,aLife.y)*step(s.w,uDensity)*(1.0-smoothstep(uFade.x,uFade.y,d));
+      gl_PointSize=vA>0.0?clamp(26.0/d,1.0,2.2):0.0;
+    }`,
+    fragmentShader:`uniform vec3 uColor; uniform float uOpacity; varying float vA;
+    void main(){ if(vA<0.01) discard; gl_FragColor=vec4(uColor,uOpacity*vA); }`});
+  const pts=new THREE.Points(g,mat); pts.frustumCulled=false; pts.renderOrder=4; scene.add(pts);
+  _mosq={pts,u,count:A.length};
+}
+window._debugMosq=()=>({anchors:mosquitoAnchors.length,dens:+mosquitoDensity().toFixed(2),visible:!!_mosq?.pts.visible});
+function mosquitoDensity(){
+  const M=CONFIG.mosquitoes, S=season, doy=S.doy;
+  const [a,b,c,d]=M.seasonDays;   // ramp up a→b, full b→c, down c→d
+  let k=doy<a||doy>d?0:doy<b?(doy-a)/(b-a):doy<c?1:(d-doy)/(d-c);
+  k*=1+Math.max(0,moistureAt(currentViewDate))*M.wetBoost;
+  const tw=4*_nightness*(1-_nightness);            // peaks in twilight
+  k*=M.dayLevel+tw*M.duskBoost;
+  if(_weatherActive) k*=0.1;
+  return Math.max(0,Math.min(1,k));
+}
+function tickMosquitoes(dt){
+  const M=CONFIG.mosquitoes; if(!M||!mosquitoAnchors.length) return;
+  if(!_mosq) _buildMosquitoes();
+  const dens=mosquitoDensity(), yr=yearFrac(currentViewDate);
+  _mosq.pts.visible=dens>0.01;
+  _mosq.u.uTime.value+=dt; _mosq.u.uYear.value=yr; _mosq.u.uDensity.value=dens;
+  if(dens>0.01&&audioCtx){
+    const cam=camera.position, near=[];
+    for(const a of mosquitoAnchors) if(yr>=a.born&&yr<a.died&&(a.x-cam.x)**2+(a.z-cam.z)**2<1600) near.push({id:a,x:a.x,y:a.y+1,z:a.z,gain:dens});
+    sfxLoopUpdate('mosquitoes',near);
+  }else sfxLoopUpdate('mosquitoes',[]);
+}
+
+// ── Utility poles and wires (CONFIG.utilityPoles) — walk mode only ─
+// Built around the camera (radius) from roadSegs whenever the walker moves
+// far enough or the month changes: poles on one side of the street, with
+// sagging wires between consecutive poles. Era: telegraph on Main St from
+// 1871, poles on the major streets from 1882 (telephone exchange 1881,
+// electric light 1882–83), every street from 1900.
+let poleSet=null;   // {poles:InstancedMesh, wires:LineSegments, cx, cz, key}
+function _poleGeo(arms){
+  const U=CONFIG.utilityPoles, parts=[];
+  const pole=new THREE.CylinderGeometry(0.1,0.14,U.height,6); pole.translate(0,U.height/2,0); parts.push(pole);
+  for(let a=0;a<arms;a++){ const arm=new THREE.BoxGeometry(0.1,0.1,U.armLength); arm.translate(0,U.height-0.4-a*0.7,0); parts.push(arm); }
+  return mergeGeometries(parts,false);
+}
+window._debugPoles=()=>poleSet?{poles:poleSet.poles?.count??0,wireSegs:(poleSet.wires?.geometry.attributes.position.count??0)/2,fps:fpsMode}:{fps:fpsMode};
+function _clearPoles(){
+  if(!poleSet) return;
+  for(const m of[poleSet.poles,poleSet.wires]) if(m){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  poleSet=null;
+}
+function tickUtilityPoles(){
+  const U=CONFIG.utilityPoles; if(!U) return;
+  if(!fpsMode){ _clearPoles(); return; }
+  const yr=yearFrac(currentViewDate), cam=camera.position, key=Math.floor(yr*12);
+  if(poleSet&&poleSet.key===key&&Math.hypot(cam.x-poleSet.cx,cam.z-poleSet.cz)<U.rebuildDistance) return;
+  _clearPoles();
+  if(yr<U.telegraphFrom) { poleSet={cx:cam.x,cz:cam.z,key}; return; }
+  const era=yr>=U.allFrom?'all':yr>=U.majorFrom?'major':'telegraph';
+  const wiresN=era==='all'?U.wires.all:era==='major'?U.wires.major:U.wires.telegraph, arms=era==='all'?2:1;
+  const major=new Set(U.majorStreets.map(s=>s.toLowerCase()));
+  const R=U.radius, poles=[], wires=[];
+  const seen=new Set();
+  for(const s of roadSegs){
+    if(yr<s.span[0]||yr>=s.span[1]) continue;
+    const nm=(s.name||'').toLowerCase();
+    if(era==='telegraph'&&nm!=='main') continue;
+    if(era==='major'&&!major.has(nm)) continue;
+    const mx=(s.x1+s.x2)/2, mz=(s.z1+s.z2)/2;
+    if((mx-cam.x)**2+(mz-cam.z)**2>(R+80)**2) continue;
+    const dx=s.x2-s.x1, dz=s.z2-s.z1, len=Math.hypot(dx,dz); if(len<U.spacing*0.5) continue;
+    const px=-dz/len, pz=dx/len, off=s.w/2+U.kerbOffset;
+    const n=Math.max(1,Math.round(len/U.spacing)), list=[];
+    for(let i=0;i<=n;i++){
+      const x=s.x1+dx*i/n+px*off, z=s.z1+dz*i/n+pz*off;
+      const k=`${Math.round(x/4)},${Math.round(z/4)}`;   // shared corner poles once
+      const y=sampleTerrainY(x,z);
+      list.push({x,y,z});
+      if(!seen.has(k)&&(x-cam.x)**2+(z-cam.z)**2<R*R){ seen.add(k); poles.push({x,y,z,yaw:Math.atan2(dx,dz)}); }
+    }
+    for(let i=0;i<list.length-1;i++){
+      const a=list[i], b=list[i+1];
+      if((a.x-cam.x)**2+(a.z-cam.z)**2>R*R) continue;
+      for(let w=0;w<wiresN;w++){
+        const arm=Math.floor(w/(wiresN/arms)), slot=(w%(wiresN/arms))/(Math.max(1,wiresN/arms-1))-0.5;
+        const lat=slot*(U.armLength-0.2), h=U.height-0.35-arm*0.7;
+        const ox=px*lat, oz=pz*lat;
+        let prev=null;
+        for(let k=0;k<=U.sagSegments;k++){
+          const f=k/U.sagSegments, sag=U.sag*4*f*(1-f);
+          const p=[a.x+(b.x-a.x)*f+ox, a.y+(b.y-a.y)*f+h-sag, a.z+(b.z-a.z)*f+oz];
+          if(prev) wires.push(...prev,...p);
+          prev=p;
+        }
+      }
+    }
+  }
+  const set={cx:cam.x,cz:cam.z,key,poles:null,wires:null};
+  if(poles.length){
+    const im=new THREE.InstancedMesh(_poleGeo(arms),new THREE.MeshLambertMaterial({color:U.color}),poles.length);
+    const m4=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), one=new THREE.Vector3(1,1,1);
+    poles.forEach((p,i)=>{ m4.compose(new THREE.Vector3(p.x,p.y,p.z),q.setFromAxisAngle(up,p.yaw),one); im.setMatrixAt(i,m4); });
+    im.castShadow=true; scene.add(im); set.poles=im;
+  }
+  if(wires.length){
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(wires,3));
+    const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:U.wireColor})); l.frustumCulled=false; scene.add(l); set.wires=l;
+  }
+  poleSet=set;
+}
 
 // ── Small craft (CONFIG.smallCraft) ────────────────────────────────
 // Canoes, York boats, rowboats, launches. Each works a stretch of river
@@ -8278,6 +8537,9 @@ function startLoop(){
     tickDetailLOD();
     tickFires(dt);
     tickFireEngines(dt);
+    tickParades(dt);
+    tickMosquitoes(dt);
+    tickUtilityPoles();
     tickSoundHooks(dt);
     applySeason();
     tickWeather(dt);
@@ -8608,7 +8870,8 @@ function _stormCaption(st){
     el.style.cssText='font-size:0.7rem;color:#9ab0c8;letter-spacing:0.04em;text-align:center;max-width:420px;';
     dc.appendChild(el);
   }
-  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:'';
+  const pa=!st&&timelineMode!=='fast'&&timelineMode!=='years'&&timelineMode!=='yearsWalk'?paradeAt(currentViewDate):null;
+  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:pa?`🎖 Parade — ${pa.note}`:'';
   if(el.textContent!==txt){ el.textContent=txt; el.style.display=txt?'block':'none'; }
 }
 function _buildBolt(){
