@@ -730,7 +730,7 @@ function smoothDEM(h, S, cellM){
 // only — normalised, so banks/channel don't drag it down. Measured on the
 // Winnipeg DEM: ~100 m-scale bumps halve, banks move 0 m; the regional rise
 // away from the rivers (which floods rely on) is kept. maxMoveM caps it.
-function flattenDEM(h, S, cellM){
+function flattenDEM(h, S, cellM, protect=null){
   const F=CONFIG.terrain.smooth?.flatten; if(!F||!F.strength) return;
   const blur=(src,r)=>{
     const a=new Float32Array(src), b=new Float32Array(src.length);
@@ -749,13 +749,13 @@ function flattenDEM(h, S, cellM){
     for(let k=0;k<2;k++){ pass(a,b,true); pass(b,a,false); }
     return a;
   };
-  const minY=CONFIG.water.startY+(F.minAboveWater??3);
+  const minY=CONFIG.water.startY+(F.minAboveWater??1);
   const bank=new Float32Array(h.length);
   for(let z=0;z<S;z++) for(let x=0;x<S;x++){
     const i=z*S+x;
     const gx=(h[z*S+Math.min(S-1,x+1)]-h[z*S+Math.max(0,x-1)])/(2*cellM);
     const gz=(h[Math.min(S-1,z+1)*S+x]-h[Math.max(0,z-1)*S+x])/(2*cellM);
-    bank[i]=Math.hypot(gx,gz)>F.bankSlope||h[i]<=minY?1:0;
+    bank[i]=Math.hypot(gx,gz)>F.bankSlope||h[i]<=minY||(protect&&protect[i])?1:0;
   }
   // dilate (two box passes each way reach ±2r) then feather
   const dil=blur(bank,Math.max(1,Math.round(F.bufferM/cellM/2)));
@@ -774,6 +774,102 @@ function flattenDEM(h, S, cellM){
     h[i]+=dv; changed++;
   }
   console.log(`🗺 DEM flattened (≈${F.radiusM} m, strength ${F.strength}) — ${changed.toLocaleString()} cells`);
+}
+
+// ── The oxbow east of the Forks (CONFIG.terrain.oxbow) ──────────────
+// A cut-off meander loop, filled in since: in the LiDAR it's a ring 1–2 m
+// below its surroundings. detectOxbow() finds it (inside a lon/lat box,
+// relBelowM under a wide average, away from the river banks) before the
+// flattening pass (which then leaves it alone), deepenOxbow() digs it back
+// out, and a "sometimes lake" fills it: high after spring melt, draining
+// through summer, fuller in wet years, dry in drought, frozen in winter.
+// The lake mesh is a child of the terrain (same transform as the DEM grid).
+let oxbow=null;   // {mask, rel, cells:[i], floor, range, mesh}
+function _boxBlur2(src,S,r){
+  const a=new Float32Array(src), b=new Float32Array(src.length);
+  const pass=(sa,db,horiz)=>{
+    for(let o=0;o<S;o++){
+      let sum=0,n=0; const at=i=>horiz?sa[o*S+i]:sa[i*S+o];
+      for(let i=0;i<=r&&i<S;i++){sum+=at(i);n++;}
+      for(let i=0;i<S;i++){
+        db[horiz?o*S+i:i*S+o]=sum/n;
+        const add=i+r+1, rem=i-r;
+        if(add<S){sum+=at(add);n++;}
+        if(rem>=0){sum-=at(rem);n--;}
+      }
+    }
+  };
+  for(let k=0;k<2;k++){ pass(a,b,true); pass(b,a,false); }
+  return a;
+}
+function detectOxbow(h,S,cellM){
+  const O=CONFIG.terrain.oxbow; if(!O) return null;
+  const half=(S-1)*cellM/2;
+  const [lonW,latS,lonE,latN]=O.bbox;
+  const [xW]=project(lonW,latN), [xE]=project(lonE,latS), zN=-project(lonW,latN)[1], zS=-project(lonE,latS)[1];
+  const ix0=Math.max(0,Math.floor((xW+half)/cellM)), ix1=Math.min(S-1,Math.ceil((xE+half)/cellM));
+  const iz0=Math.max(0,Math.floor((zN+half)/cellM)), iz1=Math.min(S-1,Math.ceil((zS+half)/cellM));
+  const base=_boxBlur2(h,S,Math.max(1,Math.round(O.contextM/cellM/2)));
+  // river banks / channel (as in flattenDEM) stay out
+  const minY=CONFIG.water.startY+(CONFIG.terrain.smooth?.flatten?.minAboveWater??1), bank=new Float32Array(h.length), bs=CONFIG.terrain.smooth?.flatten?.bankSlope??0.08;
+  for(let z=iz0;z<=iz1;z++) for(let x=ix0;x<=ix1;x++){
+    const i=z*S+x;
+    const gx=(h[z*S+Math.min(S-1,x+1)]-h[z*S+Math.max(0,x-1)])/(2*cellM), gz=(h[Math.min(S-1,z+1)*S+x]-h[Math.max(0,z-1)*S+x])/(2*cellM);
+    bank[i]=Math.hypot(gx,gz)>bs||h[i]<=minY?1:0;
+  }
+  const near=_boxBlur2(bank,S,Math.max(1,Math.round(40/cellM/2)));
+  const mask=new Uint8Array(h.length), rel=new Float32Array(h.length), cells=[];
+  for(let z=iz0;z<=iz1;z++) for(let x=ix0;x<=ix1;x++){
+    const i=z*S+x, r=h[i]-base[i];
+    if(near[i]<1e-6&&r<O.relBelowM){ mask[i]=1; rel[i]=r; cells.push(i); }
+  }
+  console.log(`🌾 Oxbow: ${cells.length} cells (${(cells.length*cellM*cellM/10000).toFixed(1)} ha)`);
+  return cells.length?(oxbow={mask,rel,cells,S,cellM}):null;
+}
+function deepenOxbow(h){
+  if(!oxbow) return;
+  const O=CONFIG.terrain.oxbow, lo=-O.relBelowM;
+  for(const i of oxbow.cells){ const t=Math.min(1,(-oxbow.rel[i]-lo)/O.deepenRampM); h[i]-=O.deepenM*(0.35+0.65*t*t*(3-2*t)); }
+  const hs=oxbow.cells.map(i=>h[i]).sort((a,b)=>a-b);
+  oxbow.floor=hs[Math.floor(hs.length*0.03)];
+  oxbow.range=Math.min(O.lake.maxDepthM,hs[Math.floor(hs.length*0.8)]-oxbow.floor);
+}
+function buildOxbowLake(){
+  if(!oxbow||oxbow.mesh) return;
+  const O=CONFIG.terrain.oxbow, {S,cellM}=oxbow, half=(S-1)*cellM/2, pos=[];
+  for(const i of oxbow.cells){
+    const x=(i%S)*cellM-half, z=Math.floor(i/S)*cellM-half, e=cellM*0.75;   // overlap a touch — no cracks
+    pos.push(x-e,0,z-e, x-e,0,z+e, x+e,0,z-e,  x+e,0,z-e, x-e,0,z+e, x+e,0,z+e);
+  }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.computeVertexNormals();
+  const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:O.lake.color,transparent:true,opacity:O.lake.opacity,
+    polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1}));
+  m.renderOrder=1; m.visible=false; terrainMesh.add(m); oxbow.mesh=m;
+  // Mosquitoes along the lake (world positions through the terrain transform)
+  terrainMesh.updateMatrixWorld(true);
+  const v=new THREE.Vector3(), step=Math.max(1,Math.floor(oxbow.cells.length/O.lake.mosquitoAnchors));
+  for(let k=0;k<oxbow.cells.length;k+=step){
+    const i=oxbow.cells[k]; v.set((i%S)*cellM-half,oxbow.floor+O.lake.maxDepthM*0.6,Math.floor(i/S)*cellM-half); terrainMesh.localToWorld(v);
+    mosquitoAnchors.push({x:v.x,y:v.y,z:v.z,born:-1e9,died:_isoYearFrac(O.lake.until,1e9),group:{visible:true}});
+  }
+  if(_mosq){ scene.remove(_mosq.pts); _mosq=null; }   // rebuilt with the new anchors
+}
+let _oxKeys=null;   // lake fill keyframes, parsed on first use
+window._debugOxbow=()=>oxbow?{cells:oxbow.cells.length,floor:+oxbow.floor.toFixed(2),range:+oxbow.range.toFixed(2),visible:!!oxbow.mesh?.visible,level:oxbow.mesh?+oxbow.mesh.position.y.toFixed(2):null}:null;
+function tickOxbow(){
+  if(!oxbow) return;
+  if(!oxbow.mesh) buildOxbowLake();
+  const O=CONFIG.terrain.oxbow, L=O.lake, yr=yearFrac(currentViewDate);
+  if(yr>=_isoYearFrac(L.until,1e9)){ oxbow.mesh.visible=false; return; }
+  _oxKeys??=_mdKeys(L.fill);
+  let fill=_seasonChannel(_oxKeys,viewDayOfYear(currentViewDate));
+  const wet=moistureAt(currentViewDate); fill*=1+wet*L.wetEffect;
+  fill=Math.max(0,Math.min(1,fill));
+  oxbow.mesh.visible=fill>0.03;
+  if(!oxbow.mesh.visible) return;
+  oxbow.mesh.position.y=oxbow.floor+fill*oxbow.range;
+  const ice=season.ice, snow=season.snow;
+  oxbow.mesh.material.color.set(L.color).lerp(_wc.b.set(L.iceColor),ice).lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.85);
 }
 
 // ── Real DEM loader ─────────────────────────────────────────────────
@@ -800,7 +896,9 @@ async function applyDEM(){
       return;
     }
     smoothDEM(heights, S, meta.size/(S-1));
-    flattenDEM(heights, S, meta.size/(S-1));
+    detectOxbow(heights, S, meta.size/(S-1));   // before flattening, which leaves it alone
+    flattenDEM(heights, S, meta.size/(S-1), oxbow?.mask);
+    deepenOxbow(heights);
     if(S === T){
       for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
     }else{
@@ -1492,7 +1590,7 @@ function tickFires(dt){
     const fl=q<F.flameEnd?Math.sin(Math.min(1,q/F.flameEnd)*Math.PI)**0.6:0;
     activeFireSpots.push({f,x:fx,y:f.baseY+H*0.5,z:fz,flames:fl,q,radius:f.radius});
     const sm=q<F.flameEnd*0.5?Math.min(1,q/(F.flameEnd*0.15)):Math.max(F.smokeTail,1-(q-F.flameEnd*0.5)/(1-F.flameEnd*0.5)*(1-F.smokeTail));
-    const hTop=f.baseY+H*(1-0.55*Math.max(0,Math.min(1,(q-0.14)/0.26)));   // shell collapsing (matches the shader)
+    const hTop=f.survive?f.topY:f.baseY+H*(1-0.55*Math.max(0,Math.min(1,(q-0.14)/0.26)));   // shell collapsing (matches the shader) — survivors keep their height
     const size=Math.max(1,f.radius/6);
     const emit=(kind,rate,setup)=>{
       let n=rate*dt; n=Math.floor(n)+(Math.random()<n%1?1:0);
@@ -2526,6 +2624,7 @@ function maybeBuildDeferred(){
     totalBuildings+=n;
     buildLayerBar();          // visibility for the new group + road/ground-cover/haze refresh
     applySeason(true);        // new roof materials pick up the season
+    if(pendingAutoFacades.length) retryPendingFacades();   // facades for buildings in this chunk
   }).catch(e=>console.error('Deferred build failed',e)).finally(()=>{_deferBusy=false;});
 }
 
@@ -3069,6 +3168,15 @@ async function buildCity(geojson){
     if(_fOuter&&_bi.build[3]<0){
       const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
       fireRecords.push({group,died:_bi.died,dur:-_bi.build[3],x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,radius:Math.sqrt(_fArea)/2});
+    }
+    // Fires the building survived (props.fires, e.g. from building_history
+    // `set`): flames, smoke and engines only — no charring, no collapse.
+    if(_fOuter&&Array.isArray(props.fires)) for(const fe of props.fires){
+      if(!fe?.date) continue;
+      const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
+      const days=fe.days??3, start=_isoYearFrac(fe.date,0);
+      fireRecords.push({group,died:start+days/365,dur:days/365,x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,
+        radius:Math.sqrt(_fArea)/2*(fe.severity??0.8),survive:true});
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
@@ -4721,7 +4829,24 @@ function canvasToTex(canvas){
   return tex;
 }
 
-async function loadFacade(imageFile){
+// Autoloaded facades (facades.json) whose building isn't built yet — e.g. a
+// later decade still deferred — wait here and retry after each deferred
+// build instead of opening the manual placement picker.
+const pendingAutoFacades=[];
+async function retryPendingFacades(){
+  const list=pendingAutoFacades.splice(0);
+  for(const f of list){
+    const n=pendingAutoFacades.length;
+    await loadFacade(f,{autoload:true});
+    if(pendingAutoFacades.length>n) continue;   // still no building
+    try{   // matched now — its companion window mask too
+      const maskName=f.name.replace(/(\.[^.]+)$/,'_mask$1');
+      const r=await fetch(CONFIG.dataFiles.facadeImageDir+maskName);
+      if(r.ok){ const b=await r.blob(); await loadWindowMask(new File([b],maskName,{type:b.type})); }
+    }catch(e){}
+  }
+}
+async function loadFacade(imageFile,opts={}){
   let rawCanvas;
   try{rawCanvas=await loadImageToCanvas(imageFile);}
   catch(e){console.warn('Image load failed:',e);return;}
@@ -4758,6 +4883,8 @@ async function loadFacade(imageFile){
   }
 
   // ── No match — picker ──────────────────────────────────────────
+  // Autoloaded: no picker — retry once more buildings exist.
+  if(opts.autoload){ pendingAutoFacades.push(imageFile); return; }
   // Store raw canvas; wall colour applied when building is selected.
   document.getElementById('facade-preview').src=rawCanvas.toDataURL('image/jpeg',0.6);
   document.getElementById('facade-filename').textContent=imageFile.name;
@@ -8594,6 +8721,7 @@ function startLoop(){
     tickParades(dt);
     tickMosquitoes(dt);
     tickUtilityPoles();
+    tickOxbow();
     tickSoundHooks(dt);
     applySeason();
     tickWeather(dt);
@@ -9670,7 +9798,7 @@ renderer.render(scene,camera);
           if(!ires.ok)continue;
           const blob=await ires.blob();
           const file=new File([blob],fname,{type:blob.type});
-          await loadFacade(file);
+          await loadFacade(file,{autoload:true});
           // Attempt to auto-load a companion window mask (_mask suffix)
           const maskName=fname.replace(/(\.[^.]+)$/,'_mask$1');
           try{

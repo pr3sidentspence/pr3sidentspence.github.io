@@ -292,7 +292,7 @@ export const CONFIG = {
     // Feature properties kept in memory after load (everything else in the
     // data files is dropped at load — add a name here if new code needs it)
     keepProps: ['id','uid','pf_uid','name','address','material','floors','type','roof_type','area_m2',
-                'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','replaced_by',
+                'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','replaced_by','fires',
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
@@ -447,7 +447,25 @@ export const CONFIG = {
       // pulled toward a wide average of that ground — bumps halve, banks
       // untouched, regional rise kept (strength 0 = off; see flattenDEM)
       flatten: { radiusM: 300, strength: 0.85, bankSlope: 0.08, bufferM: 40, featherM: 20,
-                 minAboveWater: 3, maxMoveM: 2.5 } },
+                 minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
+    // The cut-off oxbow east of the Forks (St Boniface/Norwood): found in the
+    // LiDAR (relBelowM under a contextM-wide average, inside bbox lon/lat
+    // [W, S, E, N], clear of the river banks), kept out of the flattening,
+    // deepened (deepenM at the old channel's middle, ramping over
+    // deepenRampM of depth), and given a seasonal "sometimes lake".
+    oxbow: {
+      bbox: [-97.12826, 49.87671, -97.10972, 49.88839],
+      contextM: 300, relBelowM: -0.35, deepenM: 1.5, deepenRampM: 0.8,
+      lake: {
+        // fill 0..1 of the basin by date — spring melt, draining through summer, a little fall rain
+        fill: [['03-25',0.1],['04-15',0.35],['04-30',0.9],['06-10',0.75],['07-20',0.35],['08-31',0.1],['10-15',0.2],['11-20',0.3]],
+        wetEffect: 0.7,          // × (1 + moisture·wetEffect): wet summers fuller, drought dry
+        maxDepthM: 1.6,
+        color: 0x4A5236, opacity: 0.88, iceColor: 0xC8D2DC,
+        mosquitoAnchors: 70,
+        until: null,             // ISO date it was filled in (null = the whole timeline)
+      },
+    },
     noiseAmplitude: 0.80,   // metres of prairie undulation — enough for interesting flood spread
     noiseBaseY: 0.0,        // baseline Y for terrain surface (buildings sit at y=0)
     channelDepth: 5.5,      // metres the channel floor sits below bank level (y=0)

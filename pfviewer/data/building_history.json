@@ -599,6 +599,450 @@
           "died": "year"
         }
       }
+    },
+    "4f634818-55c4-450b-9d23-1b6a24daad0e": {
+      "name": "McIntyre Block",
+      "address": "416 Main St",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/mcintyreblock.shtml",
+        "wpgfiremuseum.ca 1873-1899",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "First McIntyre Block (1884, enlarged 1886/1890) destroyed by fire 2 Feb 1898 (MHS; Fire Museum says 11 Feb). New 5-storey block built 1898. Storeys of the 1884 block unknown — 3 assumed.",
+      "phases": [
+        {
+          "phase": "first McIntyre Block (1884)",
+          "floors": 3,
+          "born": "1884-06-01",
+          "died": "1898-02-02",
+          "died_by": "fire",
+          "date_precision": {
+            "born": "year",
+            "died": "day"
+          }
+        },
+        {
+          "phase": "new block (1898)",
+          "born": "1898-11-01",
+          "construction_months": 8,
+          "date_precision": {
+            "born": "year"
+          }
+        }
+      ]
+    },
+    "099bfcec-9262-4b77-a777-1ef6a3b9c667": {
+      "name": "McIntyre Block",
+      "address": "416 Main St",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/mcintyreblock.shtml",
+        "wpgfiremuseum.ca 1873-1899",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "First McIntyre Block (1884, enlarged 1886/1890) destroyed by fire 2 Feb 1898 (MHS; Fire Museum says 11 Feb). New 5-storey block built 1898. Storeys of the 1884 block unknown — 3 assumed.",
+      "phases": [
+        {
+          "phase": "first McIntyre Block (1884)",
+          "floors": 3,
+          "born": "1884-06-01",
+          "died": "1898-02-02",
+          "died_by": "fire",
+          "date_precision": {
+            "born": "year",
+            "died": "day"
+          }
+        },
+        {
+          "phase": "new block (1898)",
+          "born": "1898-11-01",
+          "construction_months": 8,
+          "date_precision": {
+            "born": "year"
+          }
+        }
+      ]
+    },
+    "2faed2c4-da33-4b96-9b09-f3f96a39055f": {
+      "name": "J.H. Ashdown Hardware store",
+      "address": "Albert St at Bannatyne Ave",
+      "sources": [
+        "heritagewinnipeg.com/?p=17875",
+        "wpgfiremuseum.ca 1900-1914",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed in the Bulman Block fire, night of 11 Oct 1904. Rebuilt: first two floors open by Christmas 1904, four more storeys in 1905 — two storeys taller than before (so 4 before).",
+      "phases": [
+        {
+          "phase": "store before the 1904 fire",
+          "floors": 4,
+          "died": "1904-10-11",
+          "died_by": "fire",
+          "date_precision": {
+            "died": "day"
+          }
+        },
+        {
+          "phase": "rebuilt, storeys 1–2",
+          "floors": 2,
+          "born": "1904-12-20",
+          "construction_months": 2,
+          "date_precision": {
+            "born": "month"
+          }
+        },
+        {
+          "phase": "1905: four more storeys",
+          "base_floors": 2,
+          "floors": 6,
+          "born": "1905-10-01",
+          "construction_months": 6,
+          "date_precision": {
+            "born": "year"
+          }
+        }
+      ]
+    },
+    "02d3e8a5-0e5e-4d04-a547-331b6a4bc17b": {
+      "name": "J.H. Ashdown Hardware store",
+      "address": "Albert St at Bannatyne Ave",
+      "sources": [
+        "heritagewinnipeg.com/?p=17875",
+        "wpgfiremuseum.ca 1900-1914",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed in the Bulman Block fire, night of 11 Oct 1904. Rebuilt: first two floors open by Christmas 1904, four more storeys in 1905 — two storeys taller than before (so 4 before).",
+      "phases": [
+        {
+          "phase": "store before the 1904 fire",
+          "floors": 4,
+          "died": "1904-10-11",
+          "died_by": "fire",
+          "date_precision": {
+            "died": "day"
+          }
+        },
+        {
+          "phase": "rebuilt, storeys 1–2",
+          "floors": 2,
+          "born": "1904-12-20",
+          "construction_months": 2,
+          "date_precision": {
+            "born": "month"
+          }
+        },
+        {
+          "phase": "1905: four more storeys",
+          "base_floors": 2,
+          "floors": 6,
+          "born": "1905-10-01",
+          "construction_months": 6,
+          "date_precision": {
+            "born": "year"
+          }
+        }
+      ]
+    },
+    "daaa712b-ec5f-4bfb-9143-1984bf26f60e": {
+      "name": "St. Boniface Cathedral",
+      "sources": [
+        "mhs.mb.ca/docs/MB_history/63/historicalchurches.shtml",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "The 1832 cathedral (third church) and bishop's quarters burned in December 1860 (tallow for Christmas candles boiled over); day not found. Modelled on the footprint of the 1862 stone cathedral that replaced it.",
+      "phases": [
+        {
+          "phase": "1832 cathedral",
+          "born": "1832-06-01",
+          "construction_months": 12,
+          "died": "1860-12-15",
+          "died_by": "fire",
+          "date_precision": {
+            "born": "year",
+            "died": "month"
+          }
+        },
+        {
+          "phase": "1862 stone cathedral"
+        }
+      ]
+    },
+    "855f3cd7-20ec-4a84-b49d-5319f8cc43a7": {
+      "name": "St. Boniface Cathedral",
+      "sources": [
+        "mhs.mb.ca/docs/MB_history/63/historicalchurches.shtml",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "The 1832 cathedral (third church) and bishop's quarters burned in December 1860 (tallow for Christmas candles boiled over); day not found. Modelled on the footprint of the 1862 stone cathedral that replaced it.",
+      "phases": [
+        {
+          "phase": "1832 cathedral",
+          "born": "1832-06-01",
+          "construction_months": 12,
+          "died": "1860-12-15",
+          "died_by": "fire",
+          "date_precision": {
+            "born": "year",
+            "died": "month"
+          }
+        },
+        {
+          "phase": "1862 stone cathedral"
+        }
+      ]
+    },
+    "d7ca9f59-a769-44bb-887c-2302ab1f9f71": {
+      "name": "Canadian Moline Plow Building",
+      "address": "669 Logan Ave (NE corner Chambers St)",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/molineplowbuilding.shtml",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Fire 28 Sep 1918 (C.S. Judson Co.) destroyed the building and contents; the upper three storeys were removed and it carried on as one storey.",
+      "phases": [
+        {
+          "phase": "ground floor (survived)",
+          "floors": 1
+        },
+        {
+          "phase": "upper storeys (burned 1918)",
+          "base_floors": 1,
+          "floors": 4,
+          "died": "1918-09-28",
+          "died_by": "fire",
+          "date_precision": {
+            "died": "day"
+          }
+        }
+      ]
+    },
+    "c45166a0-fbe7-4bee-96df-aa4ab4236180": {
+      "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
+      "address": "Notre Dame Ave at Adelaide St",
+      "sources": [
+        "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
+        "wpgfiremuseum.ca/winnipeg-theatre-fire/",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
+      "set": {
+        "died": "1926-12-23",
+        "died_by": "fire",
+        "date_precision": {
+          "died": "day"
+        }
+      }
+    },
+    "563b25e5-b0f2-40c0-8ffe-9c462c39e55c": {
+      "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
+      "address": "Notre Dame Ave at Adelaide St",
+      "sources": [
+        "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
+        "wpgfiremuseum.ca/winnipeg-theatre-fire/",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
+      "set": {
+        "died": "1926-12-23",
+        "died_by": "fire",
+        "date_precision": {
+          "died": "day"
+        }
+      }
+    },
+    "0e406fcb-06f1-414e-811e-14737efaed44": {
+      "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
+      "address": "Notre Dame Ave at Adelaide St",
+      "sources": [
+        "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
+        "wpgfiremuseum.ca/winnipeg-theatre-fire/",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
+      "set": {
+        "died": "1926-12-23",
+        "died_by": "fire",
+        "date_precision": {
+          "died": "day"
+        }
+      }
+    },
+    "47cd9609-ad77-4984-b780-2fd65941f5eb": {
+      "name": "Old Tribune Building (Grand Theatre / Tribune Block)",
+      "address": "211 McDermot Ave",
+      "sources": [
+        "winnipegarchitecture.ca/places/257-smith-street/",
+        "wpgfiremuseum.ca 1915-1940",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed by fire 16 May 1930; site left empty. (The Tribune had moved to Smith St in 1914.)",
+      "set": {
+        "died": "1930-05-16",
+        "died_by": "fire",
+        "date_precision": {
+          "died": "day"
+        }
+      }
+    },
+    "753ae38d-8f4b-4813-8349-f55592f9d3df": {
+      "name": "Old Tribune Building (Grand Theatre / Tribune Block)",
+      "address": "211 McDermot Ave",
+      "sources": [
+        "winnipegarchitecture.ca/places/257-smith-street/",
+        "wpgfiremuseum.ca 1915-1940",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Destroyed by fire 16 May 1930; site left empty. (The Tribune had moved to Smith St in 1914.)",
+      "set": {
+        "died": "1930-05-16",
+        "died_by": "fire",
+        "date_precision": {
+          "died": "day"
+        }
+      }
+    },
+    "ac90b2b3-8d7b-44d2-9887-52aa0eb8d89c": {
+      "name": "Scott Block",
+      "sources": [
+        "wpgfiremuseum.ca 1900-1914",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived).",
+      "set": {
+        "fires": [
+          {
+            "date": "1914-03-23",
+            "days": 3,
+            "severity": 0.8,
+            "note": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived)."
+          }
+        ]
+      }
+    },
+    "eac81f97-7612-47fc-8e38-dd4c96d1a111": {
+      "name": "Scott Block",
+      "sources": [
+        "wpgfiremuseum.ca 1900-1914",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived).",
+      "set": {
+        "fires": [
+          {
+            "date": "1914-03-23",
+            "days": 3,
+            "severity": 0.8,
+            "note": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived)."
+          }
+        ]
+      }
+    },
+    "5343a28b-b8b3-5289-bea5-58c3995c4928": {
+      "name": "Scott-Bathgate Building",
+      "sources": [
+        "wpgfiremuseum.ca 1915-1940",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Fire 15 Feb 1917 (Fire Museum listing only; extent unknown — shown as survived; building still stands).",
+      "set": {
+        "fires": [
+          {
+            "date": "1917-02-15",
+            "days": 3,
+            "severity": 0.8,
+            "note": "Fire 15 Feb 1917 (Fire Museum listing only; extent unknown — shown as survived; building still stands)."
+          }
+        ]
+      }
+    },
+    "b8d34dd2-d689-5ae2-bea0-49cf9ba9965d": {
+      "name": "Dingwall Building",
+      "sources": [
+        "wpgfiremuseum.ca 1915-1940",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Fire Feb 1921, day unknown (ice load snapped Station No. 7's aerial ladder). Shown as survived.",
+      "set": {
+        "fires": [
+          {
+            "date": "1921-02-15",
+            "days": 2,
+            "severity": 0.8,
+            "note": "Fire Feb 1921, day unknown (ice load snapped Station No. 7's aerial ladder). Shown as survived."
+          }
+        ]
+      }
+    },
+    "884ccb3e-0d5f-4d05-b2b6-c571eae2f739": {
+      "name": "Leckie Building",
+      "sources": [
+        "mhs.mb.ca/docs/sites/leckiebuilding.shtml",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "Interior gutted 21 Sep 1924; restored (designated 2017).",
+      "set": {
+        "fires": [
+          {
+            "date": "1924-09-21",
+            "days": 2,
+            "severity": 1.0,
+            "note": "Interior gutted 21 Sep 1924; restored (designated 2017)."
+          }
+        ]
+      }
+    },
+    "0c321282-de8e-4c1b-9e23-183717549ad0": {
+      "name": "Tees & Persse building",
+      "sources": [
+        "ipernity.com/doc/567275/album/900188 (collector postcard notes)",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "New Year's Day 1924: burned all night, out by ~10 a.m.; building repaired and still in use.",
+      "set": {
+        "fires": [
+          {
+            "date": "1924-01-01",
+            "days": 2,
+            "severity": 1.0,
+            "note": "New Year's Day 1924: burned all night, out by ~10 a.m.; building repaired and still in use."
+          }
+        ]
+      }
+    },
+    "a51c9536-e9fb-4126-8cf9-67c562e06359": {
+      "name": "James Robertson & Co. (older building)",
+      "sources": [
+        "ipernity.com/tag/567275/keyword/17753",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "6 Apr 1907: older of two buildings damaged, contents lost; newer one saved by fireproof wall. Match to this footprint is a best guess among the Robertson buildings.",
+      "set": {
+        "fires": [
+          {
+            "date": "1907-04-06",
+            "days": 2,
+            "severity": 0.8,
+            "note": "6 Apr 1907: older of two buildings damaged, contents lost; newer one saved by fireproof wall. Match to this footprint is a best guess among the Robertson buildings."
+          }
+        ]
+      }
+    },
+    "b80f2e62-8612-478c-a340-c8927f9f1b8d": {
+      "name": "Radford-Wright Building (door and sash)",
+      "sources": [
+        "mhs.mb.ca/docs/mb_history/67/plate53.shtml",
+        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+      ],
+      "notes": "9 Mar 1912 arson + naphtha explosion: rear blown out, roof off, walls collapsed; block saved from total loss. 7 dead incl. firemen McPherson and Molyneux. MATCH UNCERTAIN: 3-storey brick next to Stuart Machinery at ~776 Main.",
+      "set": {
+        "fires": [
+          {
+            "date": "1912-03-09",
+            "days": 2,
+            "severity": 1.0,
+            "note": "9 Mar 1912 arson + naphtha explosion: rear blown out, roof off, walls collapsed; block saved from total loss. 7 dead incl. firemen McPherson and Molyneux. MATCH UNCERTAIN: 3-storey brick next to Stuart Machinery at ~776 Main."
+          }
+        ]
+      }
     }
   }
 }
