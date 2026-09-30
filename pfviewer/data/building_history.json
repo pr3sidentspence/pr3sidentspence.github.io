@@ -1,5 +1,5 @@
 {
-  "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON.",
+  "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON. wall_stripes adds stone/brick bands over the wall colour: a colour alone (one band per storey on the floor lines), or {color, every, height, offset, base} in metres (base = solid course at the bottom). roof_type 'dome', 'bell' (ogee) or 'conical' gives a curved tower roof; roof_height (m) and roof_color (named colour incl. slate/copper/newCopper, or hex) are optional.",
   "buildings": {
     "76e52ce7-2b91-4411-ad15-e526e36f7087": {
       "name": "Leland Hotel",
@@ -70,21 +70,37 @@
     "de6e0ff3-7cb8-4be4-9c90-40a86a33b032": {
       "name": "City Hall",
       "set": {
-        "wall_color": "red"
+        "wall_color": "red",
+        "wall_stripes": {
+          "color": "tyndall",
+          "height": 0.5,
+          "base": 1.2
+        }
       }
     },
     "e5129cb0-5482-41c9-9bb5-33071a64a461": {
       "name": "City Hall",
       "notes": "part of City Hall (Goad material: stone)",
       "set": {
-        "wall_color": "red"
+        "wall_color": "red",
+        "wall_stripes": {
+          "color": "tyndall",
+          "height": 0.5,
+          "base": 1.2
+        }
       }
     },
     "06e2ef08-ceff-4974-bee1-0171feca8a0e": {
       "name": "City Hall",
-      "notes": "centre tower (5 storeys); stone, per Mike",
+      "notes": "centre tower (5 storeys): red brick with stone bands, ogee dome",
       "set": {
-        "wall_color": "tyndall"
+        "wall_color": "red",
+        "wall_stripes": {
+          "color": "tyndall",
+          "height": 0.5,
+          "base": 1.2
+        },
+        "roof_type": "bell"
       }
     }
   }

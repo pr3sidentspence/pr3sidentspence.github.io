@@ -94,6 +94,9 @@ export const CONFIG = {
       tyndall:   0xD2C49A,   // Tyndall limestone
       sandstone: 0x9C5A40,   // red sandstone
       grey:      0x8C8880,   // grey stone / painted brick
+      slate:     0x4A5058,   // slate roofing (default for dome/bell/conical roofs)
+      copper:    0x5E9C86,   // weathered (verdigris) copper
+      newCopper: 0xB0683C,   // fresh copper
     },
     // Each [lo,hi] pair is a colour range a building of this material is
     // randomly lerped within. `weights` are cumulative percentages (must
@@ -286,7 +289,8 @@ export const CONFIG = {
                 'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','replaced_by',
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
-                'st_name','st_type','streetcar_start','rail_class','wall_color'],
+                'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
+                'roof_height','roof_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     platformHeight: 0.6, // low platform/loading-dock structures
     minHeight: 2.0,

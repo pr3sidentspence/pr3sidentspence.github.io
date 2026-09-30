@@ -903,24 +903,39 @@ function tagLifespan(geom, born, died, build=NO_BUILD){
 }
 
 // ── Per-building data table ──
-// Buildings' [born, died, baseY, topY] + [constructionYears, demolitionYears]
-// live ONCE in a float texture (2 RGBA texels per building). Building pieces
+// Buildings' [born, died, baseY, topY] + [constructionYears, demolitionYears,
+// hasWindows, stripeBase] + [stripeColour, stripeEvery, stripeHeight,
+// stripeOffset] live ONCE in a float texture (3 RGBA texels per building). Building pieces
 // (walls, roofs, parapets, chimneys, glass…) carry only a per-vertex building
 // index (aBldIdx) and the vertex shader looks the rest up — instead of six
 // floats repeated on every vertex. Row 0 = "no constraint".
 const BLD_TEX_W=1024;
-let bldRows=new Float32Array(8*8192), bldCount=0;
+const BLD_STRIDE=12;   // floats per building (3 texels)
+let bldRows=new Float32Array(BLD_STRIDE*8192), bldCount=0;
 const bldTableUniform={value:null};
-function addBuildingRow(born,died,build,hasWindows=0){
-  if(bldCount===0){ bldRows.set([NO_BORN,NO_DIED,0,0,0,0,0,0],0); bldCount=1; }
-  if((bldCount+1)*8>bldRows.length){ const g=new Float32Array(bldRows.length*2); g.set(bldRows); bldRows=g; }
-  bldRows.set([born,died,build[0],build[1],build[2],build[3],hasWindows,0],bldCount*8);   // [6] = got real windows → painted ones at distance
+const NO_STRIPES=[0,0,0,0,0];   // [colour+1 (0 = none), every, height, offset, base]
+function addBuildingRow(born,died,build,hasWindows=0,stripes=NO_STRIPES){
+  if(bldCount===0){ bldRows.fill(0,0,BLD_STRIDE); bldRows[0]=NO_BORN; bldRows[1]=NO_DIED; bldCount=1; }
+  if((bldCount+1)*BLD_STRIDE>bldRows.length){ const g=new Float32Array(bldRows.length*2); g.set(bldRows); bldRows=g; }
+  bldRows.set([born,died,build[0],build[1],build[2],build[3],hasWindows,stripes[4],
+    stripes[0],stripes[1],stripes[2],stripes[3]],bldCount*BLD_STRIDE);   // [6] = got real windows → painted ones at distance
   return bldCount++;
+}
+// Hand-set stripes (props.wall_stripes) → the table's stripe values. Accepts a
+// colour name/hex alone, or {color, every, height, offset, base} in metres:
+// bands of `height` centred every `every` m (default one per storey, on the
+// floor lines) shifted up by `offset`, plus a solid `base` course at the bottom.
+function stripesOf(props){
+  let v=props&&props.wall_stripes; if(v==null||v==='') return NO_STRIPES;
+  if(typeof v!=='object') v={color:v};
+  const col=wallColourOverride({wall_color:v.color,uid:props.uid});
+  if(col==null) return NO_STRIPES;
+  return [col+1, v.every??FLOOR_H, v.height??0.45, v.offset??0, v.base??0];
 }
 // Upload after each layer is built (and after live loads)
 function refreshBuildingTable(){
-  const texels=Math.max(1,bldCount)*2, h=Math.ceil(texels/BLD_TEX_W);
-  const data=new Float32Array(BLD_TEX_W*h*4); data.set(bldRows.subarray(0,Math.max(1,bldCount)*8));
+  const texels=Math.max(1,bldCount)*3, h=Math.ceil(texels/BLD_TEX_W);
+  const data=new Float32Array(BLD_TEX_W*h*4); data.set(bldRows.subarray(0,Math.max(1,bldCount)*BLD_STRIDE));
   const tex=new THREE.DataTexture(data,BLD_TEX_W,h,THREE.RGBAFormat,THREE.FloatType);
   tex.minFilter=tex.magFilter=THREE.NearestFilter; tex.needsUpdate=true;
   bldTableUniform.value?.dispose();
@@ -943,7 +958,7 @@ function tagBuildingIdx(geom, idx){
 // dark by a per-window hash. Only on buildings that got real windows.
 const windowPaintUniforms={ uWinNight:{value:0}, uWinGlass:{value:new THREE.Color()}, uWinGlow:{value:new THREE.Color()},
   uWinFade:{value:new THREE.Vector2(1200,1600)} };
-function _lifespanShaderFor(kind, table=false, paint=false){
+function _lifespanShaderFor(kind, table=false, paint=false, stripes=false){
   return shader=>{
     shader.uniforms.buildingYear = buildingYearUniform;
     if(paint) Object.assign(shader.uniforms,windowPaintUniforms);
@@ -951,16 +966,19 @@ function _lifespanShaderFor(kind, table=false, paint=false){
       ? 'attribute float aBldIdx;\nuniform highp sampler2D uBldTable;\nvarying vec2 vLifespan;\nvarying vec4 vBuild;\nvarying float vBldY;\n'
       : 'attribute vec2 aLifespan;\nattribute vec4 aBuild;\nvarying vec2 vLifespan;\nvarying vec4 vBuild;\nvarying float vBldY;\n';
     const fetch = table
-      ? `int bi = int(aBldIdx + 0.5) * 2;
+      ? `int bi = int(aBldIdx + 0.5) * 3;
   vec4 bt0 = texelFetch(uBldTable, ivec2(bi % ${BLD_TEX_W}, bi / ${BLD_TEX_W}), 0);
   vec4 bt1 = texelFetch(uBldTable, ivec2((bi + 1) % ${BLD_TEX_W}, (bi + 1) / ${BLD_TEX_W}), 0);
   vLifespan = bt0.xy; vBuild = vec4(bt0.zw, bt1.xy);` + (paint ? ' vWinFlag = bt1.z; vWinSeed = aBldIdx;' : '')
+        + (stripes ? ` vStripe = texelFetch(uBldTable, ivec2((bi + 2) % ${BLD_TEX_W}, (bi + 2) / ${BLD_TEX_W}), 0); vStripeBase = bt1.w;` : '')
       : 'vLifespan = aLifespan; vBuild = aBuild;';
     if(table) shader.uniforms.uBldTable = bldTableUniform;
-    shader.vertexShader = head + (paint ? 'varying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' : '') + shader.vertexShader
+    shader.vertexShader = head + (paint ? 'varying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' : '')
+      + (stripes ? 'varying vec4 vStripe;\nvarying float vStripeBase, vStripeNy;\n' : '') + shader.vertexShader
       .replace('void main() {', 'void main() {\n  ' + fetch)
       .replace('#include <project_vertex>', '#include <project_vertex>\n  vBldY = (modelMatrix * vec4(transformed, 1.0)).y;'
-        + (paint ? '\n  vWinPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWinN = normalize(mat3(modelMatrix) * objectNormal);' : ''));
+        + (paint ? '\n  vWinPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWinN = normalize(mat3(modelMatrix) * objectNormal);' : '')
+        + (stripes ? '\n  vStripeNy = normalize(mat3(modelMatrix) * objectNormal).y;' : ''));
     shader.fragmentShader = `#define BLD_KIND ${kind}
 uniform float buildingYear;
 varying vec2 vLifespan;
@@ -994,7 +1012,21 @@ varying float vBldY;
     }
   #endif
   }`)
-      .replace('#include <color_fragment>', '#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.045, 0.04), bldChar * 0.92);'
+      .replace('#include <color_fragment>', '#include <color_fragment>' + (stripes ? `
+  // Hand-set stone/brick banding (building table texel 3): colour+1 packed as an integer
+  if (vStripe.x > 0.5 && abs(vStripeNy) < 0.3) {
+    float c = vStripe.x - 1.0;
+    vec3 sc = vec3(floor(c / 65536.0), mod(floor(c / 256.0), 256.0), mod(c, 256.0)) / 255.0;
+    float yy = vBldY - vBuild.x, band = 0.0;
+    if (vStripe.y > 0.0) {
+      float t = (yy - vStripe.w + 0.5 * vStripe.z) / vStripe.y, f = vStripe.z / vStripe.y;
+      float fw = fwidth(t), ft = fract(t);
+      band = smoothstep(-fw, fw, f - ft) * smoothstep(-fw, fw, ft);
+      band = mix(band, f, smoothstep(0.3, 0.8, fw));   // too fine to resolve → average
+    }
+    band = max(band, step(yy, vStripeBase));
+    diffuseColor.rgb = mix(diffuseColor.rgb, sc, band);
+  }` : '') + '\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.05, 0.045, 0.04), bldChar * 0.92);'
         + (paint ? `
   float winMask = 0.0, winLit = 0.0;
   if (vWinFlag > 0.5 && abs(vWinN.y) < 0.3) {
@@ -1018,6 +1050,7 @@ varying float vBldY;
     }
   }` : ''))
       + '';
+    if(stripes) shader.fragmentShader = 'varying vec4 vStripe;\nvarying float vStripeBase, vStripeNy;\n' + shader.fragmentShader;
     if(paint) shader.fragmentShader = 'uniform float uWinNight;\nuniform vec3 uWinGlass, uWinGlow;\nuniform vec2 uWinFade;\nvarying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' + shader.fragmentShader
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += uWinGlow * uWinNight * winMask * winLit;');
   };
@@ -1025,10 +1058,11 @@ varying float vBldY;
 const _installLifespanShader=_lifespanShaderFor(0);
 // table=true: the mesh's geometry carries aBldIdx (building table) instead of
 // per-vertex aLifespan/aBuild — used for all building pieces.
-function tagMaterialForLifespan(mat, kind=0, table=false, paint=false){
-  if(OFF.has('paint')) paint=false;
-  mat.onBeforeCompile = _lifespanShaderFor(kind, table, paint);
-  mat.customProgramCacheKey = () => 'lifespan'+kind+(table?'t':'')+(paint?'w':'');
+// walls=true (table mode): painted distant windows + hand-set stripes.
+function tagMaterialForLifespan(mat, kind=0, table=false, walls=false){
+  const paint=walls&&!OFF.has('paint'), stripes=walls&&table;
+  mat.onBeforeCompile = _lifespanShaderFor(kind, table, paint, stripes);
+  mat.customProgramCacheKey = () => 'lifespan'+kind+(table?'t':'')+(paint?'w':'')+(stripes?'s':'');
   return mat;
 }
 // One fresh depth material per call — three.js needs a distinct customDepthMaterial
@@ -1457,6 +1491,38 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
   const geom=new THREE.BufferGeometry();
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.computeVertexNormals();return geom;
+}
+// Curved tower roofs (roof_type conical / dome / bell): the footprint ring is
+// shrunk toward its centroid as the roof rises, so a square tower gets a
+// square dome. bell = ogee (flares out at the eaves, curves in to a point).
+// Height: roof_height (m), else a multiple of the tower's mean radius.
+const CURVED_ROOF_TYPES=new Set(['conical','dome','bell']);
+function buildCurvedRoof(ring,roofBaseY,type,heightM){
+  const n=ring.length; if(n<3) return null;
+  let cx=0,cz=0; for(const[x,z]of ring){cx+=x;cz+=z;} cx/=n; cz/=n;
+  let R=0; for(const[x,z]of ring) R+=Math.hypot(x-cx,z-cz); R/=n;
+  const H=heightM||R*(type==='dome'?1.0:type==='bell'?1.7:2.2);
+  const K=type==='conical'?1:12, pos=[], idx=[];
+  const prof=t=> type==='dome' ? [Math.cos(t*Math.PI/2), Math.sin(t*Math.PI/2)]
+               : type==='bell' ? [0.5*(1+Math.cos(Math.PI*t)), t]
+               : [1-t, t];
+  for(let k=0;k<K;k++){
+    const [s,y]=prof(k/K);
+    for(const[x,z]of ring) pos.push(cx+(x-cx)*s, roofBaseY+y*H, cz+(z-cz)*s);
+  }
+  const apex=pos.length/3; pos.push(cx,roofBaseY+H,cz);
+  for(let k=0;k<K;k++) for(let i=0;i<n;i++){
+    const a=k*n+i, b=k*n+(i+1)%n;
+    if(k<K-1){ const c=a+n, d=b+n; idx.push(a,b,d, a,d,c); }
+    else idx.push(a,b,apex);
+  }
+  const geom=new THREE.BufferGeometry();
+  geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  geom.setIndex(idx); geom.computeVertexNormals();
+  // Winding follows the footprint's; make the faces point outward either way
+  const nrm=geom.attributes.normal; let up=0; for(let i=0;i<nrm.count;i++) up+=nrm.getY(i);
+  if(up<0){ for(let i=0;i<idx.length;i+=3){const t=idx[i+1];idx[i+1]=idx[i+2];idx[i+2]=t;} geom.setIndex(idx); geom.computeVertexNormals(); }
+  return geom;
 }
 function roofColor(hex){
   const r=(hex>>16)&0xff,g=(hex>>8)&0xff,b=hex&0xff,avg=(r+g+b)/3;
@@ -2316,7 +2382,7 @@ async function buildCity(geojson){
   const features=geojson.features,total=features.length,matKeys=Object.keys(MATS);
   const wallGeos={},roofGeos={},wallInfos={},wallCums={},matCounts={};
   for(const k of matKeys){wallGeos[k]=[];roofGeos[k]=[];wallInfos[k]=[];wallCums[k]=[0];matCounts[k]=0;}
-  const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[];
+  const parapetGeos=[],stoneParapetGeos=[],roofCapGeos=[],towerRoofGeos=[],towerRoofKeys=[];
   const lumberWallGeos=[];  // separate accumulator → own mesh → wallMaterials['lumber']
   // Tile keys, parallel to each geometry list (and to wallInfos) — filled at the per-feature sweep
   const wallKeys={},roofKeys={},infoKeys={};
@@ -2336,7 +2402,7 @@ async function buildCity(geojson){
     const _lifeBorn=parseYearOrSentinel(props.born,NO_BORN), _lifeDied=parseYearOrSentinel(props.died,NO_DIED);
     const _wallStart0=wallGeos[mat].length, _roofStart0=roofGeos[mat].length, _infoStart0=wallInfos[mat].length;
     const _parapetStart0=parapetGeos.length, _stoneParapetStart0=stoneParapetGeos.length;
-    const _roofCapStart0=roofCapGeos.length, _chimneyStart0=chimneyStackGeos.length;
+    const _roofCapStart0=roofCapGeos.length, _chimneyStart0=chimneyStackGeos.length, _towerRoofStart0=towerRoofGeos.length;
     const _lumberWallStart0=lumberWallGeos.length, _walkwayWallStart0=walkwayWallGeos.length;
     const _glassOuterStart0=glassVerts.length;
     const floors=props.floors??1,isPlatform=floors<=0.2;
@@ -2350,8 +2416,9 @@ async function buildCity(geojson){
     const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
     // Explicit roof-type override from planimetro (overrides material/floor heuristics).
     const roofTypeOverride=props.roof_type||'';
-    const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','barrel','sod']);
+    const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod']);
     const forcePeaked=PEAKED_ROOF_TYPES.has(roofTypeOverride);
+    const curvedRoof=CURVED_ROOF_TYPES.has(roofTypeOverride);
     const forceFlat=roofTypeOverride==='flat';
 
     // Index for facade matching — by normalised name and by id
@@ -2646,7 +2713,15 @@ async function buildCity(geojson){
       }
       // Standard peaked roofs: wood/iron/etc, low-rise — or any material with explicit peaked roof_type.
       // forcePeaked overrides material/floor/vertex limits; forceFlat suppresses the automatic peaked roof.
-      if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&outer.length<=14))){
+      if(curvedRoof&&areaOk){
+        const ring=[];
+        for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
+        const cg=buildCurvedRoof(ring,height+0.05,roofTypeOverride,props.roof_height);
+        if(cg){ cg.translate(0,buildingBaseY,0);
+          applyVertexColour(cg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate);
+          towerRoofGeos.push(cg); }
+      }
+      else if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&outer.length<=14))){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const rg=buildRoofGeometry(ring,height+0.05);if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
@@ -2787,6 +2862,7 @@ async function buildCity(geojson){
     for(let _k=_parapetStart0;_k<parapetGeos.length;_k++) _fGeos.push(parapetGeos[_k]);
     for(let _k=_stoneParapetStart0;_k<stoneParapetGeos.length;_k++) _fGeos.push(stoneParapetGeos[_k]);
     for(let _k=_roofCapStart0;_k<roofCapGeos.length;_k++) _fGeos.push(roofCapGeos[_k]);
+    for(let _k=_towerRoofStart0;_k<towerRoofGeos.length;_k++) _fGeos.push(towerRoofGeos[_k]);
     for(let _k=_chimneyStart0;_k<chimneyStackGeos.length;_k++) _fGeos.push(chimneyStackGeos[_k]);
     for(let _k=_lumberWallStart0;_k<lumberWallGeos.length;_k++) _fGeos.push(lumberWallGeos[_k]);
     for(let _k=_walkwayWallStart0;_k<walkwayWallGeos.length;_k++) _fGeos.push(walkwayWallGeos[_k]);
@@ -2800,7 +2876,7 @@ async function buildCity(geojson){
     const _bi=_minY<_maxY
       ?computeBuildInfo(props,mat,floors,_fArea,_minY,_maxY,height)
       :{born:parseDateFrac(props.born,NO_BORN),died:parseDateFrac(props.died,NO_DIED),build:NO_BUILD};
-    _bi.idx=addBuildingRow(_bi.born,_bi.died,_bi.build,glassVerts.length>_glassOuterStart0?1:0);
+    _bi.idx=addBuildingRow(_bi.born,_bi.died,_bi.build,glassVerts.length>_glassOuterStart0?1:0,stripesOf(props));
     // Tile key for everything this feature added (see mergeByTile)
     {
       let _tx=0,_tz=0,_tn=0;
@@ -2813,6 +2889,7 @@ async function buildCity(geojson){
       fill(parapetKeys,_parapetStart0,parapetGeos.length);
       fill(stoneParapetKeys,_stoneParapetStart0,stoneParapetGeos.length);
       fill(roofCapKeys,_roofCapStart0,roofCapGeos.length);
+      fill(towerRoofKeys,_towerRoofStart0,towerRoofGeos.length);
       fill(chimneyKeys,_chimneyStart0,chimneyStackGeos.length);
       fill(lumberKeys,_lumberWallStart0,lumberWallGeos.length);
       fill(walkwayKeys,_walkwayWallStart0,walkwayWallGeos.length);
@@ -3167,6 +3244,19 @@ async function buildCity(geojson){
       spMesh.customDepthMaterial=spDepth;
       spMesh.castShadow=true;spMesh.receiveShadow=true;group.add(spMesh);
       detailTiles.push({mesh:spMesh,x:x+group.position.x,z:z+group.position.z});
+    }
+  }
+
+  // ── Curved tower roofs (dome / bell / conical), vertex-coloured ────
+  if(towerRoofGeos.length>0){
+    const tMat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:20,specular:0x222222});
+    tagMaterialForLifespan(tMat,0,true);
+    const tDepth=makeLifespanDepthMaterial(true);
+    for(const{geom}of mergeByTile(towerRoofGeos,towerRoofKeys)){
+      releaseAfterUpload(geom);
+      const tm=new THREE.Mesh(geom,tMat); tm.name='tower roofs';
+      tm.customDepthMaterial=tDepth;
+      tm.castShadow=true;tm.receiveShadow=true;group.add(tm);
     }
   }
 
