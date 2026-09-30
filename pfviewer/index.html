@@ -191,7 +191,8 @@ body:not(.advanced) #flood-control{display:none !important;}
   <div style="display:flex;align-items:center;justify-content:center;gap:14px;width:100%;">
     <button id="timeline-play-btn" title="Play (slow)" style="background:transparent;border:1px solid #3a2810;border-radius:50%;width:30px;height:30px;color:#C8A05A;font-size:0.8rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶</button>
     <button id="timeline-ff-btn" title="Fast forward" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶</button>
-    <button id="timeline-fff-btn" title="Years fly by (one summer day per year)" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶▶</button>
+    <button id="timeline-ffm-btn" title="One summer day per year, 1 year/s" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶▶</button>
+    <button id="timeline-fff-btn" title="Years fly by (one summer day per year)" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶▶▶</button>
     <div id="date-display" style="font-size:0.95rem;color:#C8A05A;letter-spacing:0.06em;min-width:180px;text-align:center;"></div>
     <input type="date" id="date-picker" style="background:#1e1610;border:1px solid #3a2810;border-radius:4px;color:#C8A05A;font-family:Georgia,serif;font-size:0.72rem;padding:3px 6px;color-scheme:dark;">
   </div>
@@ -469,9 +470,14 @@ function _seasonChannel(keys,doy){
 function viewDayOfYear(d){
   return _dayOfYear(d.getMonth()+1,d.getDate())+(d.getHours()+d.getMinutes()/60)/24;
 }
+// Historic storms (data/storms.json, loaded by loadStorms()) and the
+// un-stormed sky last set by setTimeOfDay(), which tickWeather() tints.
+let stormList=[];
+const _skyBase={sky:0,fog:0,sunInt:1,ambInt:1};
 function seasonState(d){
   const doy=viewDayOfYear(d), S={doy};
   for(const ch in _seasonKeys) S[ch]=Math.max(0,Math.min(1,_seasonChannel(_seasonKeys[ch],doy)));
+  if(stormList.length) S.snow=Math.max(S.snow,stormSnowCover(d));   // a blizzard's snow, even out of season
   return S;
 }
 let currentTodFraction=CONFIG.start.timeOfDay;
@@ -516,6 +522,7 @@ function setTimeOfDay(t){
   const s=sampleSky(phase);
   scene.background.setHex(s.sky);scene.fog.color.setHex(s.fog);
   sun.color.setHex(s.sunCol);sun.intensity=s.sunInt;
+  _skyBase.sky=s.sky;_skyBase.fog=s.fog;_skyBase.sunInt=s.sunInt;_skyBase.ambInt=s.ambInt;   // tickWeather() storms from these
   ambLight.intensity=s.ambInt;hemiLight.color.setHex(s.sky);
   // Haze brightness tracks daylight (sun + ambient), fog tint for distance
   hazeUniforms.uLight.value=Math.min(1.3,0.25+s.sunInt*0.45+s.ambInt*0.5);
@@ -816,7 +823,7 @@ const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.enableDamping=true;orbit.dampingFactor=CONFIG.orbitControls.dampingFactor;
 orbit.enableZoom=false;
 orbit.maxPolarAngle=Math.PI*CONFIG.orbitControls.maxPolarAngle;orbit.minDistance=CONFIG.orbitControls.minDistance;orbit.maxDistance=CONFIG.orbitControls.maxDistance;
-orbit.target.set(0,0,0);orbit.update();
+orbit.target.set(CONFIG.start.cameraLookAt.x,CONFIG.start.cameraLookAt.y,CONFIG.start.cameraLookAt.z);orbit.update();
 
 renderer.domElement.addEventListener('wheel',e=>{
   e.preventDefault();if(!orbit.enabled)return;
@@ -5427,6 +5434,7 @@ renderer.domElement.addEventListener('click',initAudio,{once:true});
 
 // ── Audio ──────────────────────────────────────────────────────────
 let audioCtx=null;
+let windLPNode=null, windGainNode=null;   // ambient wind — storms raise and brighten it (tickWeather)
 function initAudio(){
   if(audioCtx)return;
   audioCtx=new(window.AudioContext||window.webkitAudioContext)();
@@ -5436,6 +5444,7 @@ function initAudio(){
   const windCfg=CONFIG.audio.ambient.windNoise;
   const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=windCfg.lowpassFrequencyHz;lp.Q.value=windCfg.lowpassQ;
   const rGain=audioCtx.createGain();rGain.gain.value=windCfg.gain;
+  windLPNode=lp; windGainNode=rGain;
   noise.connect(lp).connect(rGain).connect(audioCtx.destination);noise.start();
   const bellCfg=CONFIG.audio.ambient.churchBell;
   function bell(){
@@ -5588,7 +5597,7 @@ window.currentViewDate = currentViewDate;
 buildingYearUniform.value = yearFrac(currentViewDate); // supersede the placeholder default above (fractional: construction timing)
 let dateResolutionMode = 'quarter';  // 'quarter' (slider-driven) | 'day' (date-picker-driven) — controls label format only
 // 'paused' | 'play' (slow: CONFIG.timeline.seasonCycle) | 'fast' (playSpeedDaysPerSecond)
-// | 'years' (one summer day per year, CONFIG.timeline.yearsFly)
+// | 'yearsWalk' / 'years' (one summer day per year, CONFIG.timeline.yearsWalk / yearsFly)
 let timelineMode = CONFIG.timeline.seasonCycle?.enabled ? 'play' : 'paused';
 
 function dateToQuarterUnit(date){
@@ -5674,11 +5683,12 @@ function initDateControl(){
     timelineMode=timelineMode==='fast'?'play':'fast';
     updateTimelineButtons();
   });
-  document.getElementById('timeline-fff-btn').addEventListener('click',()=>{
-    timelineMode=timelineMode==='years'?'play':'years';
-    _yearsFlyPos=currentViewDate.getFullYear();
-    updateTimelineButtons();
-  });
+  for(const[id,mode]of[['timeline-ffm-btn','yearsWalk'],['timeline-fff-btn','years']])
+    document.getElementById(id).addEventListener('click',()=>{
+      timelineMode=timelineMode===mode?'play':mode;
+      _yearsFlyPos=currentViewDate.getFullYear();
+      updateTimelineButtons();
+    });
   updateTimelineButtons();
 
   document.getElementById('year-dec').addEventListener('click',()=>stepYear(-1));
@@ -5690,7 +5700,7 @@ function initDateControl(){
 function updateTimelineButtons(){
   const play=document.getElementById('timeline-play-btn'), ff=document.getElementById('timeline-ff-btn');
   if(play){ play.textContent=timelineMode==='paused'?'▶':'⏸'; play.title=timelineMode==='paused'?'Play (slow)':'Pause'; }
-  for(const[id,mode,title]of[['timeline-ff-btn','fast','Fast forward'],['timeline-fff-btn','years','Years fly by (one summer day per year)']]){
+  for(const[id,mode,title]of[['timeline-ff-btn','fast','Fast forward'],['timeline-ffm-btn','yearsWalk','One summer day per year, 1 year/s'],['timeline-fff-btn','years','Years fly by (one summer day per year, 10 years/s)']]){
     const b=document.getElementById(id); if(!b) continue;
     const on=timelineMode===mode;
     b.style.background=on?'#C8A05A':'transparent'; b.style.color=on?'#09080a':'#C8A05A';
@@ -5702,9 +5712,10 @@ let _yearsFlyPos=0;   // fractional year while in 'years' mode
 // within the year so buildings hold still) or fast forward (years pass).
 function tickTimeline(dt){
   if(timelineMode==='paused') return;
-  if(timelineMode==='years'){
+  if(timelineMode==='years'||timelineMode==='yearsWalk'){
     // One (summer) day per year: jump the date only when the whole year changes
-    const Y=CONFIG.timeline.yearsFly??{yearsPerSecond:10,day:'07-15'};
+    const Y=timelineMode==='years'?(CONFIG.timeline.yearsFly??{yearsPerSecond:10,day:'07-15'})
+                                  :(CONFIG.timeline.yearsWalk??{yearsPerSecond:1,day:'07-15'});
     _yearsFlyPos+=dt*Y.yearsPerSecond;
     if(_yearsFlyPos>=TIMELINE_MAX_YEAR+1) _yearsFlyPos=TIMELINE_MIN_YEAR;
     const yr=Math.floor(_yearsFlyPos);
@@ -5717,7 +5728,8 @@ function tickTimeline(dt){
   if(timelineMode==='play'){
     const cyc=CONFIG.timeline.seasonCycle;
     const y=currentViewDate.getFullYear();
-    const d=new Date(currentViewDate.getTime()+dt*(cyc?.daysPerSecond??2)*86400000);
+    const rate=stormAt(currentViewDate)?(CONFIG.storms?.dwellDaysPerSecond??0.1):(cyc?.daysPerSecond??2);   // linger on storm days
+    const d=new Date(currentViewDate.getTime()+dt*rate*86400000);
     if(cyc?.wrapWithinYear!==false&&d.getFullYear()!==y) d.setFullYear(y,0,1);
     else if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
     setCurrentViewDate(d,dateResolutionMode);
@@ -7522,6 +7534,7 @@ function startLoop(){
     tickDetailLOD();
     tickFires(dt);
     applySeason();
+    tickWeather(dt);
     tickFloes(dt);
     tickTrainAudio(dt);
     tickChimneySmoke(dt);
@@ -7743,6 +7756,209 @@ function toggleWinter(){
   if(season.snow>0.5){d.setMonth(6);d.setDate(15);}else{d.setMonth(0);d.setDate(15);}
   setCurrentViewDate(d,dateResolutionMode);
   applySeason(true);
+}
+
+// ── Historic storms: thunderstorms & blizzards (data/storms.json) ──────
+// stormAt(date) → {s, k} (storm record, strength 0..1) for the view date.
+// tickWeather() then: tints sky/fog/light toward the storm (from _skyBase,
+// the clear-weather values setTimeOfDay() last computed), shows rain streaks
+// or wind-driven snow in a box that follows the camera (animated entirely in
+// the vertex shader — positions wrap modulo the box, no per-frame CPU work),
+// fires lightning + delayed thunder, and swells the ambient wind. Blizzards
+// also leave snow cover for a few days (stormSnowCover, read by seasonState).
+const DAY_MS=86400000;
+async function loadStorms(){
+  const f=CONFIG.storms?.file; if(!f) return;
+  try{
+    const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return;
+    const j=await r.json();
+    stormList=j.storms.map(s=>({...s,t0:parseLocalISODate(s.start).getTime(),t1:parseLocalISODate(s.end).getTime()+DAY_MS,
+      tp:parseLocalISODate(s.peak).getTime()}));
+    console.log(`⛈ Storms: ${stormList.length} (${stormList.filter(s=>s.type==='blizzard').length} blizzards)`);
+    applySeason(true);
+  }catch(e){ console.warn('Storms: failed to load',e); }
+}
+function stormAt(d){
+  if(!stormList.length) return null;
+  const t=d.getTime(), C=CONFIG.storms, ramp=(C.rampHours??6)*3600000;
+  for(const s of stormList){
+    if(t<s.t0-ramp||t>=s.t1+ramp) continue;
+    const env=t<s.t0?(t-(s.t0-ramp))/ramp:t>=s.t1?1-(t-s.t1)/ramp:1;
+    const peak=t>=s.tp&&t<s.tp+DAY_MS?1:(C.offPeak??0.75);
+    return{s,k:s.intensity*peak*Math.max(0,Math.min(1,env))};
+  }
+  return null;
+}
+function stormSnowCover(d){
+  const t=d.getTime(), keep=(CONFIG.storms?.snowAfterDays??5)*DAY_MS;
+  let c=0;
+  for(const s of stormList){
+    if(s.type!=='blizzard'||t<s.t0||t>=s.t1+keep) continue;
+    c=Math.max(c,t<s.t1?Math.min(1,(t-s.t0)/(DAY_MS*0.25)):1-(t-s.t1)/keep);   // builds over ~6 h, melts after
+  }
+  return c;
+}
+
+// Precipitation: one geometry per kind, drawRange scaled by strength
+const _precipVS=`
+uniform vec3 uCam; uniform float uTime,uBox,uLen,uSize,uGust; uniform vec3 uVel;
+attribute vec4 aSeed;   // xyz: base offset in the box, w: 0/1 streak end (rain) or random (snow)
+varying float vFade;
+void main(){
+  vec3 p=aSeed.xyz*uBox+uVel*uTime*(0.85+0.3*fract(aSeed.x*97.1));
+  #ifdef SNOW
+    float ph=aSeed.w*6.2831;
+    p+=vec3(sin(uTime*1.3+ph),sin(uTime*0.9+ph*1.7)*0.6,cos(uTime*1.1+ph*2.3))*uGust;
+  #endif
+  vec3 local=mod(p-uCam,uBox)-0.5*uBox;
+  #ifndef SNOW
+    local-=normalize(uVel)*uLen*aSeed.w;
+  #endif
+  vec4 mv=modelViewMatrix*vec4(uCam+local,1.0);
+  gl_Position=projectionMatrix*mv;
+  vFade=1.0-smoothstep(0.3*uBox,0.5*uBox,length(local));
+  #ifdef SNOW
+    gl_PointSize=clamp(uSize*300.0/-mv.z,1.0,6.0);
+  #endif
+}`;
+const _precipFS=`
+uniform vec3 uColor; uniform float uOpacity; varying float vFade;
+void main(){
+  #ifdef SNOW
+    vec2 c=gl_PointCoord-0.5; if(dot(c,c)>0.25) discard;
+  #endif
+  gl_FragColor=vec4(uColor,uOpacity*vFade);
+}`;
+function _makePrecip(kind){
+  const C=CONFIG.storms, P=C[kind], snow=kind==='snow', n=P.count;
+  const seeds=new Float32Array((snow?n:n*2)*4);
+  for(let i=0;i<n;i++){
+    const x=Math.random(),y=Math.random(),z=Math.random(),w=Math.random();
+    if(snow) seeds.set([x,y,z,w],i*4);
+    else{ seeds.set([x,y,z,0],i*8); seeds.set([x,y,z,1],i*8+4); }
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('aSeed',new THREE.BufferAttribute(seeds,4));
+  g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(seeds.length/4*3),3));   // unused; three wants one
+  g.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1e9);
+  const u={uCam:{value:new THREE.Vector3()},uTime:{value:0},uBox:{value:C.boxSize??180},uLen:{value:P.streakLength??0},
+    uSize:{value:P.size??1},uGust:{value:P.gust??0},uVel:{value:new THREE.Vector3(P.windSpeed,-P.fallSpeed,P.windSpeed*0.35)},
+    uColor:{value:new THREE.Color(P.color)},uOpacity:{value:P.opacity}};
+  const m=new THREE.ShaderMaterial({uniforms:u,vertexShader:_precipVS,fragmentShader:_precipFS,
+    defines:snow?{SNOW:1}:{},transparent:true,depthWrite:false,fog:false});
+  const o=snow?new THREE.Points(g,m):new THREE.LineSegments(g,m);
+  o.frustumCulled=false; o.visible=false; o.renderOrder=5; scene.add(o);
+  return{o,u,n,verts:snow?1:2};
+}
+let _rain=null,_snowP=null,_weatherActive=false,_weatherT=0;
+let _lightning={next:3,t:-1,bolt:null,dist:0};
+let _rainNoise=null;
+const _wc={a:new THREE.Color(),b:new THREE.Color()};
+function _stormCaption(st){
+  let el=document.getElementById('storm-caption');
+  if(!el){
+    const dc=document.getElementById('date-control'); if(!dc) return;
+    el=document.createElement('div'); el.id='storm-caption';
+    el.style.cssText='font-size:0.7rem;color:#9ab0c8;letter-spacing:0.04em;text-align:center;max-width:420px;';
+    dc.appendChild(el);
+  }
+  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:'';
+  if(el.textContent!==txt){ el.textContent=txt; el.style.display=txt?'block':'none'; }
+}
+function _buildBolt(){
+  const L=CONFIG.storms.thunderstorm, [d0,d1]=L.boltDistance;
+  const a=Math.random()*Math.PI*2, dist=d0+Math.random()*(d1-d0);
+  const gx=camera.position.x+Math.cos(a)*dist, gz=camera.position.z+Math.sin(a)*dist;
+  const gy=sampleTerrainY(gx,gz), top=gy+700, pts=[];
+  let x=gx+(Math.random()-0.5)*200, z=gz+(Math.random()-0.5)*200;
+  for(let y=top;y>gy;y-=25+Math.random()*30){
+    pts.push(new THREE.Vector3(x,y,z));
+    x+=(gx-x)*0.12+(Math.random()-0.5)*28; z+=(gz-z)*0.12+(Math.random()-0.5)*28;
+  }
+  pts.push(new THREE.Vector3(gx,gy,gz));
+  const g=new THREE.BufferGeometry().setFromPoints(pts);
+  if(!_lightning.bolt){
+    _lightning.bolt=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xF4F6FF,fog:false,transparent:true}));
+    _lightning.bolt.frustumCulled=false; scene.add(_lightning.bolt);
+  }else{ _lightning.bolt.geometry.dispose(); _lightning.bolt.geometry=g; }
+  _lightning.dist=dist;
+}
+function _thunder(dist,gain){
+  if(!audioCtx) return;
+  const sr=audioCtx.sampleRate, len=Math.floor(sr*5), buf=audioCtx.createBuffer(1,len,sr), d=buf.getChannelData(0);
+  let last=0; for(let i=0;i<len;i++){ last=(last+0.05*(Math.random()*2-1))/1.05; d[i]=last*6; }
+  const src=audioCtx.createBufferSource(); src.buffer=buf;
+  const lp=audioCtx.createBiquadFilter(); lp.type='lowpass'; lp.frequency.value=dist<900?900:260;   // near: crack; far: rumble
+  const g=audioCtx.createGain(), t=audioCtx.currentTime+dist/343, v=gain*Math.min(1,500/dist);
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(v,t+0.06);
+  g.gain.setTargetAtTime(v*0.5,t+0.3,0.4); g.gain.setTargetAtTime(0,t+1.2,1.1);
+  src.connect(lp).connect(g).connect(audioCtx.destination); src.start(t); src.stop(t+5);
+}
+function tickWeather(dt){
+  const C=CONFIG.storms; if(!C) return;
+  const st=timelineMode==='years'||timelineMode==='yearsWalk'||timelineMode==='fast'?null:stormAt(currentViewDate);
+  _stormCaption(st);
+  const k=st?st.k:0, blizzard=st?.s.type==='blizzard';
+  if(!st&&!_weatherActive) return;
+  _weatherActive=!!st;
+  _weatherT+=dt;
+  const W=blizzard?C.blizzard:C.thunderstorm, kk=Math.min(1,k*1.15);
+  // Sky, fog and light toward the storm
+  _wc.a.setHex(_skyBase.sky).lerp(_wc.b.setHex(W.skyColor),kk*0.9);
+  let flash=0;
+  if(st&&!blizzard){
+    const L=_lightning;
+    L.next-=dt;
+    if(L.next<=0){
+      const [a,b]=W.lightningEvery; L.next=a+Math.random()*(b-a)/Math.max(0.3,k);
+      L.t=0; _buildBolt(); _thunder(L.dist,W.thunderGain*k);
+    }
+    if(L.t>=0){
+      L.t+=dt;
+      // double/triple flicker over ~0.4 s
+      flash=Math.max(0,1-L.t/0.12)+0.7*Math.max(0,1-Math.abs(L.t-0.22)/0.06)+0.5*Math.max(0,1-Math.abs(L.t-0.34)/0.05);
+      flash*=Math.min(1,1400/L.dist);
+      if(L.t>0.45) L.t=-1;
+    }
+  }
+  if(_lightning.bolt){ _lightning.bolt.visible=flash>0.15; _lightning.bolt.material.opacity=Math.min(1,flash); }
+  if(flash>0) _wc.a.lerp(_wc.b.setHex(W.flashColor),Math.min(0.8,flash*0.6));
+  scene.background.copy(_wc.a); hemiLight.color.copy(_wc.a);
+  _wc.a.setHex(_skyBase.fog).lerp(_wc.b.setHex(W.skyColor),kk);
+  scene.fog.color.copy(_wc.a); hazeUniforms.uFogColor.value.copy(_wc.a);
+  scene.fog.density=CONFIG.scene.fog.density+(W.fogDensity-CONFIG.scene.fog.density)*kk;
+  hazeUniforms.uFogDensity.value=scene.fog.density;
+  sun.intensity=_skyBase.sunInt*(1-(1-W.sunMult)*kk);
+  ambLight.intensity=_skyBase.ambInt*(1-(1-W.ambientMult)*kk)+flash*1.6;
+  // Precipitation
+  if(st&&!_rain){ _rain=_makePrecip('rain'); _snowP=_makePrecip('snow'); }
+  for(const[p,on]of[[_rain,st&&!blizzard],[_snowP,st&&blizzard]]){
+    if(!p) continue;
+    p.o.visible=!!on&&k>0.01;
+    if(!p.o.visible) continue;
+    p.u.uCam.value.copy(camera.position); p.u.uTime.value=_weatherT;
+    p.o.geometry.setDrawRange(0,Math.floor(p.n*Math.min(1,k*1.2))*p.verts);
+  }
+  // Audio: wind swells (higher in a blizzard); rain hiss in a thunderstorm
+  if(audioCtx&&windGainNode){
+    const base=CONFIG.audio.ambient.windNoise, now=audioCtx.currentTime;
+    windGainNode.gain.setTargetAtTime(base.gain+W.windGain*k,now,0.5);
+    windLPNode.frequency.setTargetAtTime(base.lowpassFrequencyHz+((W.windLowpassHz??base.lowpassFrequencyHz)-base.lowpassFrequencyHz)*k,now,0.5);
+    if(!_rainNoise){
+      const sr=audioCtx.sampleRate, buf=audioCtx.createBuffer(1,sr*3,sr), d=buf.getChannelData(0);
+      for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1;
+      const src=audioCtx.createBufferSource(); src.buffer=buf; src.loop=true;
+      const bp=audioCtx.createBiquadFilter(); bp.type='bandpass'; bp.frequency.value=3200; bp.Q.value=0.5;
+      const g=audioCtx.createGain(); g.gain.value=0;
+      src.connect(bp).connect(g).connect(audioCtx.destination); src.start();
+      _rainNoise=g;
+    }
+    _rainNoise.gain.setTargetAtTime(st&&!blizzard?C.thunderstorm.rainGain*k:0,now,0.5);
+  }
+  if(!st){   // storm over: hand the sky back to setTimeOfDay's clear values
+    scene.fog.density=CONFIG.scene.fog.density; hazeUniforms.uFogDensity.value=scene.fog.density;
+    setTimeOfDay(currentTodFraction);
+  }
 }
 
 // ── Ice floes (break-up in April, pans at freeze-up) ──
@@ -8270,10 +8486,10 @@ async function loadFiles(fileList){
   const START_LON = -97.13825789731372, START_LAT = 49.89558496264514;
   const START_AZ  = 255 * Math.PI / 180;
   // startX, startZ already in module scope
-  // Orbit overview: elevated position due east of start point, looking west (+X → −X)
-  // Up ≠ N: east = +X, so camera east of target looks west along −X axis
-  camera.position.set(startX + 700, 380, startZ);
-  orbit.target.set(startX, 0, startZ);
+  // Orbit overview: CONFIG.start (default: over St Boniface looking NW across the Forks)
+  const CP=CONFIG.start.cameraPosition, CL=CONFIG.start.cameraLookAt;
+  camera.position.set(CP.x, CP.y, CP.z);
+  orbit.target.set(CL.x, CL.y, CL.z);
   orbit.update();
   // Store FPS yaw/pitch for when F is pressed — faces azimuth 255° (WSW)
   yaw   = -START_AZ;
@@ -8338,6 +8554,7 @@ renderer.render(scene,camera);
   await applyDEM();
   await loadWaterLevels();   // after the DEM: absolute datums need its refElev
   loadMoisture();
+  loadStorms();
 
   for(let i=0;i<found.length;i++){
     const{url,gj}=found[i];

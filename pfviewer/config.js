@@ -55,8 +55,10 @@ export const CONFIG = {
     layer: 'pastforward',   // layer shown on load: 'pastforward' | '1906' | '1880' | 'all' | 'combined' (falls back if not loaded)
     // Initial camera position and look-at target, in world metres.
     // (World X=east, Y=up, Z=south — see coordinate-system note in index.html.)
-    cameraPosition: { x: 600, y: 450, z: 900 },
-    cameraLookAt:   { x: 0,   y: 0,   z: 0 },
+    // Default: over St Boniface, looking northwest across the Forks
+    // (Red–Assiniboine confluence ≈ world 453, 1038) toward downtown.
+    cameraPosition: { x: 830, y: 330, z: 1415 },
+    cameraLookAt:   { x: 453, y: 0,   z: 1038 },
   },
 
   // ── Building material colours ──────────────────────────────────────
@@ -728,14 +730,64 @@ export const CONFIG = {
   timeline: {
     minYear: 1850,
     maxYear: 1960,
-    startDate: '1906-07-01',      // date shown on first load (YYYY-MM-DD, local)
+    startDate: '1850-01-01',      // date shown on first load (YYYY-MM-DD, local)
     playSpeedDaysPerSecond: 45,   // ⏩ fast-forward rate (years pass)
     // ▶ slow play: 2 days/s ≈ 3 minutes per year. wrapWithinYear loops
     // Dec 31 → Jan 1 of the SAME year so the seasons cycle without buildings
     // changing. enabled = start playing on load (false = start paused).
     seasonCycle: { enabled: true, daysPerSecond: 2, wrapWithinYear: true },
-    // ▸▸▸ years fly by: one summer day shown per year; 10/s → 1850–1960 in ~11 s
+    // ▶▶▶▶ years fly by: one summer day shown per year; 10/s → 1850–1960 in ~11 s
     yearsFly: { yearsPerSecond: 10, day: '07-15' },
+    // ▶▶▶ in between: same one-summer-day-per-year view, 1 year/s (~2 min for 1850–1960)
+    yearsWalk: { yearsPerSecond: 1, day: '07-15' },
+  },
+
+  // ── Historic storms (data/storms.json) ──────────────────────────────
+  // Thunderstorms and blizzards on real dates (tools: see the file's
+  // "source"). Each storm fades in over rampHours before its start day and
+  // out after its end day; days other than the peak run at offPeak strength.
+  storms: {
+    file: './data/storms.json',
+    rampHours: 6,
+    offPeak: 0.75,
+    dwellDaysPerSecond: 0.1,   // ▶ slow play crawls through storm days (~10 s a day) instead of 2 days/s
+    snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
+    boxSize: 180,              // metres — precipitation volume that travels with the camera
+    rain: {
+      count: 14000,            // streaks at intensity 1
+      fallSpeed: 11,           // m/s
+      windSpeed: 4,            // m/s sideways drift
+      streakLength: 1.6,       // metres
+      color: 0xB8C4D0, opacity: 0.35,
+    },
+    snow: {
+      count: 22000,
+      fallSpeed: 1.6,
+      windSpeed: 16,           // blizzard: driven mostly sideways
+      gust: 3.5,               // metres of turbulent swirl
+      size: 2.2,               // point size scale
+      color: 0xF4F6FA, opacity: 0.85,
+    },
+    thunderstorm: {
+      skyColor: 0x3A4250,      // sky/fog tint at full strength
+      fogDensity: 0.0014,
+      sunMult: 0.2,            // sun intensity multiplier at full strength
+      ambientMult: 0.55,
+      lightningEvery: [2.5, 9], // seconds between strikes (random in range, shorter when stronger)
+      boltDistance: [350, 2600],
+      flashColor: 0xDDE4FF,
+      windGain: 0.14,          // extra wind-noise gain
+      rainGain: 0.07,          // rain hiss gain
+      thunderGain: 0.6,
+    },
+    blizzard: {
+      skyColor: 0xC6CBD2,
+      fogDensity: 0.0055,      // ~500 m visibility at full strength
+      sunMult: 0.3,
+      ambientMult: 0.9,
+      windGain: 0.3,
+      windLowpassHz: 700,      // wind howls higher-pitched in a blizzard
+    },
   },
 
   // ── Seasons (driven by the view date) ────────────────────────────────
