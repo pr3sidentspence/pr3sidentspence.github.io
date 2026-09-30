@@ -656,6 +656,22 @@ export const CONFIG = {
     },
   },
 
+  // ── Floating docks ──────────────────────────────────────────────────
+  // Flat (floors ≤ 0.2) river structures named dock / landing / wharf / pier
+  // are pulled out of the merged city mesh and ride the river level. In a
+  // major flood they break loose and drift downstream (spinning slowly),
+  // and are rebuilt once the river is back down. Levels are real metres
+  // above normal (same as the flood label).
+  docks: {
+    freeboard: 0.35,           // deck height above the water
+    thickness: 0.55,
+    color: 0x7A6448,
+    breakAboveMetres: 4.5,
+    replaceBelowMetres: 2.0,
+    driftSpeed: 1.8,           // m/s downstream
+    spin: 0.06,                // rad/s while adrift
+  },
+
   // ── Small craft ─────────────────────────────────────────────────────
   // Canoes (birchbark to ~1900, painted canvas after), HBC York boats
   // (Red River brigades, fading out once steamboats took the freight, gone by
@@ -676,7 +692,8 @@ export const CONFIG = {
   },
 
   // ── Ferries ─────────────────────────────────────────────────────────
-  // Crossings before the bridges. lon/lat = a point mid-river on the crossing;
+  // Crossings before the bridges. lon/lat = a point mid-river on the crossing
+  // (midpoints of the landings in trees.ferries, which keep the banks clear);
   // the ferry runs perpendicular to the river there, bank to bank.
   //  • Winnipeg–St Boniface (Red): scow ferry by the 1860s (Duncan
   //    Macdougall), west landing at the foot of Notre Dame East (Pioneer
@@ -688,9 +705,9 @@ export const CONFIG = {
   //    the first Main Street Bridge, 1881. Start date not found — assumed in
   //    service from the start of the timeline.
   ferries: [
-    { name: 'St Boniface ferry', river: 'red',         lon: -97.1287, lat: 49.8933, from: '1860-01-01', to: '1878-06-09', kind: 'scow' },
-    { name: 'Adelaide',          river: 'red',         lon: -97.1287, lat: 49.8933, from: '1878-06-09', to: '1882-04-16', kind: 'steam' },
-    { name: 'Assiniboine ferry', river: 'assiniboine', lon: -97.1338, lat: 49.8856, from: '1850-01-01', to: '1881-06-01', kind: 'scow' },
+    { name: 'St Boniface ferry', river: 'red',         lon: -97.1273, lat: 49.8920, from: '1860-01-01', to: '1878-06-09', kind: 'scow' },
+    { name: 'Adelaide',          river: 'red',         lon: -97.1273, lat: 49.8920, from: '1878-06-09', to: '1882-04-16', kind: 'steam' },
+    { name: 'Assiniboine ferry', river: 'assiniboine', lon: -97.1335, lat: 49.8852, from: '1850-01-01', to: '1881-06-01', kind: 'scow' },
   ],
   ferryTiming: { crossSeconds: 70, dwellSeconds: 25 },
 
@@ -795,6 +812,10 @@ export const CONFIG = {
     rampHours: 6,
     offPeak: 0.75,
     dwellDaysPerSecond: 0.1,   // ▶ slow play crawls through storm days (~10 s a day) instead of 2 days/s
+    // Floods: slow play also slows while the river is this far above normal
+    // (real metres; 1826/1852/1861/1916/1948/1950 all pass 4.5 m)
+    floodSlowAboveMetres: 3.5,
+    floodDaysPerSecond: 0.5,
     snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
     boxSize: 180,              // metres — precipitation volume that travels with the camera
     rain: {
@@ -860,7 +881,7 @@ export const CONFIG = {
     springLeafColor: 0x8FAE4A,    // fresh May leaves
     lateAutumnColor: 0x6E4E2C,    // brown leaves hanging on before they drop
     autumnColors: { 'American elm': 0xB89434, 'green ash': 0xC8A83A, 'Manitoba maple': 0xCFAE3E, 'cottonwood': 0xC9A63C },
-    floeCount: 450, floeSpeed: 6, floeColor: 0xDCE3EA,   // break-up / freeze-up ice pans
+    floeCount: 1100, floeSpeed: 6, floeColor: 0xDCE3EA,   // break-up / freeze-up ice pans
   },
 
   // ── Streetcars ───────────────────────────────────────────────────────
@@ -990,6 +1011,13 @@ export const CONFIG = {
       // Add more entries here later, e.g.:
       // streetcarBell: { path: './sounds/streetcar-bell.mp3', maxConcurrent: 3, rangeMetres: 200, refDistance: 10, rolloffFactor: 1.0, gain: 1.0 },
     },
+    // Sound-effect hooks: playSfx(name, x, y, z) (one-shot). Drop the file in
+    // ./sounds/ and it plays — a missing file is skipped quietly (logged once).
+    // Volume = gain × min(1, (refDistance / d) ^ rolloffPower), silent past
+    // maxDistance; rolloffPower 3 = inverse-cube (sharp, local sounds).
+    sfx: {
+      dockBreak: { path: './sounds/dock-break.mp3', gain: 1.0, refDistance: 25, rolloffPower: 2, maxDistance: 900 },
+    },
     ambient: {
       windNoise: {
         lowpassFrequencyHz: 280,
@@ -1026,7 +1054,7 @@ export const CONFIG = {
     camera:   { pixelRatioCap: 1.25 },
     lighting: { sun: { shadowMapSize: 1024 } },
     trees:    { spacing: 14 },
-    seasons:  { floeCount: 200 },
+    seasons:  { floeCount: 450 },
   },
 
   // ── Minimap ─────────────────────────────────────────────────────────

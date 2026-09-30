@@ -2414,6 +2414,7 @@ async function buildCity(geojson){
     const _lumberWallStart0=lumberWallGeos.length, _walkwayWallStart0=walkwayWallGeos.length;
     const _glassOuterStart0=glassVerts.length;
     const floors=props.floors??1,isPlatform=floors<=0.2;
+    if(isPlatform&&CONFIG.docks&&FLOAT_DOCK_RE.test(props.name||'')){ collectFloatingDock(feat,props,group); continue; }   // rides the river (tickDocks)
     // base_floors: this feature is a volume starting at that storey (e.g. storeys
     // added later, with their own born/died — see data/building_history.json)
     const baseFloors=Math.max(0,Math.min(props.base_floors||0,floors-0.5)), baseH=baseFloors*FLOOR_H;
@@ -5477,6 +5478,47 @@ function initAudio(){
   loadTrainAudio();
 }
 
+// ── Sound-effect hooks (CONFIG.audio.sfx) ──────────────────────────
+// playSfx(name, x, y, z): one-shot at a world point. Loudness from the
+// camera distance at start: gain × min(1,(ref/d)^rolloffPower), panned left/
+// right by bearing. Files load on first use; a missing file is remembered and
+// skipped (logged once), so hooks can be wired before the sounds exist.
+const _sfxBuf={};   // name → AudioBuffer | 'missing' | Promise
+function _sfxLoad(name){
+  const C=CONFIG.audio?.sfx?.[name]; if(!C?.path||!audioCtx) return null;
+  if(_sfxBuf[name]) return _sfxBuf[name];
+  _sfxBuf[name]=fetch(C.path).then(r=>{if(!r.ok)throw new Error(r.status);return r.arrayBuffer();})
+    .then(a=>audioCtx.decodeAudioData(a)).then(b=>(_sfxBuf[name]=b))
+    .catch(e=>{console.log(`🔈 sfx '${name}': ${C.path} not available (${e.message}) — hook idle`);return(_sfxBuf[name]='missing');});
+  return _sfxBuf[name];
+}
+function sfxGainAt(C,x,y,z){
+  const d=Math.max(0.1,Math.hypot(x-camera.position.x,y-camera.position.y,z-camera.position.z));
+  if(d>(C.maxDistance??1000)) return 0;
+  return (C.gain??1)*Math.min(1,Math.pow((C.refDistance??10)/d,C.rolloffPower??2));
+}
+function sfxPanAt(x,z){
+  const f=new THREE.Vector3(); camera.getWorldDirection(f);
+  const dx=x-camera.position.x, dz=z-camera.position.z, l=Math.hypot(dx,dz)||1;
+  return Math.max(-1,Math.min(1,(-f.z*dx+f.x*dz)/l));   // right of view (−f.z, f.x) = +1
+}
+async function playSfx(name,x,y,z,opts={}){
+  try{
+    if(!audioCtx||audioCtx.state==='suspended') return;
+    const C=CONFIG.audio?.sfx?.[name]; if(!C) return;
+    let b=_sfxLoad(name); if(b instanceof Promise) b=await b;
+    if(!b||b==='missing') return;
+    const g=sfxGainAt(C,x,y,z)*(opts.gain??1); if(g<0.002) return;
+    const src=audioCtx.createBufferSource(); src.buffer=b; src.playbackRate.value=opts.rate??(0.94+Math.random()*0.12);
+    const gn=audioCtx.createGain(); gn.gain.value=g;
+    const pn=audioCtx.createStereoPanner?audioCtx.createStereoPanner():null;
+    if(pn){ pn.pan.value=sfxPanAt(x,z); src.connect(gn).connect(pn).connect(audioCtx.destination); }
+    else src.connect(gn).connect(audioCtx.destination);
+    src.start();
+  }catch(e){}
+}
+window.playSfx=playSfx;
+
 // ── Locomotive audio ──────────────────────────────────────────────
 // One shared loop buffer (./sounds/locomotive-loop.mp3), played through a small
 // pool of positional panner+gain nodes — reused across whichever moving trains
@@ -5728,7 +5770,10 @@ function tickTimeline(dt){
   if(timelineMode==='play'){
     const cyc=CONFIG.timeline.seasonCycle;
     const y=currentViewDate.getFullYear();
-    const rate=stormAt(currentViewDate)?(CONFIG.storms?.dwellDaysPerSecond??0.1):(cyc?.daysPerSecond??2);   // linger on storm days
+    const C=CONFIG.storms, floodRel=waterMesh?floodRelForPlaneY(waterLevelAt(currentViewDate)):0;
+    const rate=stormAt(currentViewDate)?(C?.dwellDaysPerSecond??0.1)                       // linger on storm days
+              :floodRel>(C?.floodSlowAboveMetres??99)?(C?.floodDaysPerSecond??0.5)         // and through floods
+              :(cyc?.daysPerSecond??2);
     const d=new Date(currentViewDate.getTime()+dt*rate*86400000);
     if(cyc?.wrapWithinYear!==false&&d.getFullYear()!==y) d.setFullYear(y,0,1);
     else if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
@@ -7366,6 +7411,7 @@ function tickSteamboats(dt){
   }
   tickSmallCraft(dt,waterY);
   tickFerries(dt,waterY);
+  tickDocks(dt,waterY);
 
   while(sbSlots.length<nBoats) sbSlots.push({boat:null,idle:0,lastP:null});
   for(let i=0;i<sbSlots.length;i++){
@@ -7376,7 +7422,76 @@ function tickSteamboats(dt){
 }
 
 window._debugBoats=()=>({steam:sbSlots.filter(s=>s.boat).length+'/'+sbSlots.length,docked:!!sbDocked?.group.visible,
-  small:scBoats.map(b=>b.kind).join(','),ferries:(ferries||[]).filter(f=>f.group?.visible).map(f=>f.F.name+' '+Math.hypot(f.cross.x1-f.cross.x0,f.cross.z1-f.cross.z0).toFixed(0)+'m').join('; ')});
+  small:scBoats.map(b=>b.kind).join(','),docks:floatingDocks.map(d=>d.name+':'+d.state+(d.mesh.visible?'':'(hidden)')+'@'+d.mesh.position.y.toFixed(1)).join('; '),ferries:(ferries||[]).filter(f=>f.group?.visible).map(f=>f.F.name+' '+Math.hypot(f.cross.x1-f.cross.x0,f.cross.z1-f.cross.z0).toFixed(0)+'m').join('; ')});
+
+// ── Floating docks (CONFIG.docks) ──────────────────────────────────
+// Collected by buildCity instead of being merged into the city mesh; each
+// is its own slab, centred on its centroid so it can spin when adrift.
+// State: 'moored' → (river > breakAboveMetres) 'adrift' downstream along the
+// nearer steamboat route → 'gone' past its end → (river < replaceBelowMetres)
+// rebuilt at its mooring.
+const FLOAT_DOCK_RE=/dock|landing|wharf|pier/i;
+const floatingDocks=[];
+function _isoYearFrac(v,fallback){
+  if(v==null||v==='') return fallback;
+  if(typeof v==='number') return v;
+  const s=String(v); return /^\d{4}-\d{2}-\d{2}/.test(s)?yearFrac(parseLocalISODate(s.slice(0,10))):(parseInt(s.slice(0,4),10)||fallback);
+}
+function collectFloatingDock(feat,props,layerGroup){
+  const D=CONFIG.docks, ox=layerGroup.position.x, oz=layerGroup.position.z;
+  const polys=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
+  for(const rings of polys){
+    const outer=rings[0]; if(!outer||outer.length<4) continue;
+    const pts=outer.slice(0,-1).map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return{x:sx+ox,z:-sy+oz};});
+    const cx=pts.reduce((a,p)=>a+p.x,0)/pts.length, cz=pts.reduce((a,p)=>a+p.z,0)/pts.length;
+    const sh=new THREE.Shape(pts.map(p=>new THREE.Vector2(p.x-cx,-(p.z-cz))));
+    const geo=new THREE.ExtrudeGeometry(sh,{depth:D.thickness,bevelEnabled:false}); geo.rotateX(-Math.PI/2);
+    const m=new THREE.Mesh(geo,new THREE.MeshLambertMaterial({color:D.color}));
+    m.castShadow=true; m.receiveShadow=true; m.visible=false; scene.add(m);
+    riverStructures.push({x:cx,z:cz});
+    floatingDocks.push({mesh:m,cx,cz,layer:layerGroup,name:props.name,
+      born:_isoYearFrac(props.born,-1e9),died:_isoYearFrac(props.died,1e9),state:'moored',route:null,t:0,ox:0,oz:0,rot:0});
+  }
+}
+// Real metres above the river's normal level for a water-plane Y (as the flood label shows)
+function floodRelForPlaneY(y){
+  return (waterNormalAbs!=null?_realFromPlane(y):y)-(waterNormalAbs??CONFIG.water.startY);
+}
+function _dockNearestRoute(d){
+  let best=null;
+  for(const route of[sbRoutes.red,sbRoutes.assiniboine]){
+    for(let i=0;i<=600;i++){
+      const s=sampleRoute(route,i/600), dd=(s.x-d.cx)**2+(s.z-d.cz)**2;
+      if(!best||dd<best.dd) best={route,t:i/600,dd,s};
+    }
+  }
+  return best;
+}
+function tickDocks(dt,waterY){
+  if(!floatingDocks.length) return;
+  const D=CONFIG.docks, rel=floodRelForPlaneY(waterY), yf=yearFrac(currentViewDate);
+  for(const d of floatingDocks){
+    const alive=d.layer.visible&&yf>=d.born&&yf<d.died;
+    if(!alive){ d.mesh.visible=false; d.state='moored'; continue; }
+    if(d.state!=='moored'&&rel<D.replaceBelowMetres){ d.state='moored'; d.rot=0; }   // rebuilt after the flood
+    if(d.state==='moored'&&rel>D.breakAboveMetres&&sbRoutes){
+      const n=_dockNearestRoute(d);
+      d.state='adrift'; d.route=n.route; d.t=n.t; d.ox=d.cx-n.s.x; d.oz=d.cz-n.s.z;
+      playSfx('dockBreak',d.cx,waterY,d.cz);
+    }
+    const y=waterY+D.freeboard-D.thickness;
+    if(d.state==='moored'){
+      d.mesh.visible=true; d.mesh.position.set(d.cx,y,d.cz); d.mesh.rotation.y=0;
+    }else if(d.state==='adrift'){
+      d.t+=D.driftSpeed*dt/d.route.totalLen;
+      const k=Math.exp(-dt/40); d.ox*=k; d.oz*=k;   // pulled out into the current over a minute or so
+      d.rot+=D.spin*dt;
+      if(d.t>=1){ d.state='gone'; d.mesh.visible=false; continue; }
+      const s=sampleRoute(d.route,d.t);
+      d.mesh.visible=true; d.mesh.position.set(s.x+d.ox,y,s.z+d.oz); d.mesh.rotation.y=d.rot;
+    }else d.mesh.visible=false;
+  }
+}
 
 // ── Small craft (CONFIG.smallCraft) ────────────────────────────────
 // Canoes, York boats, rowboats, launches. Each works a stretch of river
