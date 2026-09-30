@@ -82,6 +82,19 @@ export const CONFIG = {
   // near "BRICK_PALETTES" etc. if you want to understand how these are
   // consumed. Safe to add/remove/edit entries.
   palettes: {
+    // Named wall colours a building can be given by hand with a `wall_color`
+    // property (in data/building_history.json → `set`). A building's
+    // wall_color may also be a hex string like "#A0452E".
+    named: {
+      darkRed:   0xA03828,
+      red:       0xB84A34,
+      orangeRed: 0xC86444,
+      buff:      0xCCA848,   // yellow/buff brick
+      cream:     0xD8C890,   // pale cream brick
+      tyndall:   0xD2C49A,   // Tyndall limestone
+      sandstone: 0x9C5A40,   // red sandstone
+      grey:      0x8C8880,   // grey stone / painted brick
+    },
     // Each [lo,hi] pair is a colour range a building of this material is
     // randomly lerped within. `weights` are cumulative percentages (must
     // end at 100) controlling how common each pair is — e.g. brick's first
@@ -273,7 +286,7 @@ export const CONFIG = {
                 'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','replaced_by',
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
-                'st_name','st_type','streetcar_start','rail_class'],
+                'st_name','st_type','streetcar_start','rail_class','wall_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     platformHeight: 0.6, // low platform/loading-dock structures
     minHeight: 2.0,

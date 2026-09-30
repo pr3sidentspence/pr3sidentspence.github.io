@@ -1571,6 +1571,17 @@ const BRICK_WEIGHTS=CONFIG.palettes.brick.weights; // cumulative %
 const WOOD_COMM_PALETTES=CONFIG.palettes.woodComm.pairs;
 const WOOD_COMM_WEIGHTS=CONFIG.palettes.woodComm.weights;
 
+// A hand-set wall colour (props.wall_color: a CONFIG.palettes.named key or a
+// hex string "#RRGGBB"), or null to use the material's random palette.
+function wallColourOverride(props){
+  const v=props&&props.wall_color; if(v==null||v==='') return null;
+  const named=CONFIG.palettes.named||{};
+  if(named[v]!=null) return named[v];
+  const m=/^(?:#|0x)?([0-9a-f]{6})$/i.exec(String(v).trim());
+  if(m) return parseInt(m[1],16);
+  console.warn('Unknown wall_color',v,'on',props.uid);
+  return null;
+}
 function buildingColour(mat,uid,floors,areaSqM){
   const h=simpleHash(uid||String(Math.random()));
   const h01=(h&0xFFFF)/0xFFFF;
@@ -2197,13 +2208,14 @@ async function applyBuildingHistory(geojson){
   if(!Object.keys(H).length) return;
   let n=0;
   geojson.features=geojson.features.flatMap(f=>{
-    const h=H[f.properties?.uid];
+    const p=f.properties||{}, key=p.uid??p.pf_uid??p.id;   // same ID the info panel shows
+    const h=key!=null?H[key]:null;
     if(!h) return [f];
     n++;
     // `set`: plain property corrections merged onto the feature
     const base=h.set?{...f,properties:{...f.properties,...h.set}}:f;
     if(!h.phases) return [base];
-    return h.phases.map((ph,i)=>({...base,properties:{...base.properties,...ph,uid:`${f.properties.uid}#${i}`}}));
+    return h.phases.map((ph,i)=>({...base,properties:{...base.properties,...ph,uid:`${key}#${i}`}}));
   });
   if(n) console.log(`Building history: ${n} building(s) corrected / split into phases`);
 }
@@ -2410,7 +2422,7 @@ async function buildCity(geojson){
           const ELEV_STEP_SCALE=0.55;
           const lowerH=height*ELEV_STEP_H;
           const upperH=height*(1-ELEV_STEP_H);
-          const bldgCol=buildingColour(mat,props.uid,floors,props.area_m2);
+          const bldgCol=wallColourOverride(props)??buildingColour(mat,props.uid,floors,props.area_m2);
 
           // Collect shape points in shapeXY
           const shapeOuter=[];
@@ -2501,7 +2513,7 @@ async function buildCity(geojson){
       const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
       if(tris===0){wallGeom.dispose();continue;}
       // Bake per-building colour into vertex colours before merging
-      const bldgCol=buildingColour(isLumberYard?'lumber':mat,props.uid,floors,props.area_m2);
+      const bldgCol=wallColourOverride(props)??buildingColour(isLumberYard?'lumber':mat,props.uid,floors,props.area_m2);
       applyVertexColour(wallGeom,bldgCol);
       if(isLumberYard){
         wallGeom.translate(0,buildingBaseY,0);
@@ -4820,6 +4832,7 @@ function updateHover(){
     info.source?`Sheet: <span>${(info.source||'').replace('Goad_1906_Sheet_','').replace('.geojson','')}</span>`:'',
     props.born!=null?`Born: <span>${props.born}</span>`:'',
     props.died!=null?`Died: <span>${props.died}</span>`:'',
+    props.wall_color!=null?`Wall colour: <span><span class="info-dot" style="background:#${(wallColourOverride(props)??0).toString(16).padStart(6,'0')}"></span>${props.wall_color}</span>`:'',
     uid!=null?`UID: <span style="font-size:0.82em;word-break:break-all;">${uid}</span>`:'',
   ].filter(Boolean).join('<br>');
   panel.style.display='block';

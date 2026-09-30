@@ -1,5 +1,5 @@
 {
-  "_format": "buildings: { <feature uid>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). Survives merge_assessment.py regenerating the GeoJSON.",
+  "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON.",
   "buildings": {
     "76e52ce7-2b91-4411-ad15-e526e36f7087": {
       "name": "Leland Hotel",
@@ -58,6 +58,19 @@
       },
       "date_precision": {
         "born": "year"
+      }
+    },
+    "254e63ba-d3c7-513a-9071-1cb5a8646959": {
+      "name": "Canada Permanent Building",
+      "address": "298 Garry Street",
+      "set": {
+        "wall_color": "sandstone"
+      }
+    },
+    "de6e0ff3-7cb8-4be4-9c90-40a86a33b032": {
+      "name": "City Hall",
+      "set": {
+        "wall_color": "red"
       }
     }
   }
