@@ -84,6 +84,16 @@ canvas{display:block;position:fixed;inset:0;}
   -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;
   pointer-events:auto;text-transform:uppercase;}
 #sprint-btn.active{background:rgba(200,160,90,0.25);border-color:#C8A05A;color:#C8A05A;}
+#ar-btn{position:fixed;bottom:214px;left:32px;width:52px;height:52px;
+  border-radius:10px;background:rgba(9,8,10,0.65);border:1.5px solid #3a2810;
+  color:#7a6040;font-size:0.8rem;font-weight:600;letter-spacing:0.08em;
+  display:flex;align-items:center;justify-content:center;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;touch-action:none;user-select:none;pointer-events:auto;}
+#ar-btn.active{background:rgba(200,160,90,0.25);border-color:#C8A05A;color:#C8A05A;}
+#ar-status{position:fixed;top:calc(env(safe-area-inset-top,0px) + 10px);left:50%;transform:translateX(-50%);
+  display:none;max-width:86vw;padding:5px 12px;border-radius:14px;background:rgba(9,8,10,0.75);
+  border:1px solid #6a4a20;color:#E8D8B0;font-size:0.7rem;letter-spacing:0.04em;text-align:center;
+  pointer-events:none;z-index:25;}
 
 #orbit-zoom{position:fixed;bottom:32px;right:18px;display:none;
   flex-direction:column;gap:10px;pointer-events:auto;z-index:30;}
@@ -4845,6 +4855,7 @@ function enterFPS(){
 }
 function exitFPS(){
   fpsMode=false;falling=false;fallVelocity=0;
+  arStop();
   if(!isMobile){document.exitPointerLock();}
   else{hideTouchControls();}
   // Set orbit target 30m ahead of camera at ground level — prevents snap to old target
@@ -5058,6 +5069,9 @@ touchOverlay.addEventListener('touchmove',e=>{
       const c=Math.min(len,JOY_R),nx=len>1?dx/len:0,ny=len>1?dy/len:0;
       joyVec.x=nx*(c/JOY_R);joyVec.y=-ny*(c/JOY_R);
       setKnobPos(nx*c,ny*c);
+    }else if(t.identifier===lookTouchId&&ar.on){
+      ar.yawOff-=(t.clientX-lookLastX)*CONFIG.fpsControls.touchLookSensitivity;   // align the model with the real street
+      lookLastX=t.clientX;lookLastY=t.clientY;
     }else if(t.identifier===lookTouchId){
       yaw-=(t.clientX-lookLastX)*CONFIG.fpsControls.touchLookSensitivity;
       pitch-=(t.clientY-lookLastY)*CONFIG.fpsControls.touchLookSensitivity;
@@ -5116,6 +5130,114 @@ sprintBtn.addEventListener('touchstart',e=>{
   sprinting=!sprinting;
   sprintBtn.classList.toggle('active',sprinting);
 },{passive:false});
+
+// ── AR mode (mobile walk mode) ──────────────────────────────────────────────
+// Low-effort AR: the phone's orientation sensors drive the walk-mode view
+// (compass heading → yaw, tilt → pitch; roll is ignored so the horizon stays
+// level) and GPS places the camera at the viewer's real position. World
+// coordinates are project(lon,lat) with north = −Z, so no other alignment is
+// needed; a horizontal drag trims the heading when the compass is off, and
+// the joystick nudges the position — later GPS fixes move the camera by their
+// change only, so nudges are kept. Sensors need a secure (https) page.
+const arBtn=document.getElementById('ar-btn'), arStatus=document.getElementById('ar-status');
+const ar={on:false,yawOff:0,alpha:null,beta:0,gamma:0,iosHeading:null,absolute:false,
+  gpsWatch:null,lastFix:null,acc:null,shiftX:0,shiftZ:0,outside:false,gotSensor:false,evt:null,note:''};
+const _arEuler=new THREE.Euler(), _arQ=new THREE.Quaternion(), _arQ0=new THREE.Quaternion(),
+  _arQ1=new THREE.Quaternion(-Math.sqrt(0.5),0,0,Math.sqrt(0.5)), _arZ=new THREE.Vector3(0,0,1), _arV=new THREE.Vector3();
+function arShowStatus(){
+  if(!ar.on){arStatus.style.display='none';return;}
+  const parts=['AR'];
+  if(!ar.gotSensor) parts.push('waiting for motion sensors…');
+  else if(!ar.absolute&&ar.iosHeading==null) parts.push('no compass — drag to align');
+  if(ar.note) parts.push(ar.note);
+  else if(ar.acc!=null) parts.push(`GPS ±${Math.round(ar.acc)} m`);
+  else if(ar.gpsWatch!=null) parts.push('finding GPS…');
+  parts.push('drag ↔ to align');
+  arStatus.textContent=parts.join(' · ');arStatus.style.display='block';
+}
+function arOnOrient(e){
+  if(e.alpha==null&&e.webkitCompassHeading==null) return;
+  ar.gotSensor=true;
+  ar.alpha=e.alpha??0; ar.beta=e.beta??0; ar.gamma=e.gamma??0;
+  ar.absolute=e.absolute===true||e.type==='deviceorientationabsolute';
+  ar.iosHeading=(typeof e.webkitCompassHeading==='number')?e.webkitCompassHeading:null;
+}
+function arOnFix(pos){
+  const {longitude:lon,latitude:lat,accuracy}=pos.coords;
+  ar.acc=accuracy;
+  const [sx,sy]=project(lon,lat), wx=sx, wz=-sy;
+  const limit=(CONFIG.building.loadRadius||6000)+500;
+  if(Math.hypot(wx,wz)>limit){
+    ar.outside=true; ar.note=`you're ${(Math.hypot(wx,wz)/1000).toFixed(1)} km from the model — look-around only`;
+    arShowStatus(); return;
+  }
+  ar.outside=false; ar.note='';
+  if(accuracy>80){arShowStatus();return;}            // too coarse to move on
+  if(!ar.lastFix){
+    camera.position.x=wx; camera.position.z=wz;
+    camera.position.y=sampleTerrainY(wx,wz)+EYE_H;
+    falling=false; fpsGrounded=true;
+  }else{
+    ar.shiftX+=wx-ar.lastFix.x; ar.shiftZ+=wz-ar.lastFix.z;   // glide by the change, keeping nudges
+  }
+  ar.lastFix={x:wx,z:wz};
+  arShowStatus();
+}
+function arOnGpsError(err){
+  ar.note=err.code===1?'location blocked — look-around only':'no GPS fix yet';
+  arShowStatus();
+}
+async function arStart(){
+  if(!window.isSecureContext){ ar.on=true; ar.note='needs the https site'; arShowStatus(); ar.on=false;
+    setTimeout(()=>{arStatus.style.display='none';},3500); return; }
+  try{
+    if(typeof DeviceOrientationEvent!=='undefined'&&typeof DeviceOrientationEvent.requestPermission==='function'){
+      if(await DeviceOrientationEvent.requestPermission()!=='granted') throw new Error('denied');
+    }
+  }catch(e){ ar.on=true; ar.note='motion sensors not allowed'; arShowStatus(); ar.on=false;
+    setTimeout(()=>{arStatus.style.display='none';},3500); return; }
+  Object.assign(ar,{on:true,yawOff:0,gotSensor:false,lastFix:null,acc:null,shiftX:0,shiftZ:0,note:''});
+  ar.evt=('ondeviceorientationabsolute' in window)?'deviceorientationabsolute':'deviceorientation';
+  window.addEventListener(ar.evt,arOnOrient);
+  if(navigator.geolocation) ar.gpsWatch=navigator.geolocation.watchPosition(arOnFix,arOnGpsError,
+    {enableHighAccuracy:true,maximumAge:2000,timeout:30000});
+  else ar.note='no GPS';
+  arBtn.classList.add('active'); arShowStatus();
+  window.pfDiag?.add('info','AR on ('+ar.evt+')');
+}
+function arStop(){
+  if(!ar.on) return;
+  ar.on=false;
+  if(ar.evt) window.removeEventListener(ar.evt,arOnOrient);
+  if(ar.gpsWatch!=null) navigator.geolocation.clearWatch(ar.gpsWatch);
+  ar.gpsWatch=null; ar.alpha=null;
+  arBtn.classList.remove('active'); arShowStatus();
+}
+// Per frame, in walk mode: steer yaw/pitch toward the phone's pointing direction
+// and glide toward the latest GPS fix.
+function arTick(dt){
+  if(!ar.on) return;
+  if(ar.shiftX||ar.shiftZ){
+    const k=Math.min(1,dt*2), dx=ar.shiftX*k, dz=ar.shiftZ*k;
+    camera.position.x+=dx; camera.position.z+=dz; ar.shiftX-=dx; ar.shiftZ-=dz;
+    if(Math.abs(ar.shiftX)<0.01&&Math.abs(ar.shiftZ)<0.01) ar.shiftX=ar.shiftZ=0;
+  }
+  if(ar.alpha==null) return;
+  const D=Math.PI/180, orient=((screen.orientation&&screen.orientation.angle)??window.orientation??0)*D;
+  _arEuler.set(ar.beta*D,ar.alpha*D,-ar.gamma*D,'YXZ');
+  _arQ.setFromEuler(_arEuler).multiply(_arQ1).multiply(_arQ0.setFromAxisAngle(_arZ,-orient));
+  _arV.set(0,0,-1).applyQuaternion(_arQ);
+  let tYaw=Math.atan2(-_arV.x,-_arV.z);
+  if(ar.iosHeading!=null) tYaw=-ar.iosHeading*D;      // iOS: alpha isn't north-referenced
+  tYaw+=ar.yawOff;
+  const lim=CONFIG.fpsControls.pitchClampRadians;
+  const tPitch=Math.max(-lim,Math.min(lim,Math.asin(Math.max(-1,Math.min(1,_arV.y)))));
+  const k=Math.min(1,dt*12);                            // light smoothing of sensor jitter
+  let dy=tYaw-yaw; dy=Math.atan2(Math.sin(dy),Math.cos(dy));
+  yaw+=dy*k; pitch+=(tPitch-pitch)*k;
+}
+arBtn.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();if(ar.on)arStop();else arStart();},{passive:false});
+arBtn.addEventListener('touchstart',e=>{e.stopPropagation();},{passive:true});
 
 // Advanced/debug mode (Ctrl+A): shows the layer bar, season (❄/☀) button and
 // flood slider. Remembered per browser.
@@ -7219,6 +7341,7 @@ function startLoop(){
     try{
     const dt=Math.max(0,Math.min((now-lastTime)*0.001,0.1));lastTime=now;   // ≥0: first rAF stamp can predate lastTime after a long load
     if(fpsMode){
+      arTick(dt);
       const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
       const qPitch=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1,0,0),pitch);
       camera.quaternion.copy(qYaw).multiply(qPitch);
@@ -8157,6 +8280,8 @@ renderer.render(scene,camera);
     <div class="ud-btn" id="btn-dn">▼</div>
   </div>
   <div id="sprint-btn">Sprint</div>
+  <div id="ar-btn" title="AR: point the phone to look around, placed at your GPS position">AR</div>
+  <div id="ar-status"></div>
 </div>
 
 <div id="orbit-zoom"><div class="zoom-btn" id="btn-zoom-in">+</div><div class="zoom-btn" id="btn-zoom-out">−</div></div>
