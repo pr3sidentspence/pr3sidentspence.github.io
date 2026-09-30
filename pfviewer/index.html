@@ -722,6 +722,59 @@ function smoothDEM(h, S, cellM){
   }
   console.log(`🗺 DEM smoothed (≈${C.radiusM} m; kept original where it moves > ${hi} m) — ${changed.toLocaleString()} cells adjusted`);
 }
+// Second stage (CONFIG.terrain.smooth.flatten): flatten the prairie harder
+// without touching the riverbanks. "Bank" cells = fine-scale slope above
+// bankSlope, or low in the channel (below water.startY + minAboveWater);
+// they're dilated by bufferM and feathered, and everything outside is pulled
+// `strength` of the way toward a wide (radiusM) average of the flat ground
+// only — normalised, so banks/channel don't drag it down. Measured on the
+// Winnipeg DEM: ~100 m-scale bumps halve, banks move 0 m; the regional rise
+// away from the rivers (which floods rely on) is kept. maxMoveM caps it.
+function flattenDEM(h, S, cellM){
+  const F=CONFIG.terrain.smooth?.flatten; if(!F||!F.strength) return;
+  const blur=(src,r)=>{
+    const a=new Float32Array(src), b=new Float32Array(src.length);
+    const pass=(sa,db,horiz)=>{
+      for(let o=0;o<S;o++){
+        let sum=0,n=0; const at=i=>horiz?sa[o*S+i]:sa[i*S+o];
+        for(let i=0;i<=r&&i<S;i++){sum+=at(i);n++;}
+        for(let i=0;i<S;i++){
+          db[horiz?o*S+i:i*S+o]=sum/n;
+          const add=i+r+1, rem=i-r;
+          if(add<S){sum+=at(add);n++;}
+          if(rem>=0){sum-=at(rem);n--;}
+        }
+      }
+    };
+    for(let k=0;k<2;k++){ pass(a,b,true); pass(b,a,false); }
+    return a;
+  };
+  const minY=CONFIG.water.startY+(F.minAboveWater??3);
+  const bank=new Float32Array(h.length);
+  for(let z=0;z<S;z++) for(let x=0;x<S;x++){
+    const i=z*S+x;
+    const gx=(h[z*S+Math.min(S-1,x+1)]-h[z*S+Math.max(0,x-1)])/(2*cellM);
+    const gz=(h[Math.min(S-1,z+1)*S+x]-h[Math.max(0,z-1)*S+x])/(2*cellM);
+    bank[i]=Math.hypot(gx,gz)>F.bankSlope||h[i]<=minY?1:0;
+  }
+  // dilate (two box passes each way reach ±2r) then feather
+  const dil=blur(bank,Math.max(1,Math.round(F.bufferM/cellM/2)));
+  for(let i=0;i<dil.length;i++) dil[i]=dil[i]>1e-6?1:0;
+  const prot=blur(dil,Math.max(1,Math.round((F.featherM??20)/cellM/2)));
+  const w=new Float32Array(h.length); for(let i=0;i<h.length;i++) w[i]=Math.max(0,1-prot[i]);
+  const r=Math.max(1,Math.round(F.radiusM/cellM/2));
+  const hw=new Float32Array(h.length); for(let i=0;i<h.length;i++) hw[i]=h[i]*w[i];
+  const num=blur(hw,r), den=blur(w,r);
+  const cap=F.maxMoveM??2.5;
+  let changed=0;
+  for(let i=0;i<h.length;i++){
+    if(w[i]<=0||den[i]<0.05) continue;
+    let dv=(num[i]/den[i]-h[i])*F.strength*w[i];
+    dv=Math.max(-cap,Math.min(cap,dv));
+    h[i]+=dv; changed++;
+  }
+  console.log(`🗺 DEM flattened (≈${F.radiusM} m, strength ${F.strength}) — ${changed.toLocaleString()} cells`);
+}
 
 // ── Real DEM loader ─────────────────────────────────────────────────
 // Fetches dem.json + dem.bin (produced by pfviewer/tools/dem_from_las.py).
@@ -747,6 +800,7 @@ async function applyDEM(){
       return;
     }
     smoothDEM(heights, S, meta.size/(S-1));
+    flattenDEM(heights, S, meta.size/(S-1));
     if(S === T){
       for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
     }else{

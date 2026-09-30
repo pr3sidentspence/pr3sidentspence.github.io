@@ -442,7 +442,12 @@ export const CONFIG = {
     segments: 600,          // mesh subdivisions (20 m grid; the 1201² DEM is resampled) — was 1200, ~2.2M triangles more
     // DEM smoothing at load: removes modern street/lot relief (the "waffle" the
     // dirt line traced) while keeping riverbanks — see smoothDEM in index.html
-    smooth: { radiusM: 30, keepBelowM: 0.5, keepAboveM: 1.5 },
+    smooth: { radiusM: 30, keepBelowM: 0.5, keepAboveM: 1.5,
+      // then: everything away from the riverbanks (slope > bankSlope, +bufferM)
+      // pulled toward a wide average of that ground — bumps halve, banks
+      // untouched, regional rise kept (strength 0 = off; see flattenDEM)
+      flatten: { radiusM: 300, strength: 0.85, bankSlope: 0.08, bufferM: 40, featherM: 20,
+                 minAboveWater: 3, maxMoveM: 2.5 } },
     noiseAmplitude: 0.80,   // metres of prairie undulation — enough for interesting flood spread
     noiseBaseY: 0.0,        // baseline Y for terrain surface (buildings sit at y=0)
     channelDepth: 5.5,      // metres the channel floor sits below bank level (y=0)
