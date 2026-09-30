@@ -72,6 +72,20 @@
       "set": {
         "wall_color": "red"
       }
+    },
+    "e5129cb0-5482-41c9-9bb5-33071a64a461": {
+      "name": "City Hall",
+      "notes": "part of City Hall (Goad material: stone)",
+      "set": {
+        "wall_color": "red"
+      }
+    },
+    "06e2ef08-ceff-4974-bee1-0171feca8a0e": {
+      "name": "City Hall",
+      "notes": "part of City Hall",
+      "set": {
+        "wall_color": "red"
+      }
     }
   }
 }
