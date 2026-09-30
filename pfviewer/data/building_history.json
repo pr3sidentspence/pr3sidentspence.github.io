@@ -82,9 +82,9 @@
     },
     "06e2ef08-ceff-4974-bee1-0171feca8a0e": {
       "name": "City Hall",
-      "notes": "part of City Hall",
+      "notes": "centre tower (5 storeys); stone, per Mike",
       "set": {
-        "wall_color": "red"
+        "wall_color": "tyndall"
       }
     }
   }
