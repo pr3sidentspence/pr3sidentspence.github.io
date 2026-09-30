@@ -537,6 +537,10 @@ function setTimeOfDay(t){
   glassMat.emissive.setRGB(CONFIG.glass.nightGlowColor.r * nightness, CONFIG.glass.nightGlowColor.g * nightness, CONFIG.glass.nightGlowColor.b * nightness);
   // Painted distant windows: same glass colour + night glow as the real panes
   windowPaintUniforms.uWinNight.value = nightness;
+  { const K=CONFIG.nightLights?.lateness; let late=0;
+    if(K){ const hr=clockH; if(hr<=K[0][0]) late=K[0][1]; else if(hr>=K[K.length-1][0]) late=K[K.length-1][1];
+      else for(let i=0;i<K.length-1;i++) if(hr>=K[i][0]&&hr<=K[i+1][0]){ late=K[i][1]+(K[i+1][1]-K[i][1])*(hr-K[i][0])/(K[i+1][0]-K[i][0]); break; } }
+    windowPaintUniforms.uWinLate.value=late; }
   windowPaintUniforms.uWinGlass.value.set(CONFIG.glass.color);
   windowPaintUniforms.uWinGlow.value.setRGB(CONFIG.glass.nightGlowColor.r, CONFIG.glass.nightGlowColor.g, CONFIG.glass.nightGlowColor.b);
   { const D=CONFIG.glass.maxDistance??1800; windowPaintUniforms.uWinFade.value.set(D*0.72, D*0.92); }
@@ -855,6 +859,7 @@ function buildOxbowLake(){
   if(_mosq){ scene.remove(_mosq.pts); _mosq=null; }   // rebuilt with the new anchors
 }
 let _oxKeys=null;   // lake fill keyframes, parsed on first use
+window._debugLate=()=>windowPaintUniforms.uWinLate.value;
 window._debugOxbow=()=>oxbow?{cells:oxbow.cells.length,floor:+oxbow.floor.toFixed(2),range:+oxbow.range.toFixed(2),visible:!!oxbow.mesh?.visible,level:oxbow.mesh?+oxbow.mesh.position.y.toFixed(2):null}:null;
 function tickOxbow(){
   if(!oxbow) return;
@@ -1118,7 +1123,8 @@ function tagBuildingIdx(geom, idx){
 // drop out (CONFIG.glass.maxDistance). At night each painted window is lit or
 // dark by a per-window hash. Only on buildings that got real windows.
 const windowPaintUniforms={ uWinNight:{value:0}, uWinGlass:{value:new THREE.Color()}, uWinGlow:{value:new THREE.Color()},
-  uWinFade:{value:new THREE.Vector2(1200,1600)} };
+  uWinFade:{value:new THREE.Vector2(1200,1600)},
+  uWinLate:{value:0} };   // 0..1 share of upper-floor lights switched off by now (CONFIG.nightLights, set in setTimeOfDay)
 function _lifespanShaderFor(kind, table=false, paint=false, stripes=false){
   return shader=>{
     shader.uniforms.buildingYear = buildingYearUniform;
@@ -1206,13 +1212,18 @@ varying float vBldY;
       float avg = wu * (v1 - v0);
       winMask = fade * mix(inside, avg, smoothstep(0.35, 0.9, px));
       float h = fract(sin(dot(vec3(floor(u), floor(fy), vWinSeed), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-      winLit = mix(step(h, 0.62), 0.62, smoothstep(0.35, 0.9, px));
+      // Upper floors switch off through the night (uWinLate); ground floor stays lit
+      float h2 = fract(sin(dot(vec3(floor(u), floor(fy), vWinSeed), vec3(39.346, 11.135, 83.155))) * 24634.6345);
+      float ground = step(fy, 1.0);
+      float stayOn = max(ground, step(uWinLate, h2));
+      float litShare = ${(CONFIG.nightLights?.litShare??0.62).toFixed(3)};
+      winLit = mix(step(h, litShare) * stayOn, litShare * mix(1.0 - uWinLate, 1.0, ground), smoothstep(0.35, 0.9, px));
       diffuseColor.rgb = mix(diffuseColor.rgb, uWinGlass, winMask);
     }
   }` : ''))
       + '';
     if(stripes) shader.fragmentShader = 'varying vec4 vStripe;\nvarying float vStripeBase, vStripeNy;\n' + shader.fragmentShader;
-    if(paint) shader.fragmentShader = 'uniform float uWinNight;\nuniform vec3 uWinGlass, uWinGlow;\nuniform vec2 uWinFade;\nvarying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' + shader.fragmentShader
+    if(paint) shader.fragmentShader = 'uniform float uWinNight, uWinLate;\nuniform vec3 uWinGlass, uWinGlow;\nuniform vec2 uWinFade;\nvarying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' + shader.fragmentShader
       .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\n  totalEmissiveRadiance += uWinGlow * uWinNight * winMask * winLit;');
   };
 }
@@ -2397,6 +2408,27 @@ const glassMat=new THREE.MeshPhongMaterial({
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
 tagMaterialForLifespan(glassMat,0,true); // shared across all layers/rebuilds — tagged once here, not per buildCity() call
+// Night: each pane (hashed by position + storey) lit or dark like the painted
+// windows, upper floors going out through the night; ground floor stays lit.
+{
+  const base=glassMat.onBeforeCompile, NL=CONFIG.nightLights??{};
+  glassMat.onBeforeCompile=(sh,r)=>{
+    base(sh,r);
+    sh.uniforms.uWinLate=windowPaintUniforms.uWinLate;
+    sh.vertexShader='varying vec2 vGlassXZ;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vGlassXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader='uniform float uWinLate;\nvarying vec2 vGlassXZ;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  {
+    float gFloor = floor((vBldY - vBuild.x) / ${FLOOR_H.toFixed(3)});
+    vec2 cellId = floor(vGlassXZ / ${(NL.paneCellM??2.2).toFixed(2)});
+    float h1 = fract(sin(dot(vec3(cellId, gFloor), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float h2 = fract(sin(dot(vec3(cellId, gFloor), vec3(39.346, 11.135, 83.155))) * 24634.6345);
+    float ground = step(gFloor, 0.5);
+    float lit = max(ground, step(h1, ${(NL.litShare??0.62).toFixed(3)}) * step(uWinLate, h2));
+    totalEmissiveRadiance *= lit;
+  }`);
+  };
+  glassMat.customProgramCacheKey=()=>'lifespan0t_glassNight';
+}
 // Glass never casts shadows (no castShadow set on its mesh), so no customDepthMaterial needed.
 setTimeOfDay(CONFIG.start.timeOfDay); // initial sky/lighting — must be after glassMat
 
@@ -6086,6 +6118,8 @@ function tickTimeline(dt){
     const C=CONFIG.storms, floodRel=waterMesh?floodRelForPlaneY(waterLevelAt(currentViewDate)):0;
     const rate=stormAt(currentViewDate)||paradeAt(currentViewDate)?(C?.dwellDaysPerSecond??0.1)   // linger on storm / parade days
               :floodRel>(C?.floodSlowAboveMetres??99)?(C?.floodDaysPerSecond??0.5)         // and through floods
+              :activeFireSpots.length?Math.min(cyc?.daysPerSecond??2,
+                  Math.min(...activeFireSpots.map(s=>s.f.dur*365))/(C?.fireSeconds??15))    // a fire in view: ~fireSeconds each
               :(cyc?.daysPerSecond??2);
     const d=new Date(currentViewDate.getTime()+dt*rate*86400000);
     if(cyc?.wrapWithinYear!==false&&d.getFullYear()!==y) d.setFullYear(y,0,1);

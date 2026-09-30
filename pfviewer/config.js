@@ -697,6 +697,17 @@ export const CONFIG = {
     ],
   },
 
+  // ── Window lights through the night ─────────────────────────────────
+  // litShare of windows are lit after dark; of those above the ground floor,
+  // `lateness` (by clock hour, the TIME slider runs 04:00–22:00) are switched
+  // off — each window at its own random point, so buildings darken gradually
+  // and are mostly dark by the small hours. Ground floors stay lit.
+  nightLights: {
+    litShare: 0.62,
+    lateness: [[4,0.85],[5.5,0.85],[6.5,0.55],[8,0.3],[17,0],[20,0.1],[22,0.45]],
+    paneCellM: 2.2,            // real glass panes: windows hashed on this grid
+  },
+
   // ── Street lights ───────────────────────────────────────────────────
   // First electric arc street lamps: Main St, October 1882 (Manitoba
   // Electric Light & Power, P.V. Carroll); the North West Electric Light &
@@ -972,6 +983,7 @@ export const CONFIG = {
     // (real metres; 1826/1852/1861/1916/1948/1950 all pass 4.5 m)
     floodSlowAboveMetres: 3.5,
     floodDaysPerSecond: 0.5,
+    fireSeconds: 15,           // and a fire in view (nearest few within 4 km) takes about this long to play through
     snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
     boxSize: 180,              // metres — precipitation volume that travels with the camera
     rain: {
