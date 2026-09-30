@@ -691,6 +691,26 @@ export const CONFIG = {
     post: { height: 4.6, arm: 0.5, headSize: 0.24, color: 0x1E2A22, glow: 0xFFD49A, poolRadius: 9 },     // incandescent: warm
   },
 
+  // ── Fire engines ────────────────────────────────────────────────────
+  // Run in along the nearest street when a building catches fire and park
+  // there until it's out. Winnipeg: volunteer brigade 1874 (from); first
+  // motorised apparatus 1910 (a Webb hose wagon); all first-line apparatus
+  // motor by 1929; last fire horses sold 1934 (Winnipeg Firefighters
+  // Museum). Red lamps on apparatus from the 1930s, rotating beacons from the
+  // late 1940s (approximate, North American practice). Not shown in the
+  // fast timeline modes.
+  fireEngines: {
+    from: 1874,
+    motorFrom: 1910,
+    motorShare: [[1910,0.05],[1920,0.4],[1929,0.95],[1934.5,1]],
+    lightsFrom: 1930, beaconFrom: 1946, sirenFrom: 1915,
+    approach: 180,             // metres driven in along the street
+    horseSpeed: 6, motorSpeed: 11,
+    maxPerFire: 3, maxRoadDistance: 40,
+    stayUntil: 0.8,            // fraction of the fire window they stay for
+    red: 0xA8201A,
+  },
+
   // ── Floating docks ──────────────────────────────────────────────────
   // Flat (floors ≤ 0.2) river structures named dock / landing / wharf / pier
   // are pulled out of the merged city mesh and ride the river level. In a
@@ -1068,6 +1088,23 @@ export const CONFIG = {
       dockBreak: { path: './sounds/dock-break.mp3', gain: 1.0, refDistance: 25, rolloffPower: 2, maxDistance: 900 },
       constructionHammer: { path: './sounds/construction-hammer.mp3', gain: 0.7, refDistance: 12, rolloffPower: 3, maxDistance: 250 },
       constructionSaw:    { path: './sounds/construction-saw.mp3',    gain: 0.6, refDistance: 12, rolloffPower: 3, maxDistance: 250 },
+      // Mobs — loop: true = a looping voice on the nearest maxConcurrent sources
+      cartHooves:      { path: './sounds/cart-hooves.mp3',      loop: true, maxConcurrent: 3, gain: 0.6, refDistance: 8,  rolloffPower: 2, maxDistance: 150 },
+      horseWhinny:     { path: './sounds/horse-whinny.mp3',     gain: 0.7, refDistance: 10, rolloffPower: 2, maxDistance: 250 },
+      streetcarRun:    { path: './sounds/streetcar-run.mp3',    loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
+      streetcarBell:   { path: './sounds/streetcar-bell.mp3',   gain: 0.7, refDistance: 15, rolloffPower: 1.5, maxDistance: 400 },   // replaces the synth bell if present
+      trainRun:        { path: './sounds/train-run.mp3',        loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 1.5, maxDistance: 600 },
+      trainWhistle:    { path: './sounds/train-whistle.mp3',    gain: 1.0, refDistance: 60, rolloffPower: 1.2, maxDistance: 3000 },
+      steamboatEngine: { path: './sounds/steamboat-engine.mp3', loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 2, maxDistance: 500 },
+      steamboatWhistle:{ path: './sounds/steamboat-whistle.mp3',gain: 1.0, refDistance: 80, rolloffPower: 1.2, maxDistance: 3500 },
+      launchEngine:    { path: './sounds/launch-engine.mp3',    loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 10, rolloffPower: 2, maxDistance: 300 },
+      paddleSplash:    { path: './sounds/paddle-splash.mp3',    gain: 0.4, refDistance: 5,  rolloffPower: 3, maxDistance: 120 },
+      ferryEngine:     { path: './sounds/ferry-engine.mp3',     loop: true, maxConcurrent: 1, gain: 0.6, refDistance: 15, rolloffPower: 2, maxDistance: 400 },
+      fireCrackle:     { path: './sounds/fire-crackle.mp3',     loop: true, maxConcurrent: 2, gain: 0.9, refDistance: 25, rolloffPower: 2, maxDistance: 600 },
+      fireBell:        { path: './sounds/fire-bell.mp3',        gain: 0.9, refDistance: 25, rolloffPower: 1.5, maxDistance: 900 },
+      fireGallop:      { path: './sounds/fire-gallop.mp3',      loop: true, maxConcurrent: 2, gain: 0.8, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
+      fireSirenLoop:   { path: './sounds/fire-siren.mp3',       loop: true, maxConcurrent: 2, gain: 1.0, refDistance: 40, rolloffPower: 1.3, maxDistance: 2500 },
+      firePump:        { path: './sounds/fire-pump.mp3',        loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
     },
     ambient: {
       windNoise: {
