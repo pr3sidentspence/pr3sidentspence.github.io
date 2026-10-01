@@ -820,6 +820,24 @@ function carveCreekTerrain(lines,born,died){
   }
   _rebuildCreekValley();
 }
+// Height of the terrain mesh's actual triangle surface at a world point —
+// sampleTerrainY is bilinear, but the GPU draws each grid cell as two flat
+// triangles (PlaneGeometry: a,b,d / b,c,d), which differ by tens of cm on
+// coarse grids; the creek strip must meet the real surface at the cut edge.
+const _ttV=new THREE.Vector3();
+function terrainTriY(wx,wz){
+  const segs=CONFIG.terrain?.segments??300, verts=segs+1, cell=12000/segs;
+  _ttV.set(wx,0,wz); terrainMesh.worldToLocal(_ttV);
+  const fx=Math.max(0,Math.min(verts-1.0001,(_ttV.x+6000)/cell)), fz=Math.max(0,Math.min(verts-1.0001,(_ttV.z+6000)/cell));
+  const ix=Math.floor(fx), iz=Math.floor(fz), tx=fx-ix, tz=fz-iz, P=terrainMesh.geometry.attributes.position;
+  const ya=P.getY(iz*verts+ix), yb=P.getY((iz+1)*verts+ix), yc=P.getY((iz+1)*verts+ix+1), yd=P.getY(iz*verts+ix+1);
+  return tx+tz<=1 ? ya+(yd-ya)*tx+(yb-ya)*tz : yc+(yb-yc)*(1-tx)+(yd-yc)*(1-tz);
+}
+window._debugTriY=()=>{ const rc=new THREE.Raycaster(), out=[]; let eTri=0,eBil=0;
+  for(let k=0;k<40;k++){ const x=-100+Math.random()*280, z=-200+Math.random()*160;
+    rc.set(new THREE.Vector3(x,500,z),new THREE.Vector3(0,-1,0)); const h=rc.intersectObject(terrainMesh,false)[0]; if(!h) continue;
+    eTri=Math.max(eTri,Math.abs(terrainTriY(x,z)-h.point.y)); eBil=Math.max(eBil,Math.abs(sampleTerrainY(x,z)-h.point.y)); }
+  return {maxErrTriangle:+eTri.toFixed(3),maxErrBilinear:+eBil.toFixed(3)}; };
 function _rebuildCreekValley(){
   const C=CONFIG.terrain.creek, V=creekValley;
   for(const m of V.meshes){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
@@ -832,6 +850,7 @@ function _rebuildCreekValley(){
     return{P,free};
   });
   const prof=o=>0.5*(1+Math.cos(Math.PI*Math.min(1,o/W)));
+  const wCut=prof(W*(C.cutShare??0.9));   // profile value at the cut edge — the strip meets the ground there
   const field=(x,z)=>{ let w=0; for(const{P,free}of pieces){ const r=segDist(x,z,P); if(r.d>=W) continue;
       let e=1; if(free[0]) e=Math.min(e,r.at/taper); if(free[1]) e=Math.min(e,(r.len-r.at)/taper); e=Math.max(0,Math.min(1,e)); e=e*e*(3-2*e);
       w=Math.max(w,prof(r.d)*e); } return w; };
@@ -844,7 +863,8 @@ function _rebuildCreekValley(){
       const q=R[Math.min(R.length-1,i+1)], r0=R[Math.max(0,i-1)], tx=q[0]-r0[0], tz=q[1]-r0[1], tl=Math.hypot(tx,tz)||1, nx=-tz/tl, nz=tx/tl;
       for(let j=0;j<=NA;j++){
         const o=-W+2*W*j/NA, x=p[0]+nx*o, z=p[1]+nz*o, w=field(x,z);
-        pos.push(x,sampleTerrainY(x,z)+0.04-D*w,z); dirtW.push(w); col.push(1,1,1); life.push(V.born,V.died); build.push(0,0,0,0);
+        // on the exact triangle surface, 2 cm under it outside the cut (hidden), dropping inside
+        pos.push(x,terrainTriY(x,z)-0.02-D*Math.max(0,w-wCut),z); dirtW.push(w); col.push(1,1,1); life.push(V.born,V.died); build.push(0,0,0,0);
       }
       const wc=field(p[0],p[1]); if(wc>0.05) cuts.push([p[0],p[1],W*(C.cutShare??0.9)*Math.min(1,wc*1.2)]);
       if(i>0){ const r=(i-1)*(NA+1), c=i*(NA+1); for(let j=0;j<NA;j++) idx.push(r+j,c+j,r+j+1, r+j+1,c+j,c+j+1); }
