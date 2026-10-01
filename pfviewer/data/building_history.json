@@ -8,29 +8,46 @@
         "https://www.mhs.mb.ca/docs/sites/lelandhotel.shtml",
         "https://www.archiseek.com/1883-leland-hotel-winnipeg/"
       ],
-      "notes": "Built 1883–1884 (Barber & Barber). Four storeys added 1892 (to six; Goad 1906 shows 6.5). The added storeys were gutted by fire in 1913 and removed rather than rebuilt. The remaining lower building was destroyed by arson in January 1999. Exact months unknown except January 1999.",
+      "notes": "Built 1883–1884 (Barber & Barber): 3 storeys (tall ground floor + 2; 1889 sketch). 1892: three storeys + a mansard with dormers added (to 6.5; 1903 photo, Goad 1906). 1913 fire gutted the additions; the lowest added storey survived, leaving 4 (1990s photo). The rest destroyed by arson January 1999. Light brick (photos). Phases revised from photos supplied by Mike.",
       "phases": [
         {
-          "phase": "original building (storeys 1–2)",
-          "floors": 2,
+          "phase": "original building (storeys 1–3)",
+          "floors": 3,
           "born": "1884-06-01",
           "construction_months": 12,
           "died": "1999-01-15",
           "died_by": "fire",
           "parapet": false,
+          "wall_color": "cream",
           "date_precision": {
             "born": "year",
             "died": "month"
           }
         },
         {
-          "phase": "1892 addition (storeys 3–6.5)",
-          "base_floors": 2,
+          "phase": "1892 addition, storey 4 (survived 1913)",
+          "base_floors": 3,
+          "floors": 4,
+          "born": "1892-10-01",
+          "construction_months": 8,
+          "died": "1999-01-15",
+          "died_by": "fire",
+          "wall_color": "cream",
+          "date_precision": {
+            "born": "year",
+            "died": "month"
+          }
+        },
+        {
+          "phase": "1892 addition, storeys 5–6.5 with mansard (burned 1913)",
+          "base_floors": 4,
           "floors": 6.5,
+          "roof_type": "mansard",
           "born": "1892-10-01",
           "construction_months": 8,
           "died": "1913-07-01",
           "died_by": "fire",
+          "wall_color": "cream",
           "date_precision": {
             "born": "year",
             "died": "year"

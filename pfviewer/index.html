@@ -1719,7 +1719,7 @@ let   cityHazeGroup   = null;
 // Shared by every haze layer; uSrc* filled by buildHazeSources(), uLight by
 // setTimeOfDay(), uTime/uStrength per frame in tickChimneySmoke().
 const hazeUniforms={
-  uSrc:{value:null}, uSrcMin:{value:new THREE.Vector2()}, uSrcSize:{value:new THREE.Vector2(1,1)},
+  uSrc:{value:null}, uSrcEnd:{value:null}, uSrcMin:{value:new THREE.Vector2()}, uSrcSize:{value:new THREE.Vector2(1,1)},
   uYear:{value:1906}, uTime:{value:0}, uStrength:{value:0},
   uWind:{value:new THREE.Vector2(1,0)}, uWindSpeed:{value:4}, uEvolve:{value:0.02}, uFadeYears:{value:3},
   uColor:{value:new THREE.Color(0x57534B)}, uColorAbove:{value:new THREE.Color(0xA39C8E)}, uAboveBoost:{value:1.5}, uLight:{value:1},
@@ -1987,7 +1987,7 @@ function wallColourOverride(props){
   return null;
 }
 function buildingColour(mat,uid,floors,areaSqM){
-  const h=simpleHash(uid||String(Math.random()));
+  const h=simpleHash(uid?String(uid).split('#')[0]:String(Math.random()));   // phases of one building (uid#n) share its colour
   const h01=(h&0xFFFF)/0xFFFF;
   const pct=h%100;
 
@@ -3045,7 +3045,7 @@ async function buildCity(geojson){
         const pe0=wEdges[primaryIdx];
         const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
         const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
-        if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!forceFlat&&(forcePeaked||PEAKED_MATS.has(mat))&&floors>CONFIG.dormers.minFloorsForDormer&&floors<=CONFIG.dormers.maxFloorsForDormer&&areaOk){
+        if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!forceFlat&&(forcePeaked||PEAKED_MATS.has(mat))&&floors>CONFIG.dormers.minFloorsForDormer&&(floors<=CONFIG.dormers.maxFloorsForDormer||roofTypeOverride==='mansard')&&areaOk){
           const pe=wEdges[primaryIdx];
           const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
           const usableP=primaryLen-1.6;  // margin from corners
@@ -3205,7 +3205,7 @@ async function buildCity(geojson){
               rate:baseRate*(0.85+((hc>>8&0xff)/255)*0.30),
               timer:Math.random()*baseRate,  // stagger first emit
               year, group,                   // group: its layer (visibility), no per-frame lookup
-              born:_lifeBorn, died:_lifeDied,  // so a building hidden by the date scrubber stops smoking too
+              born:_isoYearFrac(props.born,NO_BORN), died:_isoYearFrac(props.died,NO_DIED),  // exact dates: a demolished building stops smoking that day
             });
           }
         }
@@ -7264,7 +7264,7 @@ function buildHazeSources(){
   const srcs=[];   // {x,z,area,born}
   for(const[yr,cs]of buildingCentroids)
     if(activeLayer==='all'||activeLayer==='combined'||activeLayer===yr)
-      for(const c of cs) srcs.push({x:c.cx,z:c.cz,area:c.area||100,born:c.born});
+      for(const c of cs) srcs.push({x:c.cx,z:c.cz,area:c.area||100,born:c.born,died:c.died});
   if(!srcs.length) return;
   if(railGeojson){
     for(const f of railGeojson.features){
@@ -7287,23 +7287,30 @@ function buildHazeSources(){
   const rc=Math.ceil(R/step), norm=Math.PI*R*R/3;          // ∫(1-d/R) over the disc
   for(const s of srcs){
     const ci=Math.floor((s.x-minX)/step), cj=Math.floor((s.z-minZ)/step), b=bucket(s.born);
+    const bd=s.died!=null&&s.died<1965?bucket(s.died):-1;   // demolished: its smoke goes with it
     for(let j=Math.max(0,cj-rc);j<=Math.min(nz-1,cj+rc);j++)
       for(let i=Math.max(0,ci-rc);i<=Math.min(nx-1,ci+rc);i++){
         const d=Math.hypot(minX+(i+0.5)*step-s.x,minZ+(j+0.5)*step-s.z);
-        if(d<R) hist[(j*nx+i)*NB+b]+=s.area*(1-d/R)/norm;
+        if(d<R){ const v=s.area*(1-d/R)/norm; hist[(j*nx+i)*NB+b]+=v; if(bd>b) hist[(j*nx+i)*NB+bd]-=v; }
       }
   }
-  const data=new Uint8Array(nx*nz*4), th=H.thresholds;
+  // Start: first year each threshold is passed. End: the year after the last
+  // bucket it's still passed (255 = still on at the end) — demolition clears it.
+  const data=new Uint8Array(nx*nz*4), dataEnd=new Uint8Array(nx*nz*4), th=H.thresholds;
   for(let t=0;t<nx*nz;t++){
-    let acc=0; const out=[255,255,255,255];
+    let acc=0; const out=[255,255,255,255], last=[-1,-1,-1,-1];
     for(let b=0;b<NB;b++){
       acc+=hist[t*NB+b];
       const yr=b===0?1800:B0+(b-1)*BW;
-      for(let k=0;k<4;k++) if(out[k]===255&&acc>=th[k]) out[k]=Math.max(0,Math.min(254,yr-1800));
-      if(out[3]!==255) break;
+      for(let k=0;k<4;k++) if(acc>=th[k]-1e-6){ if(out[k]===255) out[k]=Math.max(0,Math.min(254,yr-1800)); last[k]=b; }
     }
     data.set(out,t*4);
+    for(let k=0;k<4;k++) dataEnd[t*4+k]=last[k]<0||last[k]>=NB-1?255:Math.min(254,B0+last[k]*BW-1800);   // bucket last+1 starts at B0+last*BW
   }
+  const texEnd=new THREE.DataTexture(dataEnd,nx,nz,THREE.RGBAFormat);
+  texEnd.magFilter=THREE.LinearFilter;texEnd.minFilter=THREE.LinearFilter;texEnd.needsUpdate=true;
+  hazeUniforms.uSrcEnd.value?.dispose();
+  hazeUniforms.uSrcEnd.value=texEnd;
   const tex=new THREE.DataTexture(data,nx,nz,THREE.RGBAFormat);
   tex.magFilter=THREE.LinearFilter;tex.minFilter=THREE.LinearFilter;tex.needsUpdate=true;
   hazeUniforms.uSrc.value?.dispose();
@@ -7339,7 +7346,7 @@ void main(){
 }`;
 const HAZE_FRAG=`
 #include <logdepthbuf_pars_fragment>
-uniform sampler2D uSrc;
+uniform sampler2D uSrc, uSrcEnd;
 uniform vec2 uSrcMin,uSrcSize,uWind,uNearFade;
 uniform float uYear,uTime,uStrength,uWindSpeed,uFadeYears,uLight,uFogDensity,uReach,uLayerOpacity,uLayerSeed,uMaxAlpha,uAboveBoost,uLayerSpeed,uEvolve;
 uniform vec3 uColor,uColorAbove,uFogColor;
@@ -7353,7 +7360,8 @@ float hzSrc(vec2 q){
   vec2 uv=(q-uSrcMin)/uSrcSize;
   if(uv.x<0.||uv.y<0.||uv.x>1.||uv.y>1.) return 0.;
   vec4 yrs=texture2D(uSrc,uv)*255.+1800.;
-  vec4 on=clamp((uYear-yrs)/uFadeYears,0.,1.);
+  vec4 ends=texture2D(uSrcEnd,uv)*255.+1800.;
+  vec4 on=clamp((uYear-yrs)/uFadeYears,0.,1.)*clamp((ends-uYear)/uFadeYears,0.,1.);   // fades in after building, out after demolition
   return dot(on,vec4(.18,.22,.27,.33));
 }
 void main(){
@@ -7480,7 +7488,7 @@ function tickChimneySmoke(dt){
   }
 
   // Build sorted candidate list — visible emitters only, sorted by distance²
-  const _chimYr=currentViewDate.getFullYear();
+  const _chimYr=yearFrac(currentViewDate);
   const cands=[];
   const _cr=Math.ceil(CHIM.farDist/CHIM_CELL), _gx=Math.floor(CAM.x/CHIM_CELL), _gz=Math.floor(CAM.z/CHIM_CELL);
   for(let _i=-_cr;_i<=_cr;_i++)for(let _j=-_cr;_j<=_cr;_j++){
@@ -8285,6 +8293,10 @@ function tickFireEngines(dt){
   }
 }
 window._debugParade=()=>parade?{note:parade.p.note.slice(0,30),t:parade.t.toFixed(0),len:parade.route.totalLen.toFixed(0),n:parade.nM,crowd:parade.p.crowd}:null;
+window._debugParadeGeo=()=>{ if(!parade) return null; const [b,h]=parade.meshes, m=new THREE.Matrix4(), v=new THREE.Vector3(), q=new THREE.Quaternion(), sc=new THREE.Vector3(); const out=[];
+  let vis=0; for(let i=0;i<parade.nM;i++){ b.getMatrixAt(i,m); m.decompose(v,q,sc); if(sc.x>0){ vis++; if(out.length<3) out.push([+v.x.toFixed(1),+v.y.toFixed(2),+v.z.toFixed(1),+sampleTerrainY(v.x,v.z).toFixed(2)]); } }
+  b.getMatrixAt(parade.nM+5,m); m.decompose(v,q,sc);
+  return {inScene:!!b.parent, visible:b.visible, count:b.count, marchersShown:vis, sample:out, crowd5:[+v.x.toFixed(1),+v.y.toFixed(2),+v.z.toFixed(1)], cam:[+camera.position.x.toFixed(0),+camera.position.y.toFixed(0),+camera.position.z.toFixed(0)], t:+parade.t.toFixed(0), len:+parade.route.totalLen.toFixed(0)}; };
 window._debugFire=()=>({fires:activeFireSpots.length,engines:fireEngineList().map(e=>(e.horse?'horse':'motor')+(e.moving?' moving':' parked')+(e.beacon?' beacon':e.lights?' lamps':''))});
 
 // ── Parades (CONFIG.parades) ───────────────────────────────────────
@@ -8317,7 +8329,7 @@ function _clearParade(){
   if(!parade) return;
   for(const m of parade.meshes){
     scene.remove(m);
-    if(m.isInstancedMesh){ m.material.dispose(); m.dispose(); }   // shared figure geometry stays
+    if(m.isInstancedMesh){ m.material.dispose(); m.dispose(); if(m.userData.ownGeo) m.geometry.dispose(); }   // shared figure geometry stays
     else m.traverse(o=>{if(o.isMesh){o.geometry.dispose();o.material.dispose();}});
   }
   parade=null;
@@ -8355,7 +8367,34 @@ function _buildParade(p){
     flag.position.set(0.72,2.5,0); flag.rotation.y=Math.PI/2;
     const g=new THREE.Group(); g.add(pole,flag); flagGroup.add(g); flags.push(g);
   }
-  const meshes=[bodies,heads,brass,flagGroup];
+  // Decorations (seen from afar): flag poles along both sidewalks every
+  // `decor.spacing` m, and strings of pennants across the street between them
+  const D=P.decor??{spacing:30,poleHeight:7,colors:[0xB02020,0xF2F2F2,0x1A3A8A]};
+  const nPairs=Math.floor(route.totalLen/D.spacing), poles=new THREE.InstancedMesh(new THREE.CylinderGeometry(0.06,0.08,D.poleHeight,5).translate(0,D.poleHeight/2,0),
+    new THREE.MeshLambertMaterial({color:0xE8E4DA}),nPairs*2);
+  const decoFlags=new THREE.InstancedMesh(new THREE.PlaneGeometry(1.8,1.1).translate(0.92,D.poleHeight-0.7,0),new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}),nPairs*2);
+  const PN=14, pennants=new THREE.InstancedMesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.35,0,0),new THREE.Vector3(0.35,0,0),new THREE.Vector3(0,-0.75,0)]).computeVertexNormals(),
+    new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}),nPairs*PN);
+  let pi=0,fi=0;
+  for(let k=0;k<nPairs;k++){
+    const s=sampleRoute(route,(k+0.5)*D.spacing/route.totalLen), ends=[];
+    for(const side of[-1,1]){
+      const x=s.x+s.px*side*(P.halfWidth-0.5), z=s.z+s.pz*side*(P.halfWidth-0.5), y=sampleTerrainY(x,z)+0.18;
+      _pdQ.setFromAxisAngle(_pdU,s.yaw+(side>0?Math.PI:0));
+      _pdM.compose(_pdP.set(x,y,z),_pdQ,_pdS.set(1,1,1)); poles.setMatrixAt(fi,_pdM); decoFlags.setMatrixAt(fi,_pdM);
+      decoFlags.setColorAt(fi,_pdC.setHex(D.colors[(k+fi)%D.colors.length])); fi++;
+      ends.push([x,y+D.poleHeight-0.3,z]);
+    }
+    const[a,b]=ends;
+    for(let j=0;j<PN;j++){
+      const f=(j+0.5)/PN, sag=1.6*4*f*(1-f);
+      _pdQ.setFromAxisAngle(_pdU,Math.atan2(b[0]-a[0],b[2]-a[2])-Math.PI/2);
+      _pdM.compose(_pdP.set(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f-sag,a[2]+(b[2]-a[2])*f),_pdQ,_pdS.set(1,1,1));
+      pennants.setMatrixAt(pi,_pdM); pennants.setColorAt(pi,_pdC.setHex(D.colors[j%D.colors.length])); pi++;
+    }
+  }
+  for(const m of[poles,decoFlags,pennants]){ m.userData.ownGeo=true; m.frustumCulled=false; m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true; }
+  const meshes=[bodies,heads,brass,flagGroup,poles,decoFlags,pennants];
   bodies.instanceColor.needsUpdate=true;
   for(const m of[bodies,heads,brass]){ m.frustumCulled=false; m.castShadow=true; }
   for(const m of meshes) scene.add(m);
@@ -9240,11 +9279,16 @@ function _stormCaption(st){
   if(!el){
     const dc=document.getElementById('date-control'); if(!dc) return;
     el=document.createElement('div'); el.id='storm-caption';
-    el.style.cssText='font-size:0.7rem;color:#9ab0c8;letter-spacing:0.04em;text-align:center;max-width:420px;';
+    el.addEventListener('click',()=>{   // parade caption: fly to the head of the column
+      if(!parade?.head||fpsMode) return;
+      const h=parade.head; orbit.target.set(h.x,0,h.z); camera.position.set(h.x+120,110,h.z+140); orbit.update();
+    });
+    el.style.cssText='font-size:0.7rem;color:#9ab0c8;letter-spacing:0.04em;text-align:center;max-width:420px;pointer-events:auto;';
     dc.appendChild(el);
   }
   const pa=!st&&!effectsSuppressed()?paradeAt(currentViewDate):null;
-  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:pa?`🎖 Parade — ${pa.note}`:'';
+  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:pa?`🎖 Parade — ${pa.note} · click to go there`:'';
+  el.style.cursor=pa&&!st?'pointer':'default';
   if(el.textContent!==txt){ el.textContent=txt; el.style.display=txt?'block':'none'; }
 }
 function _buildBolt(){

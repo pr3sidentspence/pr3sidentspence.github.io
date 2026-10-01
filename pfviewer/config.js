@@ -739,6 +739,7 @@ export const CONFIG = {
     },
     halfWidth: 15,
     speed: 1.3,                 // m/s marching
+    decor: { spacing: 30, poleHeight: 7, colors: [0xB02020, 0xF2F2F2, 0x1A3A8A] },   // flag poles + pennant strings along the route
     list: [
       { date: '1885-07-15', to: '1885-07-17', route: 'mainFromCPR', marchers: 400, uniforms: [0x1E2E22, 0x9A2A22, 0x1A1C22], crowd: 1600,
         note: 'North West Field Force returns from the 1885 Resistance — the 17th: "the biggest day Winnipeg has ever seen"' },
