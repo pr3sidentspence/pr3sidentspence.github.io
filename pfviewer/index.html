@@ -2256,6 +2256,27 @@ function applyVertexColour(geom, hexCol){
 // the footprint isn't a 4-corner rectangle or is shorter than
 // CONFIG.bridges.minSpan (caller keeps the slab).
 const _brY=new THREE.Vector3(0,1,0), _brZ=new THREE.Vector3(0,0,1);
+// Bridges flagged bridge_fit (generated river crossings) get their ends from
+// the terrain: march out from the centre along the span until the ground
+// rises above normal water, then add a margin for the abutment. The OSM
+// river outlines and road bridge segments they were derived from don't
+// line up with the DEM-carved channel, which left spans short on one bank.
+// `pts` (4 world [x,z] corners) is rewritten in place; unchanged if no bank
+// is found within maxHalfM (e.g. DEM missing).
+function fitBridgeToBanks(pts){
+  const F=CONFIG.bridges.fit??{}; if(!_demLoaded||pts.length!==4) return;
+  const e0=[pts[1][0]-pts[0][0],pts[1][1]-pts[0][1]], e1=[pts[2][0]-pts[1][0],pts[2][1]-pts[1][1]];
+  const l0=Math.hypot(...e0), l1=Math.hypot(...e1), longE=l0>=l1?e0:e1, ul=Math.max(l0,l1), W=Math.min(l0,l1);
+  const ux=longE[0]/ul, uz=longE[1]/ul, vx=-uz, vz=ux;
+  const cx=pts.reduce((a,p)=>a+p[0],0)/4, cz=pts.reduce((a,p)=>a+p[1],0)/4;
+  const bankY=CONFIG.water.startY+(F.bankAboveWaterM??1.5), maxHalf=F.maxHalfM??500;
+  const wet=(x,z)=>sampleTerrainY(x,z)<bankY;
+  if(!wet(cx,cz)) return;   // centre isn't in the channel — leave it alone
+  const reach=sgn=>{let d=2;while(d<maxHalf&&wet(cx+ux*sgn*d,cz+uz*sgn*d))d+=1;return d>=maxHalf?null:d+(F.marginM??14);};
+  const a=reach(-1), b=reach(1); if(a==null||b==null) return;
+  const A=[cx-ux*a,cz-uz*a], B=[cx+ux*b,cz+uz*b], h=W/2;
+  pts[0]=[A[0]+vx*h,A[1]+vz*h]; pts[1]=[B[0]+vx*h,B[1]+vz*h]; pts[2]=[B[0]-vx*h,B[1]-vz*h]; pts[3]=[A[0]-vx*h,A[1]-vz*h];
+}
 function buildBridgeGeometry(pts,mat,styleOverride=null){
   const B=CONFIG.bridges;
   if(pts.length!==4) return null;
@@ -3046,6 +3067,10 @@ async function buildCity(geojson){
       // wallCums/wallInfos entry so hover lookups stay aligned.
       if(props.type==='bridge'){
         const pts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return[sx,-sy];});
+        if(props.bridge_fit){ const L0=Math.max(Math.hypot(pts[1][0]-pts[0][0],pts[1][1]-pts[0][1]),Math.hypot(pts[2][0]-pts[1][0],pts[2][1]-pts[1][1]));
+          const cA=[(pts[0][0]+pts[1][0]+pts[2][0]+pts[3][0])/4,(pts[0][1]+pts[1][1]+pts[2][1]+pts[3][1])/4]; fitBridgeToBanks(pts); const L1=Math.max(Math.hypot(pts[1][0]-pts[0][0],pts[1][1]-pts[0][1]),Math.hypot(pts[2][0]-pts[1][0],pts[2][1]-pts[1][1]));
+          const cB=[(pts[0][0]+pts[1][0]+pts[2][0]+pts[3][0])/4,(pts[0][1]+pts[1][1]+pts[2][1]+pts[3][1])/4];
+          console.log(`Bridge fit: "${props.name}" ${L0.toFixed(0)} m → ${L1.toFixed(0)} m (centre moved ${(cB[0]-cA[0]).toFixed(0)} E, ${(cB[1]-cA[1]).toFixed(0)} S)`); }
         const br=buildBridgeGeometry(pts,mat,props.bridge_style||null);
         if(br){
           const tg=br.geom, tris=tg.attributes.position.count/3;

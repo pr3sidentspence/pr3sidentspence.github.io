@@ -299,7 +299,7 @@ export const CONFIG = {
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
-                'roof_height','roof_color','bridge_style'],
+                'roof_height','roof_color','bridge_style','bridge_fit'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
     // ridge height = pitch × half the wing's short side, capped at maxRidgeM
@@ -603,6 +603,7 @@ export const CONFIG = {
       maxOverheadWidth: 16, // wider decks skip overhead lateral bracing (would look absurd)
       chordSize: 0.45, verticalSize: 0.3, diagonalSize: 0.22, lateralSize: 0.16,
     },
+    fit: { bankAboveWaterM: 1.5, marginM: 14, maxHalfM: 500 },   // bridge_fit: ends land where ground rises this far above normal water, + margin
     rampLength: 40,         // metres past each deck end over which roads/rails ease back to grade
     rampGrade: 0.04,        // 1:25 approach slope
     alignCos: 0.8,          // |cos| between travel direction and span to count as "on" the bridge (~37°)

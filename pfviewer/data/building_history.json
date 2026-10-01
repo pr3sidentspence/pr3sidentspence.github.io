@@ -1165,6 +1165,11 @@
       "set": {
         "born": "1904-11-01"
       }
+    },
+    "2206430b-0c9c-4b83-b689-e16cb3886da0": {
+      "name": "Point Douglas rail bridge (Goad footprint)",
+      "notes": "Replaced by the generated bridge (9 m wide; the Goad/Planimetro footprint was 43.5 m) — per Mike.",
+      "remove": true
     }
   }
 }
