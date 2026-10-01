@@ -7407,11 +7407,11 @@ let railBedMesh=null, railRailLineMesh=null, railGeojson=null, railsLoaded=false
 // born/died per feature (by the geojson `id`); features listed with pieces
 // ("id/0", "id/1" …) are cut at vertex indices so each stretch gets its own
 // date. Unlisted features keep whatever they have (none → always there).
-let _railHistory=null;
+let _railHistory=null, _railExtras=[];
 async function applyRailHistory(gj){
   if(_railHistory===null){
     _railHistory=false;
-    try{ const url=CONFIG.dataFiles.railHistory; if(url){ const r=await fetch(url+'?v='+Date.now()); if(r.ok) _railHistory=(await r.json()).features; } }catch(e){ console.warn('Rail history: failed to load',e); }
+    try{ const url=CONFIG.dataFiles.railHistory; if(url){ const r=await fetch(url+'?v='+Date.now()); if(r.ok){ const j=await r.json(); _railHistory=j.features; _railExtras=j.extras||[]; } } }catch(e){ console.warn('Rail history: failed to load',e); }
   }
   const H=_railHistory; if(!H||gj._railDated) return gj;
   const out=[];
@@ -7426,6 +7426,8 @@ async function applyRailHistory(gj){
     }else if(e) out.push({...f,properties:{...f.properties,born:e.born,died:e.died,rail_line:e.line}});
     else out.push(f);
   }
+  for(const x of _railExtras)   // stretches that aren't in the digitized data (drawn schematically)
+    out.push({type:'Feature',properties:{id:x.id,name:x.name,rail_class:x.rail_class,born:x.born,died:x.died,length_m:x.length_m,rail_line:x.line,extra:true},geometry:{type:'LineString',coordinates:x.coordinates}});
   gj.features=out; gj._railDated=true;
   console.log(`🚂 Rail history: ${out.filter(f=>f.properties.born).length}/${out.length} stretches dated`);
   return gj;
@@ -9198,6 +9200,164 @@ function tickAutos(dt){
   for(const m of autos.meshes){ m.count=n; m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true; }
 }
 
+// ── Postcard views (CONFIG.postcards) ──────────────────────────────
+// data/postcard_views.json pairs a postcard (CONTENTdm link, image) with the
+// camera of its modern street-view match: position, heading, pitch, field of
+// view. The viewer then (a) notices when the camera is near one of those
+// viewpoints and looking about the same way (badge), (b) lists matches and
+// nearby views (key P / tap the badge), (c) lists cards sent around the
+// viewer's date, (d) jumps to a card's viewpoint, and (e) overlays its image
+// on the 3D view with an opacity slider. The file is optional.
+//
+// Matching is brute force over typed arrays — ~20,000 views cost well under a
+// millisecond a query (see window._pcBench) — run at most every checkEveryMs
+// and only when the camera has moved or turned.
+const PC={views:[],xs:null,zs:null,azs:null,els:null,ms:null,el:null,open:false,tab:'here',last:{x:0,z:0,az:-999,el:0,t:0,date:''},matches:[],savedFov:null};
+function pcLoad(list){
+  const C=CONFIG.postcards; PC.views=[];
+  for(const v of list){ if(v.lon==null||v.lat==null) continue; const[sx,sy]=project(v.lon,v.lat);
+    const d=v.date?Date.parse(String(v.date).slice(0,10)):NaN;
+    PC.views.push({...v,x:sx,z:-sy,az:((v.az??0)%360+360)%360,el:v.el??0,h:v.h??C.defaultHeightM,fov:v.fov??null,ms:Number.isFinite(d)?d:null}); }
+  const n=PC.views.length;
+  PC.xs=new Float64Array(n); PC.zs=new Float64Array(n); PC.azs=new Float32Array(n); PC.els=new Float32Array(n); PC.ms=new Float64Array(n);
+  PC.views.forEach((v,i)=>{PC.xs[i]=v.x;PC.zs[i]=v.z;PC.azs[i]=v.az;PC.els[i]=v.el;PC.ms[i]=v.ms??NaN;});
+  PC.last.az=-999;   // force a check
+  if(n) _pcUI(); console.log(`📮 Postcard views: ${n}`);
+}
+async function pcLoadFile(){
+  const f=CONFIG.postcards?.file; if(!f) return;
+  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; const j=await r.json(); pcLoad(Array.isArray(j)?j:(j.views||[])); }catch(e){ /* optional */ }
+}
+function _pcCamera(){   // world x,z, azimuth (° clockwise from north), pitch (°)
+  const f=_pcF.set(0,0,-1).applyQuaternion(camera.quaternion);
+  return{x:camera.position.x,z:camera.position.z,az:((Math.atan2(f.x,-f.z)*180/Math.PI)%360+360)%360,el:Math.asin(Math.max(-1,Math.min(1,f.y)))*180/Math.PI};
+}
+const _pcF=new THREE.Vector3();
+const _dAz=(a,b)=>{let d=Math.abs(a-b)%360;return d>180?360-d:d;};
+// returns {match:[…], near:[…]} sorted; each {i,d,dAz,dEl,score}
+function pcQuery(cam){
+  const C=CONFIG.postcards, R=C.matchRadiusM, N=C.nearbyRadiusM, R2=N*N, match=[], near=[];
+  for(let i=0;i<PC.xs.length;i++){
+    const dx=PC.xs[i]-cam.x, dz=PC.zs[i]-cam.z, d2=dx*dx+dz*dz; if(d2>R2) continue;
+    const d=Math.sqrt(d2), dAz=_dAz(PC.azs[i],cam.az), dEl=Math.abs(PC.els[i]-cam.el);
+    const bearing=((Math.atan2(dx,-dz)*180/Math.PI)%360+360)%360;
+    const e={i,d,dAz,dEl,bearing,score:d/R+dAz/C.matchAzDeg+dEl/C.matchElDeg};
+    if(d<=R&&dAz<=C.matchAzDeg&&dEl<=C.matchElDeg) match.push(e); else near.push(e);
+  }
+  match.sort((a,b)=>a.score-b.score); near.sort((a,b)=>a.d-b.d);
+  return{match,near};
+}
+function pcOnDate(ms,days){ const out=[], w=days*86400000;
+  for(let i=0;i<PC.ms.length;i++){ const m=PC.ms[i]; if(m!==m) continue; // NaN
+    if(Math.abs(m-ms)<=w) out.push({i,dDays:Math.round((m-ms)/86400000)}); }
+  out.sort((a,b)=>Math.abs(a.dDays)-Math.abs(b.dDays)); return out; }
+function _pcUI(){
+  if(PC.el) return;
+  const css=document.createElement('style'); css.textContent=`
+  #pc-badge{position:fixed;right:14px;top:58px;z-index:26;background:rgba(9,8,10,.82);border:1px solid #3a2810;border-radius:16px;padding:5px 12px;color:#C8A05A;font:0.8rem Georgia,serif;cursor:pointer;display:none;pointer-events:auto;user-select:none}
+  #pc-badge.hit{background:rgba(200,160,90,.28);border-color:#C8A05A;box-shadow:0 0 12px rgba(200,160,90,.5)}
+  #pc-panel{position:fixed;right:10px;top:92px;bottom:70px;width:min(360px,calc(100vw - 20px));z-index:27;background:rgba(9,8,10,.94);border:1px solid #3a2810;border-radius:10px;color:#C8A05A;font:0.78rem Georgia,serif;display:none;flex-direction:column;pointer-events:auto}
+  #pc-panel .hd{display:flex;gap:6px;padding:8px;border-bottom:1px solid #2a1e0e;align-items:center}
+  #pc-panel .tab{padding:4px 10px;border:1px solid #3a2810;border-radius:12px;cursor:pointer}
+  #pc-panel .tab.on{background:rgba(200,160,90,.25);border-color:#C8A05A}
+  #pc-panel .x{margin-left:auto;cursor:pointer;padding:2px 8px}
+  #pc-panel .list{overflow:auto;padding:6px 8px;flex:1}
+  #pc-panel .row{display:flex;gap:8px;padding:6px 0;border-bottom:1px solid #1e160c}
+  #pc-panel .row img{width:64px;height:48px;object-fit:cover;border:1px solid #3a2810;flex:none}
+  #pc-panel .row .t{flex:1;min-width:0} #pc-panel .row .m{opacity:.7;font-size:.7rem}
+  #pc-panel .btn{display:inline-block;margin:3px 6px 0 0;padding:2px 9px;border:1px solid #3a2810;border-radius:10px;cursor:pointer;color:#C8A05A;text-decoration:none}
+  #pc-panel .btn:active{background:rgba(200,160,90,.3)}
+  #pc-panel .sec{margin:6px 0 2px;letter-spacing:.12em;font-size:.65rem;color:#8a7040}
+  #pc-ov{position:fixed;inset:0;z-index:25;display:none;pointer-events:none;align-items:center;justify-content:center}
+  #pc-ov img{max-width:100%;max-height:100%;object-fit:contain}
+  #pc-ovbar{position:fixed;left:50%;transform:translateX(-50%);bottom:112px;z-index:27;background:rgba(9,8,10,.88);border:1px solid #3a2810;border-radius:10px;padding:6px 14px;display:none;gap:10px;align-items:center;color:#C8A05A;font:.75rem Georgia,serif;pointer-events:auto}
+  #pc-ovbar .btn{cursor:pointer;padding:1px 9px;border:1px solid #3a2810;border-radius:10px}`;
+  document.head.appendChild(css);
+  const mk=(tag,id,parent=document.body)=>{const e=document.createElement(tag); if(id) e.id=id; parent.appendChild(e); return e;};
+  const badge=mk('div','pc-badge'), panel=mk('div','pc-panel'), ov=mk('div','pc-ov'), bar=mk('div','pc-ovbar');
+  ov.appendChild(document.createElement('img'));
+  bar.innerHTML='<span>📮 card overlay</span><input id="pc-op" type="range" min="0" max="1" step="0.02" style="width:120px;accent-color:#C8A05A"><span class="btn" id="pc-flip">flip</span><span class="btn" id="pc-close">✕ close</span>';
+  PC.el={badge,panel,ov,bar};
+  badge.addEventListener('click',()=>pcPanel(!PC.open));
+  document.getElementById('pc-op').addEventListener('input',e=>{ov.style.opacity=e.target.value;});
+  document.getElementById('pc-flip').addEventListener('click',()=>{const o=document.getElementById('pc-op'); o.value=+o.value>0.5?0.15:0.95; ov.style.opacity=o.value;});
+  document.getElementById('pc-close').addEventListener('click',pcOverlayClose);
+  window.addEventListener('keydown',e=>{ if(e.target.matches?.('input,textarea')) return; if(e.code==='KeyP'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){ pcPanel(!PC.open); e.preventDefault(); } if(e.code==='Escape'){ if(PC.open) pcPanel(false); else pcOverlayClose(); } });
+  badge.style.display='block'; badge.textContent='📮 '+PC.views.length;
+}
+function pcPanel(open){ PC.open=open; if(!PC.el) return; PC.el.panel.style.display=open?'flex':'none'; if(open) pcRender(); }
+function pcRender(){
+  const P=PC.el.panel, C=CONFIG.postcards, cam=_pcCamera(); P.textContent='';
+  const hd=document.createElement('div'); hd.className='hd'; P.appendChild(hd);
+  for(const[k,l]of[['here','Here'],['date','On this date']]){ const t=document.createElement('span'); t.className='tab'+(PC.tab===k?' on':''); t.textContent=l; t.onclick=()=>{PC.tab=k;pcRender();}; hd.appendChild(t); }
+  const x=document.createElement('span'); x.className='x'; x.textContent='✕'; x.onclick=()=>pcPanel(false); hd.appendChild(x);
+  const list=document.createElement('div'); list.className='list'; P.appendChild(list);
+  const addSec=t=>{const s=document.createElement('div'); s.className='sec'; s.textContent=t; list.appendChild(s);};
+  const row=(v,meta)=>{
+    const r=document.createElement('div'); r.className='row';
+    if(v.thumb||v.img){ const im=document.createElement('img'); im.loading='lazy'; im.src=v.thumb||v.img; r.appendChild(im); }
+    const t=document.createElement('div'); t.className='t'; r.appendChild(t);
+    const h=document.createElement('div'); h.textContent=v.title||v.id||'(postcard)'; t.appendChild(h);
+    const m=document.createElement('div'); m.className='m'; m.textContent=[v.date,meta].filter(Boolean).join(' · '); t.appendChild(m);
+    const go=document.createElement('span'); go.className='btn'; go.textContent='go to view'; go.onclick=()=>pcGo(v); t.appendChild(go);
+    if(v.img){ const o=document.createElement('span'); o.className='btn'; o.textContent='overlay'; o.onclick=()=>{pcGo(v,true);}; t.appendChild(o); }
+    if(v.url){ const a=document.createElement('a'); a.className='btn'; a.textContent='card ↗'; a.href=v.url; a.target='_blank'; a.rel='noopener'; t.appendChild(a); }
+    return r; };
+  if(PC.tab==='here'){
+    const q=pcQuery(cam);
+    if(q.match.length){ addSec('FROM HERE, LOOKING THIS WAY'); for(const e of q.match.slice(0,C.listMax)) list.appendChild(row(PC.views[e.i],`${e.d.toFixed(0)} m · ${e.dAz.toFixed(0)}° off`)); }
+    addSec(q.match.length?'NEARBY':'NEARBY VIEWS'); const dir=b=>{const d=((b-cam.az+540)%360)-180; return Math.abs(d)<20?'ahead':d>0?`${Math.abs(d).toFixed(0)}° right`:`${Math.abs(d).toFixed(0)}° left`;};
+    for(const e of q.near.slice(0,C.listMax)) list.appendChild(row(PC.views[e.i],`${e.d.toFixed(0)} m, ${dir(e.bearing)}`));
+    if(!q.match.length&&!q.near.length){ const n=document.createElement('div'); n.className='m'; n.textContent=`No postcard views within ${C.nearbyRadiusM} m.`; list.appendChild(n); }
+  }else{
+    const vd=currentViewDate.getTime(), days=C.sameDateDays;
+    addSec(`SENT WITHIN ${days} DAYS OF ${isoLocal(currentViewDate)}`); const hits=pcOnDate(vd,days);
+    for(const e of hits.slice(0,C.listMax*2)) list.appendChild(row(PC.views[e.i],e.dDays===0?'same day':`${e.dDays>0?'+':''}${e.dDays} d`));
+    if(!hits.length){ const n=document.createElement('div'); n.className='m'; n.textContent='No postcards with a date near this day.'; list.appendChild(n); }
+  }
+}
+// Jump to a card's viewpoint (and its date, if configured); optionally overlay its image
+function pcGo(v,overlay=false){
+  const C=CONFIG.postcards, az=v.az*Math.PI/180, el=v.el*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
+  const gy=sampleTerrainY(v.x,v.z)+v.h;
+  if(PC.savedFov==null) PC.savedFov=camera.fov;
+  if(v.fov){ camera.fov=v.fov; camera.updateProjectionMatrix(); }
+  if(fpsMode){ camera.position.set(v.x,gy,v.z); yaw=-az; pitch=el; }
+  else{ camera.position.set(v.x,gy,v.z); orbit.target.copy(camera.position).addScaledVector(dir,Math.max(30,(orbit.minDistance||0)+1)); orbit.update(); }
+  if(C.jumpDate&&v.ms!=null){ const d=new Date(v.ms); setCurrentViewDate(new Date(d.getFullYear(),d.getMonth(),d.getDate(),12),'day'); timelineMode='paused'; updateTimelineButtons(); }
+  if(overlay&&v.img){ const im=PC.el.ov.querySelector('img'); im.src=v.img; PC.el.ov.style.display='flex'; PC.el.bar.style.display='flex'; const o=document.getElementById('pc-op'); o.value=C.defaultOpacity; PC.el.ov.style.opacity=C.defaultOpacity; }
+  pcPanel(false);
+}
+function pcOverlayClose(){
+  if(!PC.el) return; PC.el.ov.style.display='none'; PC.el.bar.style.display='none';
+  if(PC.savedFov!=null){ camera.fov=PC.savedFov; camera.updateProjectionMatrix(); PC.savedFov=null; }
+}
+function tickPostcards(){
+  if(!PC.views.length||!PC.el) return;
+  const C=CONFIG.postcards, now=performance.now(); if(now-PC.last.t<C.checkEveryMs) return;
+  const cam=_pcCamera(), L=PC.last;
+  if(Math.hypot(cam.x-L.x,cam.z-L.z)<1.5&&_dAz(cam.az,L.az)<1.5&&Math.abs(cam.el-L.el)<1.5) return;   // hasn't moved or turned
+  L.t=now; L.x=cam.x; L.z=cam.z; L.az=cam.az; L.el=cam.el;
+  const q=pcQuery(cam), b=PC.el.badge;
+  b.classList.toggle('hit',q.match.length>0);
+  b.textContent=q.match.length?`📮 ${q.match.length} match${q.match.length>1?'es':''} here`:(q.near.length?`📮 ${q.near.length} nearby`:'📮 '+PC.views.length);
+  if(PC.open&&PC.tab==='here') pcRender();
+}
+// Test hooks: inject views / time the matcher on n random views
+window._pcLoad=list=>pcLoad(list);
+window._pcSelfTest=()=>{   // a view at the camera, one facing away, one 200 m off, one 3 km off
+  const cam=_pcCamera(), ll=(x,z)=>({lon:C_LON+x/M_PER_LON,lat:C_LAT-z/M_PER_LAT});
+  const mk=(id,dx,dz,az,d)=>({id,...ll(cam.x+dx,cam.z+dz),az,el:cam.el,title:id,date:d});
+  pcLoad([mk('same',5,0,cam.az,'1912-07-04'),mk('near-wrong-way',5,0,(cam.az+180)%360,'1912-07-09'),mk('far',200,0,cam.az,'1930-01-01'),mk('way-off',3000,0,cam.az,null)]);
+  const q=pcQuery(cam), dated=pcOnDate(Date.parse('1912-07-06'),7);
+  return {match:q.match.map(e=>PC.views[e.i].id),near:q.near.map(e=>PC.views[e.i].id),onDate:dated.map(e=>PC.views[e.i].id)}; };
+window._pcBench=(n,queries=2000)=>{
+  const L=[]; for(let i=0;i<n;i++){ const x=(Math.random()-.5)*8000, z=(Math.random()-.5)*8000; L.push({id:'b'+i,lon:C_LON+x/M_PER_LON,lat:C_LAT-z/M_PER_LAT,az:Math.random()*360,el:Math.random()*10-3,title:'bench '+i,date:'19'+String(Math.floor(Math.random()*60)).padStart(2,'0')+'-06-15'}); }
+  pcLoad(L); const t0=performance.now(); let tot=0;
+  for(let k=0;k<queries;k++){ const q=pcQuery({x:(Math.random()-.5)*6000,z:(Math.random()-.5)*6000,az:Math.random()*360,el:0}); tot+=q.match.length+q.near.length; }
+  const ms=(performance.now()-t0)/queries; PC.views=[]; PC.xs=new Float64Array(0); PC.zs=new Float64Array(0); PC.azs=new Float32Array(0); PC.els=new Float32Array(0); PC.ms=new Float64Array(0);
+  return {views:n,queries,msPerQuery:+ms.toFixed(4),avgHits:+(tot/queries).toFixed(1)}; };
+
 // ── Small craft (CONFIG.smallCraft) ────────────────────────────────
 // Canoes, York boats, rowboats, launches. Each works a stretch of river
 // back and forth at an offset from the centreline (kept inside the river
@@ -9584,6 +9744,7 @@ function startLoop(){
     tickBeacons(dt);
     tickMosquitoes(dt);
     tickUtilityPoles();
+    tickPostcards();
     if(!shantiesBuilt) initShanties();
     tickOxbow();
     tickCreekTerrain();
@@ -10655,6 +10816,7 @@ renderer.render(scene,camera);
   await loadWaterLevels();   // after the DEM: absolute datums need its refElev
   loadMoisture();
   loadStorms();
+  pcLoadFile();
 
   for(let i=0;i<found.length;i++){
     const{url,gj}=found[i];

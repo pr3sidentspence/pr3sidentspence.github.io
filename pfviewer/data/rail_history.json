@@ -1,5 +1,73 @@
 {
  "_format": "tools/date_rails.py output. features: { \"<geojson id>\" | \"<id>/<piece>\": {line, born, died, kind, basis, confidence, [from,to]} }. Split features are cut at vertex indices from..to. Edit tools/date_rails.py (LINES / THROUGH / SPLITS) and re-run, or edit this file directly.",
+ "extras": [
+  {
+   "id": 1001,
+   "name": "CPR to the Louise Bridge (gap)",
+   "rail_class": "through",
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "basis": "joins feature 70 to feature 280 on the CPR route to the Louise Bridge (schematic)",
+   "confidence": "low",
+   "coordinates": [
+    [
+     -97.1247774,
+     49.9043072
+    ],
+    [
+     -97.1235224,
+     49.9041994
+    ],
+    [
+     -97.1218629,
+     49.9038581
+    ]
+   ],
+   "length_m": 216
+  },
+  {
+   "id": 1002,
+   "name": "CPR over the Louise Bridge and east to the east-bank line",
+   "rail_class": "through",
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": "1904-01-01",
+   "basis": "CPR trains used the Louise Bridge from 26 Jul 1881 (CBC/MHS); \"Combination CPR/City Bridge until 1904\" (City of Winnipeg). East connector is schematic.",
+   "confidence": "low",
+   "coordinates": [
+    [
+     -97.1149741,
+     49.9040288
+    ],
+    [
+     -97.1145139,
+     49.9045947
+    ],
+    [
+     -97.1132031,
+     49.9061578
+    ],
+    [
+     -97.1118086,
+     49.9064901
+    ],
+    [
+     -97.1083224,
+     49.9059062
+    ],
+    [
+     -97.1048362,
+     49.9045588
+    ],
+    [
+     -97.1026887,
+     49.9030316
+    ]
+   ],
+   "length_m": 1155
+  }
+ ],
  "lines": {
   "cpr_louise": {
    "born": "1881-07-26",
@@ -838,11 +906,11 @@
    "confidence": "high"
   },
   "97": {
-   "line": "cpr_bridge",
-   "born": "1905-05-11",
+   "line": "cpr_louise",
+   "born": "1885-09-08",
    "died": null,
    "kind": "siding",
-   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
    "confidence": "high"
   },
   "98": {
@@ -862,11 +930,11 @@
    "confidence": "high"
   },
   "100": {
-   "line": "cpr_bridge",
-   "born": "1902-11-07",
+   "line": "cpr_louise",
+   "born": "1883-07-12",
    "died": null,
    "kind": "siding",
-   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
    "confidence": "high"
   },
   "101": {
@@ -2342,11 +2410,11 @@
    "confidence": "high"
   },
   "281": {
-   "line": "cpr_bridge",
-   "born": "1905-06-11",
+   "line": "cpr_louise",
+   "born": "1897-01-26",
    "died": null,
    "kind": "yard track",
-   "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
    "confidence": "high"
   },
   "282": {

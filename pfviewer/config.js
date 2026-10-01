@@ -789,6 +789,21 @@ export const CONFIG = {
     dayLevel: 0.35, duskBoost: 1.6,
   },
 
+  // ── Postcard views ──────────────────────────────────────────────────
+  // data/postcard_views.json (optional) — see tools/postcard_views_FORMAT.md.
+  // A badge shows when the camera is within matchRadiusM of a card's
+  // viewpoint and looking within matchAzDeg / matchElDeg of its heading /
+  // pitch; key P (or the badge) opens the list; "On this date" lists cards
+  // dated within sameDateDays of the viewer's date. jumpDate: "go to view"
+  // also sets the viewer to the card's date. fov = vertical degrees.
+  postcards: {
+    file: './data/postcard_views.json',
+    matchRadiusM: 40, matchAzDeg: 35, matchElDeg: 25,
+    nearbyRadiusM: 400, listMax: 8, sameDateDays: 7,
+    defaultHeightM: 2.5, defaultOpacity: 0.5, jumpDate: true,
+    checkEveryMs: 250,
+  },
+
   // ── Utility poles and wires (walk mode only, around the camera) ──────
   // Telegraph reached the settlement in 1871 (Main St here); Winnipeg's
   // first telephone exchange 1881 — early lines ran roof to roof, poles only

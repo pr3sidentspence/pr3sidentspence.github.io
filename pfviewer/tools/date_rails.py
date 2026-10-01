@@ -55,10 +55,10 @@ LINES = {
 # feature index (position in wpg_rails_1906.geojson) → line, for every `through` feature
 THROUGH = {}
 def put(line, *idx): [THROUGH.__setitem__(i, line) for i in idx]
-put('cpr_louise', 35,36,37,38,54,55,56,57,58,59,70,103,167,172,274,275,276)       # yards + lines toward the Louise Bridge
+put('cpr_louise', 35,36,37,38,54,55,56,57,58,59,70,103,167,172,274,275,276,280)       # yards + lines toward the Louise Bridge
 put('cpr_west', 249)
 put('cpr_sw', 251)
-put('cpr_bridge', 277,278,280)
+put('cpr_bridge', 277,278)
 put('npm_forks', 13,150)
 put('transfer', 78)
 put('cpr_weston', 180,181,182,183,184,186,187,188,189,190,191,192,194,195,200,205,207,218,219,223,234,235,247,248,252,
@@ -70,6 +70,18 @@ OTHER = {282:'cnor_east', 283:'gwwd'}
 #   3–14 through the yards, 14–19 main line west
 SPLITS = {246: [(0, 2, 'cpr_eastbank'), (2, 3, 'cpr_bridge'), (3, 14, 'cpr_louise'), (14, 19, 'cpr_west')]}
 # short through lines in these yards are yard tracks (spread), the rest are main tracks (at the line date)
+# Extra stretches that aren't in the digitized data (drawn schematically). world x,z (m).
+#   The CPR's 1881 route to the east: the gap between feature 70's end and 280's start,
+#   then over the Louise Bridge ("Combination CPR/City Bridge until 1904" — City of
+#   Winnipeg chronology) and a schematic curve joining the east-bank line (vertex 1 of feature 246).
+EXTRAS = [
+  {'id': 1001, 'name': 'CPR to the Louise Bridge (gap)', 'line': 'cpr_louise', 'born': '1881-07-26', 'died': None,
+   'pts': [(770, -992), (860, -980), (979, -942)],
+   'basis': 'joins feature 70 to feature 280 on the CPR route to the Louise Bridge (schematic)'},
+  {'id': 1002, 'name': 'CPR over the Louise Bridge and east to the east-bank line', 'line': 'cpr_louise', 'born': '1881-07-26', 'died': '1904-01-01',
+   'pts': [(1473, -961), (1506, -1024), (1600, -1198), (1700, -1235), (1950, -1170), (2200, -1020), (2354, -850)],
+   'basis': 'CPR trains used the Louise Bridge from 26 Jul 1881 (CBC/MHS); "Combination CPR/City Bridge until 1904" (City of Winnipeg). East connector is schematic.'},
+]
 YARD_TRACK_MAX_M = 1000
 SPREAD_TO = {'cpr_louise': '1900-01-01', 'cpr_weston': '1906-01-01', 'npm_forks': '1904-01-01',
              'cpr_bridge': '1906-01-01', 'cpr_west': '1896-01-01', 'cpr_sw': '1892-01-01', 'transfer': '1900-01-01',
@@ -152,8 +164,15 @@ def main():
             else:   # no building, or only ones that predate the line (e.g. 1880 placeholders): spread
                 end = yf(SPREAD_TO.get(line, SIDING_CAP)); end = max(end, b0 + 0.5); v = b0 + h01(fid) * (min(end, cap) - b0); how = 'spread (no later building beside it)'
             put_feat(str(fid), line, iso_from_yf(max(v, b0)), f'siding on the {line} yard, {how}', conf, 'siding')
+    extras = []
+    for e in EXTRAS:
+        ll = [[round(C_LON + x / M, 7), round(C_LAT - z / 111320, 7)] for x, z in e['pts']]
+        extras.append({'id': e['id'], 'name': e['name'], 'rail_class': 'through', 'line': e['line'], 'born': e['born'], 'died': e['died'],
+                       'basis': e['basis'], 'confidence': 'low', 'coordinates': ll,
+                       'length_m': round(sum(math.dist(a, b) for a, b in zip(e['pts'], e['pts'][1:])))})
     hist = {'_format': 'tools/date_rails.py output. features: { "<geojson id>" | "<id>/<piece>": {line, born, died, kind, basis, confidence, [from,to]} }. '
                        'Split features are cut at vertex indices from..to. Edit tools/date_rails.py (LINES / THROUGH / SPLITS) and re-run, or edit this file directly.',
+            'extras': extras,
             'lines': {k: {'born': v[0], 'died': v[1], 'confidence': v[2], 'basis': v[3]} for k, v in LINES.items()},
             'features': out}
     json.dump(hist, open(os.path.join(DATA, 'rail_history.json'), 'w'), ensure_ascii=False, indent=1)
