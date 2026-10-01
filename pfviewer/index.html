@@ -788,7 +788,12 @@ function flattenDEM(h, S, cellM, protect=null){
 // out, and a "sometimes lake" fills it: high after spring melt, draining
 // through summer, fuller in wet years, dry in drought, frozen in winter.
 // The lake mesh is a child of the terrain (same transform as the DEM grid).
-let oxbow=null;   // {mask, rel, cells:[i], floor, range, mesh}
+let oxbow=null;   // {mask, rel, cells:[i], floor, range, rim, mesh, swap}
+// The river's flat water plane is hidden over the oxbow unless the river is
+// above the oxbow's rim (an overbank flood) — its own sometimes-lake is
+// fed by melt and rain, not the river (storm sewers, later). Filled in by
+// buildOxbowWaterMask(), read by the water shader (installOxbowWaterMask).
+const oxWaterUniforms={uOxTex:{value:null},uOxBox:{value:new THREE.Vector4(0,0,1,1)},uOxOn:{value:0}};
 function _boxBlur2(src,S,r){
   const a=new Float32Array(src), b=new Float32Array(src.length);
   const pass=(sa,db,horiz)=>{
@@ -827,8 +832,9 @@ function detectOxbow(h,S,cellM){
     const i=z*S+x, r=h[i]-base[i];
     if(near[i]<1e-6&&r<O.relBelowM){ mask[i]=1; rel[i]=r; cells.push(i); }
   }
-  console.log(`🌾 Oxbow: ${cells.length} cells (${(cells.length*cellM*cellM/10000).toFixed(1)} ha)`);
-  return cells.length?(oxbow={mask,rel,cells,S,cellM}):null;
+  const bs2=cells.map(i=>base[i]).sort((a,b)=>a-b), rim=bs2.length?bs2[Math.floor(bs2.length*0.5)]:0;
+  console.log(`🌾 Oxbow: ${cells.length} cells (${(cells.length*cellM*cellM/10000).toFixed(1)} ha), rim ≈ ${rim.toFixed(2)}`);
+  return cells.length?(oxbow={mask,rel,cells,S,cellM,rim}):null;
 }
 function deepenOxbow(h){
   if(!oxbow) return;
@@ -861,11 +867,48 @@ function buildOxbowLake(){
 let _oxKeys=null;   // lake fill keyframes, parsed on first use
 window._debugLate=()=>windowPaintUniforms.uWinLate.value;
 window._debugOxbow=()=>oxbow?{cells:oxbow.cells.length,floor:+oxbow.floor.toFixed(2),range:+oxbow.range.toFixed(2),visible:!!oxbow.mesh?.visible,level:oxbow.mesh?+oxbow.mesh.position.y.toFixed(2):null}:null;
+function buildOxbowWaterMask(){
+  const {S,cellM}=oxbow, half=(S-1)*cellM/2, v=new THREE.Vector3(), pts=[];
+  terrainMesh.updateMatrixWorld(true);
+  for(const i of oxbow.cells){ v.set((i%S)*cellM-half,0,Math.floor(i/S)*cellM-half); terrainMesh.localToWorld(v); pts.push([v.x,v.z]); }
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z]of pts){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+  const pad=40; x0-=pad; z0-=pad; x1+=pad; z1+=pad;
+  const c=5, W=Math.ceil((x1-x0)/c), H=Math.ceil((z1-z0)/c), data=new Uint8Array(W*H), r=Math.ceil((cellM*0.8+15)/c);   // cover the slopes down into it
+  for(const[x,z]of pts){ const gx=Math.floor((x-x0)/c), gz=Math.floor((z-z0)/c);
+    for(let j=-r;j<=r;j++) for(let i=-r;i<=r;i++){ if(i*i+j*j>r*r) continue; const X=gx+i,Z=gz+j; if(X>=0&&Z>=0&&X<W&&Z<H) data[Z*W+X]=255; } }
+  const tex=new THREE.DataTexture(data,W,H,THREE.RedFormat); tex.needsUpdate=true; tex.magFilter=THREE.LinearFilter; tex.minFilter=THREE.LinearFilter;
+  oxWaterUniforms.uOxTex.value=tex; oxWaterUniforms.uOxBox.value.set(x0,z0,x1,z1);
+}
+function installOxbowWaterMask(mat){
+  const prev=mat.onBeforeCompile, prevKey=mat.customProgramCacheKey?.bind(mat);
+  mat.onBeforeCompile=(sh,r)=>{
+    prev?.(sh,r);
+    if(!oxWaterUniforms.uOxTex.value){ const t=new THREE.DataTexture(new Uint8Array([0]),1,1,THREE.RedFormat); t.needsUpdate=true; oxWaterUniforms.uOxTex.value=t; oxWaterUniforms._dummy=t; }
+    Object.assign(sh.uniforms,oxWaterUniforms);
+    if(!sh.vertexShader.includes('vPlumeWorld')) sh.vertexShader='varying vec3 vPlumeWorld;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vPlumeWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');
+    if(!sh.fragmentShader.includes('varying vec3 vPlumeWorld')) sh.fragmentShader='varying vec3 vPlumeWorld;\n'+sh.fragmentShader;
+    sh.fragmentShader='uniform sampler2D uOxTex;\nuniform vec4 uOxBox;\nuniform float uOxOn;\n'+sh.fragmentShader.replace('void main() {',`void main() {
+  if(uOxOn>0.5){ vec2 ouv=(vPlumeWorld.xz-uOxBox.xy)/(uOxBox.zw-uOxBox.xy);
+    if(ouv.x>0.0&&ouv.y>0.0&&ouv.x<1.0&&ouv.y<1.0&&texture2D(uOxTex,ouv).r>0.5) discard; }`);
+  };
+  mat.customProgramCacheKey=()=>(prevKey?prevKey():'')+'|oxbowMask';
+}
+window._oxMaskOn=()=>oxWaterUniforms.uOxOn.value+(oxbow?.rim!=null?' rim '+oxbow.rim.toFixed(2):'')+' swap '+(oxbow?.swap?.state)+' n'+(oxbow?.swap?.idx.length);
+window._oxTerrainY=()=>{if(!oxbow)return 0;const W=oxbow.swap;let m=1e9;for(const i of W.idx)m=Math.min(m,terrainMesh.geometry.attributes.position.getY(i));return m;};
 function tickOxbow(){
   if(!oxbow) return;
   if(!oxbow.mesh) buildOxbowLake();
-  const O=CONFIG.terrain.oxbow, L=O.lake, yr=yearFrac(currentViewDate);
-  if(yr>=_isoYearFrac(L.until,1e9)){ oxbow.mesh.visible=false; return; }
+  const O=CONFIG.terrain.oxbow, L=O.lake, yr=yearFrac(currentViewDate), gone=yr>=_isoYearFrac(L.until,1e9);
+  // Terrain: dug-out oxbow before it was filled in, today's ground after
+  const want=gone?'today':'deep';
+  if(oxbow.swap&&oxbow.swap.state!==want){
+    const W=oxbow.swap, arr=W[want], pos=terrainMesh.geometry.attributes.position;
+    for(let k=0;k<W.idx.length;k++) pos.setY(W.idx[k],arr[k]);
+    pos.needsUpdate=true; terrainMesh.geometry.computeVertexNormals(); W.state=want;
+  }
+  if(!oxWaterUniforms.uOxTex.value) buildOxbowWaterMask();
+  oxWaterUniforms.uOxOn.value=waterMesh&&waterMesh.position.y<oxbow.rim?1:0;   // river over the rim → it floods in
+  if(gone){ oxbow.mesh.visible=false; return; }
   _oxKeys??=_mdKeys(L.fill);
   let fill=_seasonChannel(_oxKeys,viewDayOfYear(currentViewDate));
   const wet=moistureAt(currentViewDate); fill*=1+wet*L.wetEffect;
@@ -903,6 +946,7 @@ async function applyDEM(){
     smoothDEM(heights, S, meta.size/(S-1));
     detectOxbow(heights, S, meta.size/(S-1));   // before flattening, which leaves it alone
     flattenDEM(heights, S, meta.size/(S-1), oxbow?.mask);
+    const hToday=oxbow?heights.slice():null;   // today's (filled-in) oxbow, restored from its `until` date
     deepenOxbow(heights);
     if(S === T){
       for(let i = 0; i < N; i++) tPos.setY(i, heights[i]);
@@ -920,6 +964,20 @@ async function applyDEM(){
     }
     tPos.needsUpdate = true;
     terrainMesh.geometry.computeVertexNormals();
+    if(oxbow&&hToday){
+      // Terrain vertices over the oxbow, deepened vs today's heights
+      const at=(h,fx,fz)=>{const x0=Math.min(S-2,Math.floor(fx)),z0=Math.min(S-2,Math.floor(fz)),tx=fx-x0,tz=fz-z0;
+        const a=h[z0*S+x0],b=h[z0*S+x0+1],c=h[(z0+1)*S+x0],d=h[(z0+1)*S+x0+1];return (a+(b-a)*tx)+((c+(d-c)*tx)-(a+(b-a)*tx))*tz;};
+      let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+      for(const i of oxbow.cells){const x=i%S,z=Math.floor(i/S);x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+      const k=(T-1)/(S-1), idx=[], deep=[], today=[];
+      for(let iz=Math.floor(z0*k)-1;iz<=Math.ceil(z1*k)+1;iz++) for(let ix=Math.floor(x0*k)-1;ix<=Math.ceil(x1*k)+1;ix++){
+        if(ix<0||iz<0||ix>=T||iz>=T) continue;
+        const fx=ix/k, fz=iz/k, yd=tPos.getY(iz*T+ix), yt=at(hToday,fx,fz);
+        if(Math.abs(yd-yt)>0.01){ idx.push(iz*T+ix); deep.push(yd); today.push(yt); }
+      }
+      oxbow.swap={idx,deep:Float32Array.from(deep),today:Float32Array.from(today),state:'deep'};
+    }
 
     // DEM is now active — channel terrain override must not run
     _demLoaded = true;
@@ -1740,11 +1798,18 @@ for(const[key,def]of Object.entries(MATS)){
 function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
   const n=ring.length;if(n<3)return null;
   let cx=0,cz=0;for(const[x,z]of ring){cx+=x;cz+=z;}cx/=n;cz/=n;
-  let bestLen=0,ax=1,az=0;
+  // Ridge along the long side of the minimum-area bounding rectangle (tried
+  // on every edge direction) — the longest single edge misleads on churches
+  // with apses/transepts and other ragged outlines; same answer for rectangles.
+  let bestArea=Infinity,ax=1,az=0;
   for(let i=0;i<n;i++){
     const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n];
-    const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
-    if(len>bestLen){bestLen=len;ax=dx/len;az=dz/len;}
+    const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz); if(len<0.5) continue;
+    const ux=dx/len,uz=dz/len;
+    let a0=Infinity,a1=-Infinity,b0=Infinity,b1=-Infinity;
+    for(const[x,z]of ring){const u=x*ux+z*uz,v=-x*uz+z*ux;a0=Math.min(a0,u);a1=Math.max(a1,u);b0=Math.min(b0,v);b1=Math.max(b1,v);}
+    const area=(a1-a0)*(b1-b0);
+    if(area<bestArea-1e-6){bestArea=area; if(a1-a0>=b1-b0){ax=ux;az=uz;}else{ax=-uz;az=ux;}}
   }
   let tMin=Infinity,tMax=-Infinity;
   for(const[x,z]of ring){const t=(x-cx)*ax+(z-cz)*az;tMin=Math.min(tMin,t);tMax=Math.max(tMax,t);}
@@ -4067,7 +4132,7 @@ async function buildRoads(geojson){
     rGeom.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     rGeom.computeVertexNormals();
     const mesh=new THREE.Mesh(rGeom,new THREE.MeshPhongMaterial({
-      color:CONFIG.rail.streetcarRailColor,shininess:40,specular:CONFIG.rail.streetcarRailSpecular,
+      color:CONFIG.rail.streetcarRailColor,shininess:CONFIG.rail.streetcarRailShininess??40,specular:CONFIG.rail.streetcarRailSpecular,
       polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4
     }));
     mesh.position.x=CONFIG.scene?.buildingOffsetX??0;
@@ -4605,6 +4670,7 @@ async function buildWater(geojson){
       side:        THREE.FrontSide,
     });
     installConfluencePlume(waterMatRef, waterOffZ);
+    installOxbowWaterMask(waterMatRef);
     waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
     waterMesh.position.y = WATER_BASE;
     scene.add(waterMesh);
@@ -6073,7 +6139,7 @@ function initDateControl(){
   for(const[id,mode]of[['timeline-ffm-btn','yearsWalk'],['timeline-fff-btn','years']])
     document.getElementById(id).addEventListener('click',()=>{
       timelineMode=timelineMode===mode?'play':mode;
-      _yearsFlyPos=currentViewDate.getFullYear();
+      _yearsFlyPos=yearFrac(currentViewDate); _hold=null; _seenEvents.clear();
       updateTimelineButtons();
     });
   updateTimelineButtons();
@@ -6095,46 +6161,124 @@ function updateTimelineButtons(){
   }
 }
 let _yearsFlyPos=0;   // fractional year while in 'years' mode
+// ── Timeline events (CONFIG.timeline.events) ───────────────────────
+// Storms, parades, floods (from the real river levels) and fires near the
+// camera, as [start, end) spans in fractional years. Continuous modes (▶,
+// ▶▶) slow down while one is on; the jumping modes (▶▶▶ months, ▶▶▶▶
+// years) stop on each event between two frames and play it through for a
+// moment, so even a two-day fire is seen.
+const E_CFG=()=>CONFIG.timeline.events??{};
+const yfDate=y=>{const yr=Math.floor(y), f=y-yr, doy=Math.floor(f*365), hrs=(f*365-doy)*24; return new Date(yr,0,1+doy,Math.floor(hrs),Math.round((hrs%1)*60));};
+let _floodEvents=null, _floodSrc=undefined;
+function floodEvents(){
+  if(!waterMesh) return [];
+  if(_floodEvents&&_floodSrc===waterHistory) return _floodEvents;
+  _floodSrc=waterHistory; _floodEvents=[];
+  const thr=E_CFG().floodAboveMetres??3.5;
+  for(let y=TIMELINE_MIN_YEAR;y<=TIMELINE_MAX_YEAR;y++){
+    let on=null, peak=null, peakRel=-1e9;
+    for(let d=60;d<=250;d++){
+      const dt=new Date(y,0,1+d), rel=floodRelForPlaneY(waterLevelAt(dt));
+      if(rel>thr){ if(on===null) on=d; if(rel>peakRel){peakRel=rel;peak=d;} }
+      else if(on!==null){ _floodEvents.push({kind:'flood',start:y+on/365,end:y+d/365,peak:y+peak/365,rel:peakRel}); on=null; peakRel=-1e9; }
+    }
+    if(on!==null) _floodEvents.push({kind:'flood',start:y+on/365,end:y+250/365,peak:y+peak/365,rel:peakRel});
+  }
+  return _floodEvents;
+}
+function timelineEvents(y0,y1,jump){
+  const C=E_CFG(), out=[];
+  for(const s of stormList){
+    const a=yearFrac(new Date(s.t0)), b=yearFrac(new Date(s.t1));
+    if(b>y0&&a<y1&&(!jump||s.intensity>=(C.jumpStormMinIntensity??0.8))) out.push({kind:'storm',start:a,end:b,peak:(a+b)/2,key:'s'+s.t0});
+  }
+  for(const p of CONFIG.parades?.list??[]){
+    const a=_isoYearFrac(p.date,0), b=_isoYearFrac(p.to??p.date,0)+1/365;
+    if(b>y0&&a<y1) out.push({kind:'parade',start:a,end:b,peak:a+0.5/365,key:'p'+p.date});
+  }
+  for(const f of floodEvents()) if(f.end>y0&&f.start<y1&&(!jump||f.rel>=(C.jumpFloodAboveMetres??4))) out.push({...f,key:'f'+f.start.toFixed(3)});
+  const cam=camera.position, R2=(C.fireRadiusM??4000)**2, ox=CONFIG.scene?.buildingOffsetX??0, oz=CONFIG.scene?.buildingOffsetZ??0;
+  for(const f of fireRecords){
+    const a=f.died-f.dur;
+    if(f.died>y0&&a<y1&&f.group.visible!==false&&(f.x+ox-cam.x)**2+(f.z+oz-cam.z)**2<R2) out.push({kind:'fire',start:a,end:f.died,peak:a+f.dur*0.25,key:f,dur:f.dur});
+  }
+  return out.sort((a,b)=>a.start-b.start);
+}
+// Jump modes: hold on an event for a moment, playing its span through
+let _hold=null;   // {t, T, a, b, resume}
+const _seenEvents=new Set();
+function effectsSuppressed(){ return (timelineMode==='years'||timelineMode==='yearsWalk')&&!_hold; }
+function _continuousRate(base,mode){
+  const S=E_CFG()[mode]??{}, y=yearFrac(currentViewDate);
+  let rate=base;
+  for(const e of timelineEvents(y,y+1e-6,false)){
+    const r=e.kind==='fire'?e.dur*365/(S.fireSeconds??10):(S[e.kind+'DaysPerSecond']??base);
+    rate=Math.min(rate,r);
+  }
+  return rate;
+}
 // Advances currentViewDate: slow play (seasons roll by; optionally wrapping
-// within the year so buildings hold still) or fast forward (years pass).
+// within the year so buildings hold still), fast forward (years pass), or
+// the jumping modes (a frame per month / per year), all event-aware.
 function tickTimeline(dt){
   if(timelineMode==='paused') return;
   if(timelineMode==='years'||timelineMode==='yearsWalk'){
-    // One (summer) day per year: jump the date only when the whole year changes
-    const Y=timelineMode==='years'?(CONFIG.timeline.yearsFly??{yearsPerSecond:10,day:'07-15'})
-                                  :(CONFIG.timeline.yearsWalk??{yearsPerSecond:1,day:'07-15'});
-    _yearsFlyPos+=dt*Y.yearsPerSecond;
-    if(_yearsFlyPos>=TIMELINE_MAX_YEAR+1) _yearsFlyPos=TIMELINE_MIN_YEAR;
-    const yr=Math.floor(_yearsFlyPos);
-    if(yr!==currentViewDate.getFullYear()){
-      const[m,d]=Y.day.split('-').map(Number);
-      setCurrentViewDate(new Date(yr,m-1,d,12),dateResolutionMode);
+    const E=E_CFG();
+    if(_hold){
+      _hold.t+=dt;
+      const k=Math.min(1,_hold.t/_hold.T);
+      setCurrentViewDate(yfDate(_hold.a+(_hold.b-_hold.a)*k),dateResolutionMode);
+      if(k>=1){ _yearsFlyPos=_hold.resume; _hold=null; }
+      return;
+    }
+    const walk=timelineMode==='yearsWalk';
+    const Y=walk?(CONFIG.timeline.yearsWalk??{yearsPerSecond:1}):(CONFIG.timeline.yearsFly??{yearsPerSecond:10,day:'07-15'});
+    const prev=_yearsFlyPos, next=prev+dt*Y.yearsPerSecond;
+    // Any event between this frame and the next? Stop on it.
+    const ev=timelineEvents(prev,next,true).find(e=>!_seenEvents.has(e.key)&&e.start>=prev-1/365);
+    if(ev){
+      _seenEvents.add(ev.key);
+      const T=walk?(E.walkHoldSeconds??0.8):(E.flyHoldSeconds??0.5);
+      const span=ev.kind==='fire'?[ev.start,ev.start+ev.dur*0.6]:ev.kind==='flood'?[ev.peak-8/365,ev.peak+8/365]:[ev.start,ev.end];
+      _hold={t:0,T,a:span[0],b:span[1],resume:Math.max(next,ev.end)};
+      return;
+    }
+    _yearsFlyPos=next;
+    if(_yearsFlyPos>=TIMELINE_MAX_YEAR+1){ _yearsFlyPos=TIMELINE_MIN_YEAR; _seenEvents.clear(); }
+    if(walk){
+      // a frame per month, mid-month
+      const m=Math.floor(_yearsFlyPos*12), yr=Math.floor(m/12), mo=m%12;
+      if(yr!==currentViewDate.getFullYear()||mo!==currentViewDate.getMonth()) setCurrentViewDate(new Date(yr,mo,15,12),dateResolutionMode);
+    }else{
+      const yr=Math.floor(_yearsFlyPos);
+      if(yr!==currentViewDate.getFullYear()){
+        const[m,d]=Y.day.split('-').map(Number);
+        setCurrentViewDate(new Date(yr,m-1,d,12),dateResolutionMode);
+      }
     }
     return;
   }
   if(timelineMode==='play'){
     const cyc=CONFIG.timeline.seasonCycle;
     const y=currentViewDate.getFullYear();
-    const C=CONFIG.storms, floodRel=waterMesh?floodRelForPlaneY(waterLevelAt(currentViewDate)):0;
-    const rate=stormAt(currentViewDate)||paradeAt(currentViewDate)?(C?.dwellDaysPerSecond??0.1)   // linger on storm / parade days
-              :floodRel>(C?.floodSlowAboveMetres??99)?(C?.floodDaysPerSecond??0.5)         // and through floods
-              :activeFireSpots.length?Math.min(cyc?.daysPerSecond??2,
-                  Math.min(...activeFireSpots.map(s=>s.f.dur*365))/(C?.fireSeconds??15))    // a fire in view: ~fireSeconds each
-              :(cyc?.daysPerSecond??2);
+    const rate=_continuousRate(cyc?.daysPerSecond??2,'play');
     const d=new Date(currentViewDate.getTime()+dt*rate*86400000);
     if(cyc?.wrapWithinYear!==false&&d.getFullYear()!==y) d.setFullYear(y,0,1);
     else if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
     setCurrentViewDate(d,dateResolutionMode);
     return;
   }
-  // Advance by adding milliseconds to the raw timestamp — setDate(getDate()+fraction)
+  // Fast forward: add milliseconds to the raw timestamp — setDate(getDate()+fraction)
   // is a no-op because getDate() returns an integer and the fractional part never
   // accumulates across frames.
-  const d=new Date(currentViewDate.getTime()+dt*CONFIG.timeline.playSpeedDaysPerSecond*86400000);
+  const rate=_continuousRate(CONFIG.timeline.playSpeedDaysPerSecond,'fast');
+  const d=new Date(currentViewDate.getTime()+dt*rate*86400000);
   if(d.getFullYear()>TIMELINE_MAX_YEAR) d.setFullYear(TIMELINE_MIN_YEAR);
   setCurrentViewDate(d,dateResolutionMode);
 }
 window._debugTickTimeline=tickTimeline;
+window._debugHold=()=>_hold?{kind:'hold',a:+_hold.a.toFixed(3),b:+_hold.b.toFixed(3)}:null;
+window._debugEvents=(a,b)=>timelineEvents(a,b,true).map(e=>e.kind+'@'+e.start.toFixed(2));
 window._debugGetTimelinePlaying=()=>timelineMode!=='paused';
 
 // ── Streetcar traffic system ────────────────────────────────────────
@@ -6969,7 +7113,7 @@ function buildRailTracks(geojson){
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     g.computeVertexNormals();
-    railRailLineMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:CONFIG.rail.color,shininess:35,specular:CONFIG.rail.specular,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+    railRailLineMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:CONFIG.rail.color,shininess:CONFIG.rail.shininess??35,specular:CONFIG.rail.specular,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
     railRailLineMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
     railRailLineMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     railRailLineMesh.receiveShadow=true;
@@ -8110,7 +8254,7 @@ function _removeEngine(e){
 }
 function tickFireEngines(dt){
   const FE=CONFIG.fireEngines; if(!FE||OFF.has('vehicles')) return;
-  const yr=yearFrac(currentViewDate), fast=timelineMode!=='paused'&&timelineMode!=='play';
+  const yr=yearFrac(currentViewDate), fast=effectsSuppressed();
   const live=new Set();
   if(yr>=FE.from&&!fast) for(const s of activeFireSpots) if(s.q<FE.stayUntil){ live.add(s.f); if(!fireEngineSets.has(s.f)) _dispatchEngines(s,yr); }
   for(const[f,list]of fireEngineSets){
@@ -8222,7 +8366,7 @@ function mulberry(seedStr){
   return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};
 }
 function tickParades(dt){
-  const fast=timelineMode==='years'||timelineMode==='yearsWalk'||timelineMode==='fast';
+  const fast=effectsSuppressed();
   const p=fast?null:paradeAt(currentViewDate);
   if(!p){ _clearParade(); return; }
   if(parade?.p!==p){ _clearParade(); _buildParade(p); }
@@ -9099,7 +9243,7 @@ function _stormCaption(st){
     el.style.cssText='font-size:0.7rem;color:#9ab0c8;letter-spacing:0.04em;text-align:center;max-width:420px;';
     dc.appendChild(el);
   }
-  const pa=!st&&timelineMode!=='fast'&&timelineMode!=='years'&&timelineMode!=='yearsWalk'?paradeAt(currentViewDate):null;
+  const pa=!st&&!effectsSuppressed()?paradeAt(currentViewDate):null;
   const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:pa?`🎖 Parade — ${pa.note}`:'';
   if(el.textContent!==txt){ el.textContent=txt; el.style.display=txt?'block':'none'; }
 }
@@ -9134,7 +9278,7 @@ function _thunder(dist,gain){
 }
 function tickWeather(dt){
   const C=CONFIG.storms; if(!C) return;
-  const st=timelineMode==='years'||timelineMode==='yearsWalk'||timelineMode==='fast'?null:stormAt(currentViewDate);
+  const st=effectsSuppressed()?null:stormAt(currentViewDate);
   _stormCaption(st);
   const k=st?st.k:0, blizzard=st?.s.type==='blizzard';
   if(!st&&!_weatherActive) return;

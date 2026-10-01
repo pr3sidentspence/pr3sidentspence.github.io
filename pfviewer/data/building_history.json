@@ -242,7 +242,7 @@
         "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
         "https://en.wikipedia.org/wiki/Fort_Garry"
       ],
-      "notes": "Lieutenant Governor's residence 1871–1883; stood until the HBC tore it down in 1888. Build year: original-fort placeholder.",
+      "notes": "Lieutenant Governor's residence 1871–1883; stood until the HBC tore it down in 1888. Build year: original-fort placeholder. Peaked roof forced (roof_type) — the outline has too many points for the automatic peaked-roof rule.",
       "set": {
         "born": "1837-06-01",
         "construction_months": 24,
@@ -250,7 +250,8 @@
         "date_precision": {
           "born": "year",
           "died": "year"
-        }
+        },
+        "roof_type": "gabled"
       }
     },
     "e2616f20-00b6-46ae-a957-873939b205d5": {
@@ -1043,6 +1044,54 @@
           }
         ]
       }
+    },
+    "38d2a8eb-3040-4720-a0c6-b8bbd3430a4f": {
+      "name": "Manitoba Club",
+      "address": "194 Broadway",
+      "notes": "Red brick with sandstone base and trim (per Mike).",
+      "set": {
+        "wall_color": "red",
+        "wall_stripes": {
+          "color": "sandstone",
+          "every": 4.2,
+          "height": 0.35,
+          "offset": 0,
+          "base": 1.2
+        }
+      }
+    },
+    "ccd37dd8-9eb4-475f-9d64-cae6381417ae": {
+      "name": "Union Bank Tower",
+      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+      "set": {
+        "wall_color": "cream"
+      }
+    },
+    "5c92d894-6309-4ae8-b6f2-dd64f180ca52": {
+      "name": "Union Bank Tower",
+      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+      "set": {
+        "wall_color": "cream"
+      }
+    },
+    "27fa45a5-6320-4963-ae0c-0d82c40e8eee": {
+      "name": "Union Bank Tower",
+      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+      "set": {
+        "wall_color": "cream"
+      }
+    },
+    "3ffeb9e9-bff5-4544-9055-2510edd2b7db": {
+      "name": "Union Bank Tower",
+      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+      "set": {
+        "wall_color": "cream"
+      }
+    },
+    "a868d0de-ced3-43e5-afd8-d362b40a94ae": {
+      "name": "Steamboat Landing (building)",
+      "notes": "Removed per Mike.",
+      "remove": true
     }
   }
 }

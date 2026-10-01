@@ -463,7 +463,7 @@ export const CONFIG = {
         maxDepthM: 1.6,
         color: 0x4A5236, opacity: 0.88, iceColor: 0xC8D2DC,
         mosquitoAnchors: 70,
-        until: null,             // ISO date it was filled in (null = the whole timeline)
+        until: '1910-04-15',     // filled in: ground back to today's levels from spring 1910, no lake
       },
     },
     noiseAmplitude: 0.80,   // metres of prairie undulation — enough for interesting flood spread
@@ -559,8 +559,8 @@ export const CONFIG = {
 
   // ── Rail / tracks ───────────────────────────────────────────────────
   rail: {
-    color: 0x4e5060, specular: 0x2c2c2c,                  // train (freight/passenger) rails
-    streetcarRailColor: 0x222222, streetcarRailSpecular: 0x333333,
+    color: 0x24262C, specular: 0xB8BEC8, shininess: 90,   // train rails: dark steel, polished running surface catches the light
+    streetcarRailColor: 0x1C1C1E, streetcarRailSpecular: 0x9EA4AC, streetcarRailShininess: 80,
     // Streetcar rails — one mesh per route, bucketed by streetcar_start year:
     railHeadWidth: 0.12, railHeight: 0.22,
     // Freight/passenger train rails (slightly slimmer in this model):
@@ -728,7 +728,7 @@ export const CONFIG = {
   // ── Parades (recorded dates) ────────────────────────────────────────
   // A marching column (band in front, flags) loops the route all day, with
   // crowds lining both sidewalks. Slow play lingers on parade days like
-  // storms (storms.dwellDaysPerSecond). Routes are lon/lat along the street
+  // storms (timeline.events). Routes are lon/lat along the street
   // centrelines; halfWidth = metres from centreline to where crowds stand.
   parades: {
     routes: {
@@ -968,8 +968,20 @@ export const CONFIG = {
     seasonCycle: { enabled: true, daysPerSecond: 2, wrapWithinYear: true },
     // ▶▶▶▶ years fly by: one summer day shown per year; 10/s → 1850–1960 in ~11 s
     yearsFly: { yearsPerSecond: 10, day: '07-15' },
-    // ▶▶▶ in between: same one-summer-day-per-year view, 1 year/s (~2 min for 1850–1960)
-    yearsWalk: { yearsPerSecond: 1, day: '07-15' },
+    // ▶▶▶ in between: a frame per month (each 1/12 s), 1 year/s (~2 min for 1850–1960)
+    yearsWalk: { yearsPerSecond: 1 },
+    // Events (storms, parades, floods from the river levels, fires within
+    // fireRadiusM of the camera) slow the continuous modes and stop the
+    // jumping ones. Rates in days per second; fires take fireSeconds whatever
+    // their length. Jump modes hold each event walk/flyHoldSeconds, playing
+    // its span through (storms ≥ jumpStormMinIntensity, floods ≥ jumpFloodAboveMetres).
+    events: {
+      floodAboveMetres: 3.5, fireRadiusM: 4000,
+      play: { stormDaysPerSecond: 0.04, paradeDaysPerSecond: 0.04, floodDaysPerSecond: 0.25, fireSeconds: 40 },
+      fast: { stormDaysPerSecond: 0.5,  paradeDaysPerSecond: 0.5,  floodDaysPerSecond: 3,    fireSeconds: 5 },
+      walkHoldSeconds: 0.8, flyHoldSeconds: 0.5,
+      jumpStormMinIntensity: 0.8, jumpFloodAboveMetres: 4.0,
+    },
   },
 
   // ── Historic storms (data/storms.json) ──────────────────────────────
@@ -980,12 +992,6 @@ export const CONFIG = {
     file: './data/storms.json',
     rampHours: 6,
     offPeak: 0.75,
-    dwellDaysPerSecond: 0.1,   // ▶ slow play crawls through storm days (~10 s a day) instead of 2 days/s
-    // Floods: slow play also slows while the river is this far above normal
-    // (real metres; 1826/1852/1861/1916/1948/1950 all pass 4.5 m)
-    floodSlowAboveMetres: 3.5,
-    floodDaysPerSecond: 0.5,
-    fireSeconds: 15,           // and a fire in view (nearest few within 4 km) takes about this long to play through
     snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
     boxSize: 180,              // metres — precipitation volume that travels with the camera
     rain: {
