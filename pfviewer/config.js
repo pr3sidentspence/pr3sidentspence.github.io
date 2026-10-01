@@ -799,7 +799,7 @@ export const CONFIG = {
   postcards: {
     file: './data/postcard_views.json',
     matchRadiusM: 40, matchAzDeg: 35, matchElDeg: 25,
-    nearbyRadiusM: 400, listMax: 8, sameDateDays: 7,
+    nearbyRadiusM: 400, listMax: 8, matchListMax: 20, sameDateDays: 7,   // listMax = nearby rows; matchListMax = matching rows
     defaultHeightM: 2.5, defaultOpacity: 0.5, jumpDate: true,
     checkEveryMs: 250,
   },
