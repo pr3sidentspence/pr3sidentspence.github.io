@@ -1,0 +1,2361 @@
+{
+ "_format": "tools/date_rails.py output. features: { \"<geojson id>\" | \"<id>/<piece>\": {line, born, died, kind, basis, confidence, [from,to]} }. Split features are cut at vertex indices from..to. Edit tools/date_rails.py (LINES / THROUGH / SPLITS) and re-run, or edit this file directly.",
+ "lines": {
+  "cpr_louise": {
+   "born": "1881-07-26",
+   "died": null,
+   "confidence": "high",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)"
+  },
+  "cpr_west": {
+   "born": "1881-12-01",
+   "died": null,
+   "confidence": "medium",
+   "basis": "CPR main line west, Winnipeg–Portage la Prairie, built direct in late 1881 (MHS, \"Rails Across the Red\")"
+  },
+  "cpr_yardtrk": {
+   "born": "1881-07-26",
+   "died": null,
+   "confidence": "medium",
+   "basis": "CPR Point Douglas yard tracks — yard dates from 1881, tracks added as traffic grew (spread to 1900)"
+  },
+  "cpr_bridge": {
+   "born": "1902-07-01",
+   "died": null,
+   "confidence": "high",
+   "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)"
+  },
+  "cpr_sw": {
+   "born": "1882-01-01",
+   "died": null,
+   "confidence": "low",
+   "basis": "Pembina Mountain / Southwestern branch (Manitoba & South Western) — grading 1881, rails 1881–82 (MHS); identification of this line is a guess"
+  },
+  "cpr_weston": {
+   "born": "1903-01-01",
+   "died": null,
+   "confidence": "low",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)"
+  },
+  "npm_forks": {
+   "born": "1889-09-01",
+   "died": null,
+   "confidence": "medium",
+   "basis": "Northern Pacific & Manitoba line to the Forks / Water Ave station and shops, 1889 (MHS); later Canadian Northern East Yards"
+  },
+  "transfer": {
+   "born": "1894-01-01",
+   "died": null,
+   "confidence": "medium",
+   "basis": "Winnipeg Transfer Railway: company 1889, \"about five years\" to complete, joining the CPR at Point Douglas Ave to the NP&M at Water Ave"
+  },
+  "cnor_east": {
+   "born": "1902-01-01",
+   "died": null,
+   "confidence": "low",
+   "basis": "Canadian Northern line east over its Red River bridge (built 1901–02, MHS); identification is a guess"
+  },
+  "gwwd": {
+   "born": "1914-01-01",
+   "died": null,
+   "confidence": "low",
+   "basis": "Greater Winnipeg Water District Railway from St. Boniface (c.1913–1915); identification is a guess"
+  }
+ },
+ "features": {
+  "1": {
+   "line": "cpr_louise",
+   "born": "1886-07-11",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "2": {
+   "line": "cpr_bridge",
+   "born": "1904-04-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "3": {
+   "line": "cpr_louise",
+   "born": "1882-08-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "4": {
+   "line": "cpr_louise",
+   "born": "1882-08-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "5": {
+   "line": "cpr_louise",
+   "born": "1882-08-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "6": {
+   "line": "cpr_louise",
+   "born": "1894-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "7": {
+   "line": "cpr_louise",
+   "born": "1894-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "8": {
+   "line": "cpr_louise",
+   "born": "1891-11-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "9": {
+   "line": "cpr_louise",
+   "born": "1900-02-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "10": {
+   "line": "npm_forks",
+   "born": "1898-05-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "11": {
+   "line": "npm_forks",
+   "born": "1894-12-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "12": {
+   "line": "npm_forks",
+   "born": "1891-07-23",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "13": {
+   "line": "npm_forks",
+   "born": "1902-06-20",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "14": {
+   "line": "npm_forks",
+   "born": "1889-09-01",
+   "died": null,
+   "kind": "through",
+   "basis": "Northern Pacific & Manitoba line to the Forks / Water Ave station and shops, 1889 (MHS); later Canadian Northern East Yards",
+   "confidence": "medium"
+  },
+  "15": {
+   "line": "npm_forks",
+   "born": "1895-08-13",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "16": {
+   "line": "npm_forks",
+   "born": "1892-03-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "17": {
+   "line": "npm_forks",
+   "born": "1903-02-05",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "18": {
+   "line": "npm_forks",
+   "born": "1899-09-03",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "19": {
+   "line": "npm_forks",
+   "born": "1896-03-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "20": {
+   "line": "npm_forks",
+   "born": "1892-10-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "21": {
+   "line": "npm_forks",
+   "born": "1903-09-23",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "22": {
+   "line": "npm_forks",
+   "born": "1900-04-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "23": {
+   "line": "npm_forks",
+   "born": "1896-11-15",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "24": {
+   "line": "npm_forks",
+   "born": "1893-06-14",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "25": {
+   "line": "cpr_louise",
+   "born": "1901-11-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "26": {
+   "line": "cpr_louise",
+   "born": "1901-11-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "27": {
+   "line": "cpr_louise",
+   "born": "1891-08-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "28": {
+   "line": "cpr_louise",
+   "born": "1887-03-31",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "29": {
+   "line": "cpr_louise",
+   "born": "1899-05-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "30": {
+   "line": "cpr_louise",
+   "born": "1899-05-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "31": {
+   "line": "cpr_louise",
+   "born": "1892-06-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "32": {
+   "line": "cpr_louise",
+   "born": "1888-01-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "33": {
+   "line": "cpr_louise",
+   "born": "1883-08-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "34": {
+   "line": "cpr_louise",
+   "born": "1900-02-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "35": {
+   "line": "cpr_louise",
+   "born": "1893-04-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "36": {
+   "line": "cpr_louise",
+   "born": "1888-11-12",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "37": {
+   "line": "cpr_louise",
+   "born": "1884-06-17",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "38": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "39": {
+   "line": "cpr_louise",
+   "born": "1894-01-31",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "40": {
+   "line": "cpr_louise",
+   "born": "1899-05-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "41": {
+   "line": "cpr_louise",
+   "born": "1894-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "42": {
+   "line": "cpr_louise",
+   "born": "1894-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "43": {
+   "line": "cpr_louise",
+   "born": "1905-06-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "44": {
+   "line": "cpr_louise",
+   "born": "1905-06-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "45": {
+   "line": "cpr_louise",
+   "born": "1886-01-31",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "46": {
+   "line": "cpr_louise",
+   "born": "1904-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "47": {
+   "line": "cpr_louise",
+   "born": "1904-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "48": {
+   "line": "cpr_louise",
+   "born": "1904-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "49": {
+   "line": "cpr_louise",
+   "born": "1904-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "50": {
+   "line": "cpr_louise",
+   "born": "1903-07-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "51": {
+   "line": "cpr_louise",
+   "born": "1903-07-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "52": {
+   "line": "cpr_louise",
+   "born": "1900-02-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "53": {
+   "line": "cpr_louise",
+   "born": "1900-02-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "54": {
+   "line": "cpr_louise",
+   "born": "1903-07-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "55": {
+   "line": "cpr_louise",
+   "born": "1897-04-30",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "56": {
+   "line": "cpr_louise",
+   "born": "1892-12-02",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "57": {
+   "line": "cpr_louise",
+   "born": "1888-07-07",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "58": {
+   "line": "cpr_louise",
+   "born": "1884-02-10",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "59": {
+   "line": "cpr_louise",
+   "born": "1898-02-20",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "60": {
+   "line": "cpr_louise",
+   "born": "1893-09-25",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "61": {
+   "line": "cpr_louise",
+   "born": "1889-04-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "62": {
+   "line": "cpr_bridge",
+   "born": "1903-02-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "63": {
+   "line": "cpr_bridge",
+   "born": "1905-10-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "64": {
+   "line": "cpr_bridge",
+   "born": "1904-12-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "65": {
+   "line": "cpr_bridge",
+   "born": "1904-02-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "66": {
+   "line": "cpr_louise",
+   "born": "1882-02-27",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "67": {
+   "line": "transfer",
+   "born": "1899-12-03",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "68": {
+   "line": "transfer",
+   "born": "1898-06-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "69": {
+   "line": "transfer",
+   "born": "1897-01-20",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "70": {
+   "line": "cpr_bridge",
+   "born": "1903-06-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "71": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "72": {
+   "line": "cpr_louise",
+   "born": "1892-11-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "73": {
+   "line": "transfer",
+   "born": "1897-04-27",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "74": {
+   "line": "transfer",
+   "born": "1895-11-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "75": {
+   "line": "transfer",
+   "born": "1894-06-14",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "76": {
+   "line": "transfer",
+   "born": "1899-01-06",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "77": {
+   "line": "transfer",
+   "born": "1897-08-01",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "78": {
+   "line": "transfer",
+   "born": "1896-02-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "79": {
+   "line": "transfer",
+   "born": "1894-09-18",
+   "died": null,
+   "kind": "yard track",
+   "basis": "Winnipeg Transfer Railway: company 1889, \"about five years\" to complete, joining the CPR at Point Douglas Ave to the NP&M at Water Ave",
+   "confidence": "medium"
+  },
+  "80": {
+   "line": "transfer",
+   "born": "1899-04-13",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "81": {
+   "line": "cpr_louise",
+   "born": "1893-05-20",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "82": {
+   "line": "cpr_louise",
+   "born": "1888-12-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "83": {
+   "line": "cpr_louise",
+   "born": "1884-07-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "84": {
+   "line": "cpr_louise",
+   "born": "1898-08-07",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "85": {
+   "line": "npm_forks",
+   "born": "1899-06-27",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "86": {
+   "line": "transfer",
+   "born": "1896-09-03",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "87": {
+   "line": "npm_forks",
+   "born": "1892-08-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "88": {
+   "line": "npm_forks",
+   "born": "1903-07-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "89": {
+   "line": "npm_forks",
+   "born": "1900-02-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "90": {
+   "line": "npm_forks",
+   "born": "1896-09-08",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "91": {
+   "line": "cpr_louise",
+   "born": "1886-03-13",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "92": {
+   "line": "cpr_louise",
+   "born": "1881-10-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "93": {
+   "line": "transfer",
+   "born": "1898-08-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "94": {
+   "line": "transfer",
+   "born": "1897-03-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the transfer yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "95": {
+   "line": "cpr_bridge",
+   "born": "1903-07-14",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "96": {
+   "line": "cpr_louise",
+   "born": "1893-12-23",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "97": {
+   "line": "cpr_bridge",
+   "born": "1905-05-11",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "98": {
+   "line": "cpr_bridge",
+   "born": "1904-07-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "99": {
+   "line": "cpr_bridge",
+   "born": "1903-09-08",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "100": {
+   "line": "cpr_bridge",
+   "born": "1902-11-07",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "101": {
+   "line": "cpr_bridge",
+   "born": "1905-07-07",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "102": {
+   "line": "cpr_louise",
+   "born": "1884-11-05",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "103": {
+   "line": "cpr_bridge",
+   "born": "1903-11-03",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "104": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "105": {
+   "line": "cpr_louise",
+   "born": "1900-02-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "106": {
+   "line": "cpr_louise",
+   "born": "1903-04-06",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "107": {
+   "line": "cpr_louise",
+   "born": "1903-04-06",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "108": {
+   "line": "cpr_louise",
+   "born": "1894-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "109": {
+   "line": "npm_forks",
+   "born": "1903-04-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "110": {
+   "line": "npm_forks",
+   "born": "1899-11-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "111": {
+   "line": "npm_forks",
+   "born": "1896-06-01",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "112": {
+   "line": "npm_forks",
+   "born": "1892-12-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "113": {
+   "line": "npm_forks",
+   "born": "1903-11-25",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "114": {
+   "line": "npm_forks",
+   "born": "1900-06-23",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "115": {
+   "line": "npm_forks",
+   "born": "1897-01-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "116": {
+   "line": "npm_forks",
+   "born": "1893-08-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "117": {
+   "line": "npm_forks",
+   "born": "1890-03-13",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "118": {
+   "line": "npm_forks",
+   "born": "1901-02-08",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "119": {
+   "line": "npm_forks",
+   "born": "1897-09-05",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "120": {
+   "line": "npm_forks",
+   "born": "1894-04-03",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "121": {
+   "line": "npm_forks",
+   "born": "1890-10-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "122": {
+   "line": "npm_forks",
+   "born": "1901-09-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "123": {
+   "line": "npm_forks",
+   "born": "1898-04-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "124": {
+   "line": "npm_forks",
+   "born": "1894-11-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "125": {
+   "line": "npm_forks",
+   "born": "1891-06-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "126": {
+   "line": "npm_forks",
+   "born": "1902-05-14",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "127": {
+   "line": "npm_forks",
+   "born": "1898-12-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "128": {
+   "line": "npm_forks",
+   "born": "1895-07-07",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "129": {
+   "line": "npm_forks",
+   "born": "1892-02-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "130": {
+   "line": "npm_forks",
+   "born": "1902-12-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "131": {
+   "line": "npm_forks",
+   "born": "1899-07-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "132": {
+   "line": "npm_forks",
+   "born": "1896-02-23",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "133": {
+   "line": "npm_forks",
+   "born": "1892-09-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "134": {
+   "line": "npm_forks",
+   "born": "1903-08-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "135": {
+   "line": "npm_forks",
+   "born": "1900-03-15",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "136": {
+   "line": "npm_forks",
+   "born": "1896-10-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "137": {
+   "line": "npm_forks",
+   "born": "1893-05-08",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "138": {
+   "line": "npm_forks",
+   "born": "1889-12-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "139": {
+   "line": "npm_forks",
+   "born": "1900-10-31",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "140": {
+   "line": "npm_forks",
+   "born": "1897-05-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "141": {
+   "line": "npm_forks",
+   "born": "1893-12-25",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "142": {
+   "line": "npm_forks",
+   "born": "1890-07-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "143": {
+   "line": "npm_forks",
+   "born": "1901-06-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "144": {
+   "line": "npm_forks",
+   "born": "1898-01-14",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "145": {
+   "line": "npm_forks",
+   "born": "1894-08-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "146": {
+   "line": "npm_forks",
+   "born": "1891-03-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "147": {
+   "line": "npm_forks",
+   "born": "1902-02-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "148": {
+   "line": "npm_forks",
+   "born": "1898-09-01",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "149": {
+   "line": "npm_forks",
+   "born": "1895-03-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "150": {
+   "line": "npm_forks",
+   "born": "1891-10-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "151": {
+   "line": "npm_forks",
+   "born": "1902-09-22",
+   "died": null,
+   "kind": "yard track",
+   "basis": "Northern Pacific & Manitoba line to the Forks / Water Ave station and shops, 1889 (MHS); later Canadian Northern East Yards",
+   "confidence": "medium"
+  },
+  "152": {
+   "line": "npm_forks",
+   "born": "1899-04-20",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "153": {
+   "line": "npm_forks",
+   "born": "1895-11-15",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "154": {
+   "line": "npm_forks",
+   "born": "1892-06-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "155": {
+   "line": "npm_forks",
+   "born": "1903-05-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "156": {
+   "line": "npm_forks",
+   "born": "1899-12-06",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "157": {
+   "line": "npm_forks",
+   "born": "1896-07-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "158": {
+   "line": "npm_forks",
+   "born": "1893-01-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "159": {
+   "line": "npm_forks",
+   "born": "1903-12-26",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "160": {
+   "line": "npm_forks",
+   "born": "1900-07-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "161": {
+   "line": "npm_forks",
+   "born": "1897-02-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "162": {
+   "line": "npm_forks",
+   "born": "1893-09-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "163": {
+   "line": "npm_forks",
+   "born": "1890-04-14",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "164": {
+   "line": "npm_forks",
+   "born": "1901-03-11",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "165": {
+   "line": "npm_forks",
+   "born": "1897-10-07",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "166": {
+   "line": "npm_forks",
+   "born": "1894-05-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "167": {
+   "line": "npm_forks",
+   "born": "1890-11-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the npm_forks yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "168": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "169": {
+   "line": "cpr_weston",
+   "born": "1904-10-28",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "170": {
+   "line": "cpr_weston",
+   "born": "1904-02-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "171": {
+   "line": "cpr_weston",
+   "born": "1903-05-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "172": {
+   "line": "cpr_weston",
+   "born": "1905-09-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "173": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "174": {
+   "line": "cpr_louise",
+   "born": "1888-01-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "175": {
+   "line": "cpr_louise",
+   "born": "1885-01-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "176": {
+   "line": "cpr_louise",
+   "born": "1898-10-27",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "177": {
+   "line": "cpr_louise",
+   "born": "1894-06-01",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "178": {
+   "line": "cpr_louise",
+   "born": "1894-12-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "179": {
+   "line": "cpr_louise",
+   "born": "1901-03-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "180": {
+   "line": "cpr_louise",
+   "born": "1899-05-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "181": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "182": {
+   "line": "cpr_weston",
+   "born": "1904-07-03",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "183": {
+   "line": "cpr_weston",
+   "born": "1903-10-15",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "184": {
+   "line": "cpr_weston",
+   "born": "1903-01-27",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "185": {
+   "line": "cpr_weston",
+   "born": "1905-05-10",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "186": {
+   "line": "cpr_weston",
+   "born": "1904-08-20",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "187": {
+   "line": "cpr_weston",
+   "born": "1903-12-03",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "188": {
+   "line": "cpr_weston",
+   "born": "1903-03-16",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "189": {
+   "line": "cpr_weston",
+   "born": "1905-06-27",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "190": {
+   "line": "cpr_weston",
+   "born": "1904-10-08",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "191": {
+   "line": "cpr_weston",
+   "born": "1904-01-20",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "192": {
+   "line": "cpr_weston",
+   "born": "1903-05-03",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "193": {
+   "line": "cpr_weston",
+   "born": "1905-08-14",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "194": {
+   "line": "cpr_weston",
+   "born": "1904-11-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "195": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "196": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "197": {
+   "line": "cpr_louise",
+   "born": "1896-07-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "198": {
+   "line": "cpr_louise",
+   "born": "1890-09-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "199": {
+   "line": "cpr_louise",
+   "born": "1890-09-19",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "200": {
+   "line": "cpr_sw",
+   "born": "1884-01-01",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_sw yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "201": {
+   "line": "cpr_weston",
+   "born": "1905-11-19",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "202": {
+   "line": "cpr_weston",
+   "born": "1905-03-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "203": {
+   "line": "cpr_sw",
+   "born": "1886-10-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_sw yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "204": {
+   "line": "cpr_weston",
+   "born": "1903-09-25",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "205": {
+   "line": "cpr_weston",
+   "born": "1903-01-06",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "206": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "207": {
+   "line": "cpr_weston",
+   "born": "1904-07-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "208": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "209": {
+   "line": "cpr_weston",
+   "born": "1903-02-23",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "210": {
+   "line": "cpr_weston",
+   "born": "1905-06-06",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "211": {
+   "line": "cpr_weston",
+   "born": "1904-09-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "212": {
+   "line": "cpr_weston",
+   "born": "1903-12-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "213": {
+   "line": "cpr_weston",
+   "born": "1903-04-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "214": {
+   "line": "cpr_weston",
+   "born": "1905-12-31",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, with the first building within 70 m",
+   "confidence": "low"
+  },
+  "215": {
+   "line": "cpr_weston",
+   "born": "1904-11-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "216": {
+   "line": "cpr_weston",
+   "born": "1904-02-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "217": {
+   "line": "cpr_weston",
+   "born": "1903-05-30",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "218": {
+   "line": "cpr_weston",
+   "born": "1905-09-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "219": {
+   "line": "cpr_weston",
+   "born": "1904-12-22",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "220": {
+   "line": "cpr_weston",
+   "born": "1904-04-04",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "221": {
+   "line": "cpr_weston",
+   "born": "1903-07-18",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "222": {
+   "line": "cpr_weston",
+   "born": "1905-10-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "223": {
+   "line": "cpr_weston",
+   "born": "1905-02-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "224": {
+   "line": "cpr_weston",
+   "born": "1904-05-23",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "225": {
+   "line": "cpr_weston",
+   "born": "1903-09-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "226": {
+   "line": "cpr_weston",
+   "born": "1905-12-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "227": {
+   "line": "cpr_weston",
+   "born": "1905-03-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "228": {
+   "line": "cpr_weston",
+   "born": "1904-07-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "229": {
+   "line": "cpr_weston",
+   "born": "1903-10-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "230": {
+   "line": "cpr_weston",
+   "born": "1903-02-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "231": {
+   "line": "cpr_weston",
+   "born": "1905-05-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "232": {
+   "line": "cpr_weston",
+   "born": "1904-08-27",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "233": {
+   "line": "cpr_weston",
+   "born": "1903-12-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "234": {
+   "line": "cpr_weston",
+   "born": "1903-03-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "235": {
+   "line": "cpr_weston",
+   "born": "1905-07-04",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "236": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "237": {
+   "line": "cpr_louise",
+   "born": "1888-02-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "238": {
+   "line": "cpr_louise",
+   "born": "1883-09-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "239": {
+   "line": "cpr_weston",
+   "born": "1905-08-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "240": {
+   "line": "cpr_weston",
+   "born": "1904-12-01",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "241": {
+   "line": "cpr_louise",
+   "born": "1905-12-31",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "242": {
+   "line": "cpr_louise",
+   "born": "1902-11-08",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "243": {
+   "line": "cpr_louise",
+   "born": "1898-07-31",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "244": {
+   "line": "cpr_louise",
+   "born": "1902-10-02",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, with the first building within 70 m",
+   "confidence": "high"
+  },
+  "245": {
+   "line": "cpr_west",
+   "born": "1888-03-08",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_west yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "246": {
+   "line": "cpr_west",
+   "born": "1884-10-25",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_west yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "247/0": {
+   "line": "cpr_bridge",
+   "born": "1902-07-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)",
+   "confidence": "high",
+   "from": 0,
+   "to": 3
+  },
+  "247/1": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high",
+   "from": 3,
+   "to": 14
+  },
+  "247/2": {
+   "line": "cpr_west",
+   "born": "1881-12-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR main line west, Winnipeg–Portage la Prairie, built direct in late 1881 (MHS, \"Rails Across the Red\")",
+   "confidence": "medium",
+   "from": 14,
+   "to": 19
+  },
+  "248": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "249": {
+   "line": "cpr_weston",
+   "born": "1903-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "250": {
+   "line": "cpr_west",
+   "born": "1881-12-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR main line west, Winnipeg–Portage la Prairie, built direct in late 1881 (MHS, \"Rails Across the Red\")",
+   "confidence": "medium"
+  },
+  "251": {
+   "line": "cpr_louise",
+   "born": "1881-10-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "252": {
+   "line": "cpr_sw",
+   "born": "1882-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "Pembina Mountain / Southwestern branch (Manitoba & South Western) — grading 1881, rails 1881–82 (MHS); identification of this line is a guess",
+   "confidence": "low"
+  },
+  "253": {
+   "line": "cpr_weston",
+   "born": "1904-08-06",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "254": {
+   "line": "cpr_west",
+   "born": "1886-01-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_west yard, spread (no later building beside it)",
+   "confidence": "medium"
+  },
+  "255": {
+   "line": "cpr_sw",
+   "born": "1882-07-20",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_sw yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "256": {
+   "line": "cpr_weston",
+   "born": "1905-06-13",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "257": {
+   "line": "cpr_weston",
+   "born": "1904-09-23",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "258": {
+   "line": "cpr_weston",
+   "born": "1904-01-06",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "259": {
+   "line": "cpr_weston",
+   "born": "1903-04-19",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "260": {
+   "line": "cpr_weston",
+   "born": "1905-07-31",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "261": {
+   "line": "cpr_weston",
+   "born": "1904-11-10",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "262": {
+   "line": "cpr_weston",
+   "born": "1904-02-23",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "263": {
+   "line": "cpr_weston",
+   "born": "1903-06-06",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "264": {
+   "line": "cpr_weston",
+   "born": "1905-09-17",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "265": {
+   "line": "cpr_weston",
+   "born": "1904-12-29",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "266": {
+   "line": "cpr_weston",
+   "born": "1904-04-11",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Weston yards and approaches — Weston shops/yards 1900s; no firm date found (spread 1903–1906)",
+   "confidence": "low"
+  },
+  "267": {
+   "line": "cpr_weston",
+   "born": "1903-07-24",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "268": {
+   "line": "cpr_weston",
+   "born": "1905-11-04",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "269": {
+   "line": "cpr_louise",
+   "born": "1894-08-21",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "270": {
+   "line": "cpr_weston",
+   "born": "1904-05-29",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "271": {
+   "line": "cpr_weston",
+   "born": "1903-09-10",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "272": {
+   "line": "cpr_weston",
+   "born": "1905-12-22",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "273": {
+   "line": "cpr_weston",
+   "born": "1905-04-05",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_weston yard, spread (no later building beside it)",
+   "confidence": "low"
+  },
+  "274": {
+   "line": "cpr_louise",
+   "born": "1891-01-16",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_louise yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "275": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "276": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "277": {
+   "line": "cpr_louise",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)",
+   "confidence": "high"
+  },
+  "278": {
+   "line": "cpr_bridge",
+   "born": "1902-07-01",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)",
+   "confidence": "high"
+  },
+  "279": {
+   "line": "cpr_bridge",
+   "born": "1903-08-14",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)",
+   "confidence": "high"
+  },
+  "280": {
+   "line": "cpr_bridge",
+   "born": "1902-10-12",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "281": {
+   "line": "cpr_bridge",
+   "born": "1905-06-11",
+   "died": null,
+   "kind": "yard track",
+   "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)",
+   "confidence": "high"
+  },
+  "282": {
+   "line": "cpr_bridge",
+   "born": "1904-08-09",
+   "died": null,
+   "kind": "siding",
+   "basis": "siding on the cpr_bridge yard, spread (no later building beside it)",
+   "confidence": "high"
+  },
+  "283": {
+   "line": "cnor_east",
+   "born": "1902-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "Canadian Northern line east over its Red River bridge (built 1901–02, MHS); identification is a guess",
+   "confidence": "low"
+  },
+  "284": {
+   "line": "gwwd",
+   "born": "1914-01-01",
+   "died": null,
+   "kind": "through",
+   "basis": "Greater Winnipeg Water District Railway from St. Boniface (c.1913–1915); identification is a guess",
+   "confidence": "low"
+  }
+ }
+}

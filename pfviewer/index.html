@@ -891,6 +891,17 @@ function _rebuildCreekValley(){
   V.lastCol=-1;
   console.log(`🏞 Brown's Creek valley: ${pieces.length} piece(s) (${pieces.map(p=>p.free.map(f=>f?'free':'joined').join('/')).join(', ')}), ≤ ${D} m deep`);
 }
+window._debugWalkways=(x0,z0,x1,z1)=>{ const out=[], all=[...layerGroups.map(l=>l.geojson),...deferredChunks.map(c=>c.gj)];
+  const bankY=CONFIG.water.startY+1;
+  for(const gj of all) for(const f of gj.features){ const p=f.properties||{}; let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
+    const pts=c.map(q=>{const[sx,sy]=project(q[0],q[1]);return[sx,-sy];}); const cx=pts.reduce((a,q)=>a+q[0],0)/pts.length, cz=pts.reduce((a,q)=>a+q[1],0)/pts.length;
+    if(cx<x0||cx>x1||cz<z0||cz>z1) continue;
+    const ys=pts.map(q=>sampleTerrainY(q[0],q[1])); out.push({uid:String(p.uid||p.pf_uid||p.id).slice(0,13),name:p.name,type:p.type,fl:p.floors,src:String(p.source_file||'').slice(0,28),born:p.born,cx:Math.round(cx),cz:Math.round(cz),wet:ys.filter(y=>y<bankY).length+'/'+ys.length,minY:+Math.min(...ys).toFixed(1)}); }
+  return out; };
+window._debugRails=()=>{ const yf=yearFrac(currentViewDate), by={};
+  for(const t of trainConsists){ const alive=yf>=t.born&&yf<t.died; by[t.kind]=(by[t.kind]||0)+(alive?1:0); }
+  const feats=(railGeojson?.features||[]); const dated=feats.filter(f=>f.properties.born);
+  return {date:currentViewDate.toISOString().slice(0,10),trainsAlive:by,trainsTotal:trainConsists.length,stretchesBuilt:dated.filter(f=>_isoYearFrac(f.properties.born,0)<=yf).length+'/'+feats.length}; };
 window._debugCreek=()=>creekValley?{on:creekUniforms.uCreekOn.value,pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
 // Per frame: valley on/off with the creek's dates; vertex colours = the
 // seasonal ground colour, blending to bank dirt toward the floor (summer;
@@ -7327,6 +7338,33 @@ function tickStreetcars(dt){
 // yard switchers crawl back and forth on short sidings.
 
 let railBedMesh=null, railRailLineMesh=null, railGeojson=null, railsLoaded=false;
+// ── Rail dates (data/rail_history.json, made by tools/date_rails.py) ──
+// born/died per feature (by the geojson `id`); features listed with pieces
+// ("id/0", "id/1" …) are cut at vertex indices so each stretch gets its own
+// date. Unlisted features keep whatever they have (none → always there).
+let _railHistory=null;
+async function applyRailHistory(gj){
+  if(_railHistory===null){
+    _railHistory=false;
+    try{ const url=CONFIG.dataFiles.railHistory; if(url){ const r=await fetch(url+'?v='+Date.now()); if(r.ok) _railHistory=(await r.json()).features; } }catch(e){ console.warn('Rail history: failed to load',e); }
+  }
+  const H=_railHistory; if(!H||gj._railDated) return gj;
+  const out=[];
+  for(const f of gj.features){
+    const id=f.properties?.id, e=H[String(id)];
+    if(!e&&H[id+'/0']){   // split feature
+      for(let k=0;H[id+'/'+k];k++){
+        const pe=H[id+'/'+k], c=f.geometry.coordinates.slice(pe.from,pe.to+1); if(c.length<2) continue;
+        let L=0; for(let i=1;i<c.length;i++){ const[x1,y1]=project(c[i-1][0],c[i-1][1]),[x2,y2]=project(c[i][0],c[i][1]); L+=Math.hypot(x2-x1,y2-y1); }
+        out.push({...f,geometry:{type:'LineString',coordinates:c},properties:{...f.properties,born:pe.born,died:pe.died,length_m:L,rail_line:pe.line}});
+      }
+    }else if(e) out.push({...f,properties:{...f.properties,born:e.born,died:e.died,rail_line:e.line}});
+    else out.push(f);
+  }
+  gj.features=out; gj._railDated=true;
+  console.log(`🚂 Rail history: ${out.filter(f=>f.properties.born).length}/${out.length} stretches dated`);
+  return gj;
+}
 const RAIL_MIN_YEAR=CONFIG.rail.minVisibleYear;
 
 const trainConsists=[];
@@ -7358,12 +7396,13 @@ function buildRailRoute(feat){
 function buildRailTracks(geojson){
   if(railBedMesh){railBedMesh.geometry.dispose();scene.remove(railBedMesh);railBedMesh=null;}
   if(railRailLineMesh){railRailLineMesh.geometry.dispose();scene.remove(railRailLineMesh);railRailLineMesh=null;}
-  const bedPos=[],bedCol=[],railPos=[];
+  const bedPos=[],bedCol=[],railPos=[],bedLife=[],railLife=[];
   const GAUGE=CONFIG.rail.gaugeHalfWidth, RAIL_W=CONFIG.rail.trainRailHeadWidth, RAIL_H=CONFIG.rail.trainRailHeight;
   for(const feat of geojson.features){
     const through=feat.properties.rail_class==='through';
     const w=through?CONFIG.rail.throughLineBedWidth:CONFIG.rail.sidingBedWidth;
     const geom=feat.geometry;
+    const rb=_isoYearFrac(feat.properties.born,NO_BORN), rd=_isoYearFrac(feat.properties.died,NO_DIED);   // rail_history.json
     const lines=geom.type==='MultiLineString'?geom.coordinates:[geom.coordinates];
     for(const line of lines){
       for(let i=0;i<line.length-1;i++){
@@ -7387,7 +7426,7 @@ function buildRailTracks(geojson){
           const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+0.16;
           bedPos.push(cx1+hx,y,cz1+hz, cx2+hx,y,cz2+hz, cx1-hx,y,cz1-hz,
                       cx2+hx,y,cz2+hz, cx2-hx,y,cz2-hz, cx1-hx,y,cz1-hz);
-          for(let k=0;k<6;k++) bedCol.push(c,c*0.86,c*0.74);
+          for(let k=0;k<6;k++){ bedCol.push(c,c*0.86,c*0.74); bedLife.push(rb,rd); }
           const ry=y+RAIL_H;
           for(const sign of[-1,1]){
             const rx=px*GAUGE*sign, rz=pz*GAUGE*sign;
@@ -7395,6 +7434,7 @@ function buildRailTracks(geojson){
               cx1+rx+rhx,ry,cz1+rz+rhz,  cx2+rx+rhx,ry,cz2+rz+rhz,  cx1+rx-rhx,ry,cz1+rz-rhz,
               cx2+rx+rhx,ry,cz2+rz+rhz,  cx2+rx-rhx,ry,cz2+rz-rhz,  cx1+rx-rhx,ry,cz1+rz-rhz
             );
+            for(let k=0;k<6;k++) railLife.push(rb,rd);
           }
         }
       }
@@ -7404,8 +7444,10 @@ function buildRailTracks(geojson){
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(bedPos,3));
     g.setAttribute('color',new THREE.Float32BufferAttribute(bedCol,3));
+    g.setAttribute('aLifespan',new THREE.Float32BufferAttribute(bedLife,2));
+    g.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(bedLife.length*2),4));
     g.computeVertexNormals();
-    railBedMesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+    railBedMesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2})));
     railBedMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
     railBedMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     railBedMesh.receiveShadow=true;
@@ -7414,8 +7456,10 @@ function buildRailTracks(geojson){
   if(railPos.length){
     const g=new THREE.BufferGeometry();
     g.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
+    g.setAttribute('aLifespan',new THREE.Float32BufferAttribute(railLife,2));
+    g.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(railLife.length*2),4));
     g.computeVertexNormals();
-    railRailLineMesh=new THREE.Mesh(g,new THREE.MeshPhongMaterial({color:CONFIG.rail.color,shininess:CONFIG.rail.shininess??35,specular:CONFIG.rail.specular,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}));
+    railRailLineMesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshPhongMaterial({color:CONFIG.rail.color,shininess:CONFIG.rail.shininess??35,specular:CONFIG.rail.specular,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4})));
     railRailLineMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
     railRailLineMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     railRailLineMesh.receiveShadow=true;
@@ -7575,7 +7619,7 @@ function buildHazeSources(){
       for(const line of lines) for(let i=0;i<line.length-1;i++){
         const[ax,ay]=project(line[i][0],line[i][1]),[bx,by]=project(line[i+1][0],line[i+1][1]);
         const len=Math.hypot(bx-ax,by-ay), n=Math.max(1,Math.round(len/10));
-        for(let k=0;k<n;k++){const t=(k+0.5)/n;srcs.push({x:ax+(bx-ax)*t,z:-(ay+(by-ay)*t),area:H.yardWeight*len/n,born:CONFIG.rail.minVisibleYear});}
+        for(let k=0;k<n;k++){const t=(k+0.5)/n;srcs.push({x:ax+(bx-ax)*t,z:-(ay+(by-ay)*t),area:H.yardWeight*len/n,born:Math.floor(_isoYearFrac(f.properties.born,CONFIG.rail.minVisibleYear)),died:f.properties.died?Math.floor(_isoYearFrac(f.properties.died,1e9)):null});}
       }
     }
   }
@@ -7941,6 +7985,8 @@ function spawnTrain(route,kind,seed){
   return train;
 }
 
+// A train runs only while its line exists (born/died from rail_history.json)
+function _dateTrain(train,feat){ train.born=_isoYearFrac(feat.properties.born,NO_BORN); train.died=_isoYearFrac(feat.properties.died,NO_DIED); return train; }
 function initTrains(geojson){
   if(OFF.has('vehicles')) return;
   for(const train of trainConsists){
@@ -7964,18 +8010,18 @@ function initTrains(geojson){
   for(const feat of passengerCandidates){
     const route=buildRailRoute(feat);
     if(!route||route.totalLen<200) continue;
-    spawnTrain(route,'passenger',seed++);
+    _dateTrain(spawnTrain(route,'passenger',seed++),feat);
   }
   for(const feat of through){
     if((feat.properties.length_m||0)<FREIGHT_THROUGH_MIN_LEN) continue;
     const route=buildRailRoute(feat);
     if(!route||route.totalLen<200) continue;
-    spawnTrain(route,'freight',seed++);
+    _dateTrain(spawnTrain(route,'freight',seed++),feat);
   }
   for(const feat of sidingSwitchers){
     const route=buildRailRoute(feat);
     if(!route||route.totalLen<40) continue;
-    spawnTrain(route,'switcher',seed++);
+    _dateTrain(spawnTrain(route,'switcher',seed++),feat);
   }
 
   console.log(`Trains: ${trainConsists.filter(t=>t.kind==='passenger').length} passenger, `+
@@ -8936,7 +8982,7 @@ function initShanties(){
     const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates:[f.geometry.coordinates];
     for(const line of lines) for(let i=0;i<line.length-1;i++){
       const[ax,ay]=project(line[i][0],line[i][1]),[cx,cy]=project(line[i+1][0],line[i+1][1]);
-      segs.push({x1:ax,z1:-ay,x2:cx,z2:-cy,yard:f.properties.rail_class!=='through'});
+      segs.push({x1:ax,z1:-ay,x2:cx,z2:-cy,yard:f.properties.rail_class!=='through',born:_isoYearFrac(f.properties.born,NO_BORN)});
     }
   }
   const inBox=(x,z)=>x>=bx0&&x<=bx1&&z>=bz0&&z<=bz1;
@@ -8956,7 +9002,7 @@ function initShanties(){
     if(segs.some(q=>dSeg(x,z,q)<SH.trackClearM)) continue;
     if(riverRings.some(r=>pointInPolygon(x,z,r))) continue;
     if(huts.some(h=>Math.hypot(h.x-x,h.z-z)<SH.minSpacingM)) continue;
-    let born=SH.years[0]+rnd()*(SH.years[1]-SH.years[0]);
+    let born=Math.max(s.born>0?s.born+0.5:0,SH.years[0]+rnd()*(SH.years[1]-SH.years[0]));   // not before the track beside it
     let died=born+SH.lifeYears[0]+rnd()*(SH.lifeYears[1]-SH.lifeYears[0]);
     let ok=true;
     for(const b of spots){
@@ -9279,11 +9325,11 @@ function tickTrains(dt){
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
   // leaving rails visible in every era. The 1880/1906 layers set a matching
   // representative date, so date-gating stays correct for them too.
-  const viewYear=(window.currentViewDate||new Date()).getFullYear();
-  const visible=viewYear>=RAIL_MIN_YEAR;
-  if(railBedMesh) railBedMesh.visible=visible;
-  if(railRailLineMesh) railRailLineMesh.visible=visible;
+  const viewDate=window.currentViewDate||new Date(), viewYear=viewDate.getFullYear(), viewYf=yearFrac(viewDate);
+  if(railBedMesh) railBedMesh.visible=true;           // each stretch is dated in the shader (aLifespan)
+  if(railRailLineMesh) railRailLineMesh.visible=true;
   for(const train of trainConsists){
+    const visible=viewYf>=(train.born??-1e9)&&viewYf<(train.died??1e9);   // its line exists
     train.loco.visible=visible;
     const nShow=train.carsFor?train.carsFor(viewYear):train.cars.length;   // trains grow longer over the years
     for(let i=0;i<train.cars.length;i++) train.cars[i].visible=visible&&i<nShow;
@@ -10370,7 +10416,7 @@ async function liveLoad(fileList){
     if(kind==='water'){await buildWater(gj);}
     else if(kind==='building'){await prepareBuildings(gj);const n=await buildCity(gj);totalBuildings+=n;buildLayerBar();}
     else if(kind==='road'){roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true;}
-    else if(kind==='rail'){railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true;}
+    else if(kind==='rail'){await applyRailHistory(gj);railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true;}
     else console.warn(`Unrecognised GeoJSON: ${f.name} — no matching properties found in first 10 features`);
     updateStatBar();
   }
@@ -10399,7 +10445,7 @@ async function loadFiles(fileList){
   let n=0;
   if(buildingGJ){await prepareBuildings(buildingGJ);n=await buildCity(buildingGJ);}
   if(roadGJ){roadGeojson=roadGJ;await buildRoads(roadGJ);initStreetcars(roadGJ);initCarts(roadGJ);}
-  if(railGJ){railGeojson=railGJ;buildRailTracks(railGJ);initTrains(railGJ);railsLoaded=true;}
+  if(railGJ){await applyRailHistory(railGJ);railGeojson=railGJ;buildRailTracks(railGJ);initTrains(railGJ);railsLoaded=true;}
   if(waterGJ)await buildWater(waterGJ);
   buildRiverTrees();   // needs buildings, roads, rails and water all loaded
   initSteamboats();
@@ -10525,7 +10571,7 @@ renderer.render(scene,camera);
       const n=await buildCity(now);totalBuildings+=n;
     }
     else if(kind==='road')   { roadGeojson=gj;window.roadGeojson=gj;await buildRoads(gj);initStreetcars(gj);initCarts(gj);roadsLoaded=true; }
-    else if(kind==='rail')   { railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
+    else if(kind==='rail')   { await applyRailHistory(gj);railGeojson=gj;window.railGeojson=gj;buildRailTracks(gj);initTrains(gj);railsLoaded=true; }
   }
 
   buildRiverTrees();   // needs buildings, roads, rails and water all loaded

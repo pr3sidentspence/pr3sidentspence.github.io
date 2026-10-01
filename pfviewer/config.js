@@ -42,6 +42,8 @@ export const CONFIG = {
     facadeConfig: './data/facades.json',
     // Per-building phase overrides (storey additions, fires…) keyed by uid — see applyBuildingHistory
     buildingHistory: './data/building_history.json',
+    // Born/died per rail feature (tools/date_rails.py) — rails and trains appear when their line was built
+    railHistory: './data/rail_history.json',
     facadeImageDir: './images/',
     // Building-material stems that get an auto-loaded bump/texture map
     // (looked for at `./data/bump_<stem>.png`).
