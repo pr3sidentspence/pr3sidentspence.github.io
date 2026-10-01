@@ -65,7 +65,8 @@ canvas{display:block;position:fixed;inset:0;}
 #walk-btn.active{background:rgba(200,160,90,0.3);}
 #touch-overlay{display:none;position:fixed;inset:0;z-index:20;touch-action:none;}
 /* UI panels sit above the walk-mode touch overlay so they stay tappable on phones */
-#date-control,#tod-control,#flood-control,#layer-bar,#minimap-btn,#minimap-wrap,#info-panel,#legend{z-index:24 !important;}
+#date-control,#tod-control,#flood-control,#layer-bar,#minimap-btn,#minimap-wrap,#info-panel{z-index:24 !important;}
+body.fps-touch #legend{display:none !important;}   /* would cover the walk/sprint/AR buttons */
 #joy-pad{position:fixed;bottom:32px;left:32px;width:100px;height:100px;
   border-radius:50%;background:rgba(9,8,10,0.55);border:1.5px solid #3a2810;
   pointer-events:none;}
@@ -594,7 +595,8 @@ const bankDirtUniforms={
   uBankDirtStrength:{value:1},
 };
 groundMat.onBeforeCompile=shader=>{
-  Object.assign(shader.uniforms,bankDirtUniforms,groundCoverUniforms);
+  Object.assign(shader.uniforms,bankDirtUniforms,groundCoverUniforms,creekUniforms);
+  if(!creekUniforms.uCreekTex.value){ const t=new THREE.DataTexture(new Uint8Array([0]),1,1,THREE.RedFormat); t.needsUpdate=true; creekUniforms.uCreekTex.value=t; }
   shader.uniforms.uGcYear=buildingYearUniform;   // shared with the building born/died discard (declared later in the module, so bound here)
   shader.vertexShader='varying vec3 vBankWorld;\n'+shader.vertexShader
     .replace('#include <project_vertex>','#include <project_vertex>\n  vBankWorld=(modelMatrix*vec4(transformed,1.0)).xyz;');
@@ -603,6 +605,9 @@ uniform float uBankDirtTop,uBankDirtBlend,uBankDirtJitter,uBankDirtStrength;
 uniform vec3 uGcGrassAlt,uGcGrassDry,uGcYardDirt,uGcCoreDirt;
 uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear,uGcGreen;
 uniform sampler2D uGcTex;
+uniform sampler2D uCreekTex;
+uniform vec4 uCreekBox;
+uniform float uCreekOn;
 uniform vec2 uGcMin,uGcSize;
 varying vec3 vBankWorld;
 float gcHash(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
@@ -610,6 +615,8 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
   return mix(mix(gcHash(i),gcHash(i+vec2(1,0)),u.x),mix(gcHash(i+vec2(0,1)),gcHash(i+vec2(1,1)),u.x),u.y);}
 `+shader.fragmentShader
     .replace('#include <color_fragment>',`#include <color_fragment>
+  if(uCreekOn>0.5){ vec2 cuv=(vBankWorld.xz-uCreekBox.xy)/(uCreekBox.zw-uCreekBox.xy);   // Brown's Creek valley shows through
+    if(cuv.x>0.&&cuv.y>0.&&cuv.x<1.&&cuv.y<1.&&texture2D(uCreekTex,cuv).r>0.5) discard; }
   {
     // ── Summer ground cover (see CONFIG.terrain.groundCover) ──
     vec2 wp=vBankWorld.xz;
@@ -785,43 +792,63 @@ function flattenDEM(h, S, cellM, protect=null){
 }
 
 // ── Brown's Creek valley (CONFIG.terrain.creek) ─────────────────────
-// The creek was filled in long ago, so the LiDAR is flat where it ran.
-// Carve a shallow valley into the terrain mesh along its line (cosine
-// profile: `depth` at the centre line easing to 0 at `halfWidth`), shown
-// while the creek exists; today's ground comes back after its died date
-// (swapped in tickCreekTerrain). Once per load, whichever layer has it.
-let creekCarve=null;   // {idx, carved, today, born, died, state}
+// The creek was filled in long ago, so the LiDAR is flat where it ran, and
+// the terrain mesh (20–40 m vertex spacing) is far too coarse to carve a
+// creek into. Instead: a fine strip mesh along the creek (every ~4 m, 13
+// samples across) whose height follows the ground minus a cosine valley
+// profile, and the ground shader cuts the terrain away over the inner part
+// of the corridor (mask texture) so the valley shows through. Both only
+// while the creek exists (born..died). The water ribbon and mosquito
+// anchors sit on the valley floor (creekFloorDrop).
+const creekUniforms={uCreekTex:{value:null},uCreekBox:{value:new THREE.Vector4(0,0,1,1)},uCreekOn:{value:0}};
+let creekValley=null;   // {mesh, born, died}
+function creekFloorDrop(){ return creekValley?CONFIG.terrain.creek.depth:0; }
 function carveCreekTerrain(lines,born,died){
-  const C=CONFIG.terrain.creek; if(!C||creekCarve||!_demLoaded) return;
-  const segs=[];
-  for(const line of lines) for(let i=0;i<line.length-1;i++){
-    const[a1,b1]=project(line[i][0],line[i][1]),[a2,b2]=project(line[i+1][0],line[i+1][1]);
-    segs.push([a1,-b1,a2,-b2]);
+  const C=CONFIG.terrain.creek; if(!C||creekValley||!_demLoaded) return;
+  const W=C.halfWidth, D=C.depth, step=C.stepM??4, NA=12, pos=[], idx=[], life=[], build=[];
+  const prof=o=>D*0.5*(1+Math.cos(Math.PI*Math.min(1,Math.abs(o)/W)));
+  const mpts=[];   // mask samples (world)
+  for(const line of lines){
+    const P=line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];});
+    // resample the polyline every `step` m
+    const R=[P[0]];
+    for(let i=1;i<P.length;i++){ const[a,b]=P[i-1],[c,d]=P[i], L=Math.hypot(c-a,d-b), n=Math.max(1,Math.ceil(L/step)); for(let k=1;k<=n;k++) R.push([a+(c-a)*k/n,b+(d-b)*k/n]); }
+    const base=pos.length/3;
+    R.forEach((p,i)=>{
+      const q=R[Math.min(R.length-1,i+1)], r0=R[Math.max(0,i-1)], tx=q[0]-r0[0], tz=q[1]-r0[1], tl=Math.hypot(tx,tz)||1, nx=-tz/tl, nz=tx/tl;
+      for(let j=0;j<=NA;j++){
+        const o=-W+2*W*j/NA, x=p[0]+nx*o, z=p[1]+nz*o;
+        pos.push(x,sampleTerrainY(x,z)+0.04-prof(o),z); life.push(born,died); build.push(0,0,0,0);
+      }
+      mpts.push(p);
+      if(i>0){ const r=base+(i-1)*(NA+1), c=base+i*(NA+1);
+        for(let j=0;j<NA;j++) idx.push(r+j,c+j,r+j+1, r+j+1,c+j,c+j+1); }
+    });
   }
-  if(!segs.length) return;
-  const pos=terrainMesh.geometry.attributes.position, v=new THREE.Vector3(), R=C.halfWidth, idx=[], carved=[], today=[];
-  terrainMesh.updateMatrixWorld(true);
-  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[a,b,c,d]of segs){x0=Math.min(x0,a,c);x1=Math.max(x1,a,c);z0=Math.min(z0,b,d);z1=Math.max(z1,b,d);}
-  for(let i=0;i<pos.count;i++){
-    v.set(pos.getX(i),0,pos.getZ(i)); terrainMesh.localToWorld(v);
-    if(v.x<x0-R||v.x>x1+R||v.z<z0-R||v.z>z1+R) continue;
-    let dmin=1e9;
-    for(const[a,b,c,d]of segs){ const dx=c-a,dz=d-b,L=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((v.x-a)*dx+(v.z-b)*dz)/L)); dmin=Math.min(dmin,Math.hypot(v.x-a-dx*t,v.z-b-dz*t)); }
-    if(dmin>=R) continue;
-    const y=pos.getY(i), dy=C.depth*0.5*(1+Math.cos(Math.PI*dmin/R));
-    idx.push(i); today.push(y); carved.push(y-dy); pos.setY(i,y-dy);
-  }
-  pos.needsUpdate=true; terrainMesh.geometry.computeVertexNormals();
-  creekCarve={idx,carved:Float32Array.from(carved),today:Float32Array.from(today),born,died,state:'carved'};
-  console.log(`🏞 Brown's Creek valley: ${idx.length} terrain vertices lowered (≤ ${C.depth} m)`);
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('aLifespan',new THREE.Float32BufferAttribute(life,2));
+  g.setAttribute('aBuild',new THREE.Float32BufferAttribute(build,4));
+  g.setIndex(idx); g.computeVertexNormals();
+  const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:CONFIG.scene.ground.summerColor,side:THREE.DoubleSide}));
+  const mesh=new THREE.Mesh(g,mat); mesh.receiveShadow=true; scene.add(mesh);
+  // Terrain cut mask: inner `cutShare` of the corridor
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z]of mpts){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+  const pad=W+4; x0-=pad;z0-=pad;x1+=pad;z1+=pad;
+  const c=2, MW=Math.ceil((x1-x0)/c), MH=Math.ceil((z1-z0)/c), data=new Uint8Array(MW*MH), rr=Math.ceil(W*(C.cutShare??0.8)/c);
+  for(const[x,z]of mpts){ const gx=Math.floor((x-x0)/c), gz=Math.floor((z-z0)/c);
+    for(let j=-rr;j<=rr;j++) for(let i=-rr;i<=rr;i++){ if(i*i+j*j>rr*rr) continue; const X=gx+i,Z=gz+j; if(X>=0&&Z>=0&&X<MW&&Z<MH) data[Z*MW+X]=255; } }
+  const tex=new THREE.DataTexture(data,MW,MH,THREE.RedFormat); tex.magFilter=tex.minFilter=THREE.LinearFilter; tex.needsUpdate=true;
+  creekUniforms.uCreekTex.value=tex; creekUniforms.uCreekBox.value.set(x0,z0,x1,z1);
+  creekValley={mesh,born,died};
+  console.log(`🏞 Brown's Creek valley: ${pos.length/3} vertices, ${idx.length/3} triangles (≤ ${D} m deep)`);
 }
+window._debugCreek=()=>creekValley?{on:creekUniforms.uCreekOn.value,verts:creekValley.mesh.geometry.attributes.position.count,box:creekUniforms.uCreekBox.value.toArray().map(v=>+v.toFixed(0))}:null;
 function tickCreekTerrain(){
-  if(!creekCarve) return;
-  const yr=yearFrac(currentViewDate), want=yr>=creekCarve.born&&yr<creekCarve.died?'carved':'today';
-  if(want===creekCarve.state) return;
-  const W=creekCarve, arr=W[want], pos=terrainMesh.geometry.attributes.position;
-  for(let k=0;k<W.idx.length;k++) pos.setY(W.idx[k],arr[k]);
-  pos.needsUpdate=true; terrainMesh.geometry.computeVertexNormals(); W.state=want;
+  if(!creekValley) return;
+  const yr=yearFrac(currentViewDate);
+  creekUniforms.uCreekOn.value=yr>=creekValley.born&&yr<creekValley.died?1:0;
+  if(groundMatRef) creekValley.mesh.material.color.copy(groundMatRef.color);   // same seasonal ground colour
 }
 
 // ── The oxbow east of the Forks (CONFIG.terrain.oxbow) ──────────────
@@ -3600,8 +3627,8 @@ async function buildCity(geojson){
           const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
           if(len<0.3) continue;
           const px=(-dz/len)*hw, pz=(dx/len)*hw;
-          const y1=sampleTerrainY(x1,z1)+0.12;
-          const y2=sampleTerrainY(x2,z2)+0.12;
+          const y1=sampleTerrainY(x1,z1)+0.12-creekFloorDrop();   // on the valley floor
+          const y2=sampleTerrainY(x2,z2)+0.12-creekFloorDrop();
           for(_acc+=len;_acc>=20;_acc-=20){ const f=1-(_acc-20)/len; mosquitoAnchors.push({x:x1+dx*f,y:y1,z:z1+dz*f,born:_cb,died:_cd,group}); }
           creekRibbonVerts.push(
             x1+px,y1,z1+pz,  x2+px,y2,z2+pz,  x1-px,y1,z1-pz,
@@ -5738,12 +5765,12 @@ function setKnobPos(dx,dy){
   joyKnob.style.transform=`translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px))`;
 }
 function showTouchControls(){
-  walkBtn.classList.add('active');
+  walkBtn.classList.add('active'); document.body.classList.add('fps-touch');
   touchOverlay.style.display='block';
   document.getElementById('orbit-zoom').style.display='none';
 }
 function hideTouchControls(){
-  walkBtn.classList.remove('active');
+  walkBtn.classList.remove('active'); document.body.classList.remove('fps-touch');
   touchOverlay.style.display='none';
   joyVec.x=0;joyVec.y=0;
   joyTouchId=null;lookTouchId=null;
