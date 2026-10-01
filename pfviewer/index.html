@@ -475,6 +475,7 @@ function viewDayOfYear(d){
 let stormList=[];
 const _skyBase={sky:0,fog:0,sunInt:1,ambInt:1};
 let _nightness=0;   // 0 day … 1 night, set by setTimeOfDay (street lights)
+const _stormWind={x:0,z:0,k:0};   // m/s, set by tickWeather — smoke puffs blow with it
 function seasonState(d){
   const doy=viewDayOfYear(d), S={doy};
   for(const ch in _seasonKeys) S[ch]=Math.max(0,Math.min(1,_seasonChannel(_seasonKeys[ch],doy)));
@@ -832,7 +833,19 @@ function detectOxbow(h,S,cellM){
     const i=z*S+x, r=h[i]-base[i];
     if(near[i]<1e-6&&r<O.relBelowM){ mask[i]=1; rel[i]=r; cells.push(i); }
   }
-  const bs2=cells.map(i=>base[i]).sort((a,b)=>a-b), rim=bs2.length?bs2[Math.floor(bs2.length*0.5)]:0;
+  // Rim = where a flood gets in: the low end of the ground in a ring just
+  // outside the oxbow (not the river banks). Was the average surrounding
+  // level, which kept the oxbow masked dry while lower ground around it flooded.
+  const ringR=Math.max(2,Math.round(40/cellM)), ring=[];
+  const seen=new Uint8Array(h.length);
+  for(const i of cells){ const cx=i%S, cz=Math.floor(i/S);
+    for(let dz=-ringR;dz<=ringR;dz++) for(let dx=-ringR;dx<=ringR;dx++){
+      const x=cx+dx, z=cz+dz; if(x<0||z<0||x>=S||z>=S) continue;
+      const j=z*S+x; if(seen[j]||mask[j]) continue; seen[j]=1;
+      if(near[j]<1e-6&&h[j]>minY) ring.push(h[j]);
+    } }
+  ring.sort((a,b)=>a-b);
+  const rim=ring.length?ring[Math.floor(ring.length*0.05)]:0;
   console.log(`🌾 Oxbow: ${cells.length} cells (${(cells.length*cellM*cellM/10000).toFixed(1)} ha), rim ≈ ${rim.toFixed(2)}`);
   return cells.length?(oxbow={mask,rel,cells,S,cellM,rim}):null;
 }
@@ -3264,7 +3277,7 @@ async function buildCity(geojson){
       baseY:_minY,wallTop:_minY+height,topY:_maxY,outer:_fOuter,floors,mat});   // edges computed only if it's ever under construction
     if(_fOuter&&_bi.build[3]<0){
       const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
-      fireRecords.push({group,died:_bi.died,dur:-_bi.build[3],x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,radius:Math.sqrt(_fArea)/2});
+      fireRecords.push({group,died:_bi.died,dur:-_bi.build[3],x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,radius:Math.sqrt(_fArea)/2,name:props.name});
     }
     // Fires the building survived (props.fires, e.g. from building_history
     // `set`): flames, smoke and engines only — no charring, no collapse.
@@ -3273,7 +3286,7 @@ async function buildCity(geojson){
       const _e=wallEdgesOf(_fOuter); let _cx=0,_cz=0; for(const e of _e){_cx+=e.ax;_cz+=e.az;}
       const days=fe.days??3, start=_isoYearFrac(fe.date,0);
       fireRecords.push({group,died:start+days/365,dur:days/365,x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,
-        radius:Math.sqrt(_fArea)/2*(fe.severity??0.8),survive:true});
+        radius:Math.sqrt(_fArea)/2*(fe.severity??0.8),survive:true,name:props.name});
     }
     if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
   }
@@ -7468,7 +7481,7 @@ function tickChimneySmoke(dt){
     const sCfg=CHIM.smoke[slot.type];
     const f=slot.age/slot.life;
     if(f>=1){slot.active=false;slot.spr.visible=false;continue;}
-    slot.spr.position.x+=slot.vel.x*dt;
+    slot.spr.position.x+=(slot.vel.x+_stormWind.x)*dt; slot.spr.position.z+=_stormWind.z*dt; slot.spr.position.y-=slot.vel.y*dt*0.65*_stormWind.k;   // storm: blown flat
     slot.spr.position.y+=slot.vel.y*dt;
     slot.spr.position.z+=slot.vel.z*dt;
     const sc=sCfg.scaleStart+(sCfg.scaleEnd-sCfg.scaleStart)*f;
@@ -7595,7 +7608,7 @@ function tickSmoke(train,dt,stackWorldPos,moving){
     slot.age+=dt;
     const f=slot.age/slot.life;
     if(f>=1){slot.active=false;slot.spr.visible=false;continue;}
-    slot.spr.position.x+=slot.vel.x*dt;
+    slot.spr.position.x+=(slot.vel.x+_stormWind.x)*dt; slot.spr.position.z+=_stormWind.z*dt; slot.spr.position.y-=slot.vel.y*dt*0.65*_stormWind.k;   // storm: blown flat
     slot.spr.position.y+=slot.vel.y*dt;
     slot.spr.position.z+=slot.vel.z*dt;
     const sc=1.0+f*3.2;
@@ -8349,13 +8362,14 @@ function _buildParade(p){
   }
   // Crowd: both sidewalks, 1–3 deep, anywhere along the route
   const civ=[0x2A2622,0x3A3440,0x5A4A3A,0x6E5A48,0x1E2430,0x7A6A58,0x4A3A2E,0x8A7A6A,0x3E4A3A,0x6A3A34];
-  const crowdAnchors=[];
+  const crowdAnchors=[], crowdM=[];
   for(let c=0;c<nC;c++){
     const s=sampleRoute(route,rnd()), side=rnd()<0.5?-1:1, depth=P.halfWidth+rnd()*2.6;
     const x=s.x+s.px*side*depth, z=s.z+s.pz*side*depth;
     _pdQ.setFromAxisAngle(_pdU,Math.atan2(-s.px*side,-s.pz*side)+(rnd()-0.5)*0.8);   // facing the street
     _pdM.compose(_pdP.set(x,sampleTerrainY(x,z)+0.18,z),_pdQ,_pdS.set(1,0.9+rnd()*0.2,1));
-    bodies.setMatrixAt(nM+c,_pdM); heads.setMatrixAt(nM+c,_pdM);
+    crowdM.push({m:_pdM.clone(),delay:rnd()*(P.fadeIn?.crowdSeconds??4)});
+    _pdM.makeScale(0,0,0); bodies.setMatrixAt(nM+c,_pdM); heads.setMatrixAt(nM+c,_pdM);   // gathers over the first seconds (tickParades)
     bodies.setColorAt(nM+c,_pdC.setHex(civ[Math.floor(rnd()*civ.length)]));
     if(c%80===0) crowdAnchors.push({id:'crowd'+c,x,y:1.5,z});
   }
@@ -8375,13 +8389,14 @@ function _buildParade(p){
   const decoFlags=new THREE.InstancedMesh(new THREE.PlaneGeometry(1.8,1.1).translate(0.92,D.poleHeight-0.7,0),new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}),nPairs*2);
   const PN=14, pennants=new THREE.InstancedMesh(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.35,0,0),new THREE.Vector3(0.35,0,0),new THREE.Vector3(0,-0.75,0)]).computeVertexNormals(),
     new THREE.MeshLambertMaterial({color:0xffffff,side:THREE.DoubleSide}),nPairs*PN);
-  let pi=0,fi=0;
+  let pi=0,fi=0; const decoM=[];
+  { const z=new THREE.Matrix4().makeScale(0,0,0); for(let i=0;i<nPairs*2;i++){poles.setMatrixAt(i,z);decoFlags.setMatrixAt(i,z);} for(let i=0;i<nPairs*PN;i++) pennants.setMatrixAt(i,z); }
   for(let k=0;k<nPairs;k++){
     const s=sampleRoute(route,(k+0.5)*D.spacing/route.totalLen), ends=[];
     for(const side of[-1,1]){
       const x=s.x+s.px*side*(P.halfWidth-0.5), z=s.z+s.pz*side*(P.halfWidth-0.5), y=sampleTerrainY(x,z)+0.18;
       _pdQ.setFromAxisAngle(_pdU,s.yaw+(side>0?Math.PI:0));
-      _pdM.compose(_pdP.set(x,y,z),_pdQ,_pdS.set(1,1,1)); poles.setMatrixAt(fi,_pdM); decoFlags.setMatrixAt(fi,_pdM);
+      _pdM.compose(_pdP.set(x,y,z),_pdQ,_pdS.set(1,1,1)); decoM.push({mesh:[poles,decoFlags],i:fi,m:_pdM.clone(),delay:k*(P.fadeIn?.flagStepSeconds??0.06)});
       decoFlags.setColorAt(fi,_pdC.setHex(D.colors[(k+fi)%D.colors.length])); fi++;
       ends.push([x,y+D.poleHeight-0.3,z]);
     }
@@ -8390,7 +8405,7 @@ function _buildParade(p){
       const f=(j+0.5)/PN, sag=1.6*4*f*(1-f);
       _pdQ.setFromAxisAngle(_pdU,Math.atan2(b[0]-a[0],b[2]-a[2])-Math.PI/2);
       _pdM.compose(_pdP.set(a[0]+(b[0]-a[0])*f,a[1]+(b[1]-a[1])*f-sag,a[2]+(b[2]-a[2])*f),_pdQ,_pdS.set(1,1,1));
-      pennants.setMatrixAt(pi,_pdM); pennants.setColorAt(pi,_pdC.setHex(D.colors[j%D.colors.length])); pi++;
+      decoM.push({mesh:[pennants],i:pi,m:_pdM.clone(),delay:k*(P.fadeIn?.flagStepSeconds??0.06)+0.4}); pennants.setColorAt(pi,_pdC.setHex(D.colors[j%D.colors.length])); pi++;
     }
   }
   for(const m of[poles,decoFlags,pennants]){ m.userData.ownGeo=true; m.frustumCulled=false; m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true; }
@@ -8398,11 +8413,34 @@ function _buildParade(p){
   bodies.instanceColor.needsUpdate=true;
   for(const m of[bodies,heads,brass]){ m.frustumCulled=false; m.castShadow=true; }
   for(const m of meshes) scene.add(m);
-  parade={p,route,meshes,marchers,files,bandRanks,flags,crowdAnchors,t:rnd()*route.totalLen,nM,head:null};
+  parade={p,route,meshes,marchers,files,bandRanks,flags,crowdAnchors,t:rnd()*route.totalLen,nM,head:null,age:0,crowdM,decoM,fadeDone:false,
+    segs:route.pts.slice(1).map((b,i)=>[route.pts[i],b])};
 }
 function mulberry(seedStr){
   let a=0; for(const ch of seedStr) a=(a*31+ch.charCodeAt(0))|0;
   return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;};
+}
+// A pulsing column of light over a spot for a few seconds — "look here"
+// for a parade or fire that has just started (CONFIG.cues).
+const _beacons=[];
+function showBeacon(x,z,color){
+  const C=CONFIG.cues??{}; if(C.beacon===false) return;
+  const H=C.beaconHeight??160, g=new THREE.CylinderGeometry(C.beaconRadius??7,C.beaconRadius??7,H,20,1,true).translate(0,H/2,0);
+  const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({color,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,fog:false}));
+  m.position.set(x,sampleTerrainY(x,z),z); m.renderOrder=6; m.frustumCulled=false; scene.add(m);
+  _beacons.push({m,t:0,T:C.beaconSeconds??6});
+}
+window._debugCue=()=>({beacons:_beacons.length,fade:parade?.fadeDone,age:parade?+parade.age.toFixed(1):null,carsHiddenNearRoute:parade?streetcarMeshes.filter(c=>!c.mesh.visible).length+'/'+streetcarMeshes.length:null});
+function tickBeacons(dt){
+  for(let i=_beacons.length-1;i>=0;i--){
+    const b=_beacons[i]; b.t+=dt;
+    const f=b.t/b.T; if(f>=1){ scene.remove(b.m); b.m.geometry.dispose(); b.m.material.dispose(); _beacons.splice(i,1); continue; }
+    b.m.material.opacity=(CONFIG.cues?.beaconOpacity??0.35)*(0.6+0.4*Math.sin(b.t*5))*Math.min(1,b.t*3)*(1-f*f);
+  }
+}
+const _cuedFires=new Set();
+function tickFireCues(){
+  for(const s of activeFireSpots) if(s.flames>0.05&&!_cuedFires.has(s.f)){ _cuedFires.add(s.f); showBeacon(s.x,s.z,0xFF6A20); }
 }
 function tickParades(dt){
   const fast=effectsSuppressed();
@@ -8410,13 +8448,27 @@ function tickParades(dt){
   if(!p){ _clearParade(); return; }
   if(parade?.p!==p){ _clearParade(); _buildParade(p); }
   const P=CONFIG.parades, R=parade.route, [bodies,heads,brass]=parade.meshes;
+  parade.age+=dt;
+  if(!parade.fadeDone){
+    const age=parade.age; let pending=false;
+    parade.crowdM.forEach((c,i)=>{ if(age<c.delay){pending=true;return;} const k=Math.min(1,(age-c.delay)/0.35); if(k<1) pending=true;
+      _pdM.copy(c.m); if(k<1){ _pdM.decompose(_pdP,_pdQ,_pdS); _pdS.multiplyScalar(k); _pdM.compose(_pdP,_pdQ,_pdS); }
+      bodies.setMatrixAt(parade.nM+i,_pdM); heads.setMatrixAt(parade.nM+i,_pdM); });
+    for(const d of parade.decoM){ if(age<d.delay){pending=true;continue;} for(const m of d.mesh){ m.setMatrixAt(d.i,d.m); m.instanceMatrix.needsUpdate=true; } }
+    parade.fadeDone=!pending;
+    if(!parade.beacon&&parade.head){ parade.beacon=true; showBeacon(parade.head.x,parade.head.z,0xFFD27A); }
+  }
+  // Streetcars and carts keep off the route while the parade is on
+  const clear2=(P.trafficClearM??25)**2, near=(x,z)=>{ for(const[a,b]of parade.segs){ const dx=b.x-a.x,dz=b.z-a.z,L=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/L)); if((x-a.x-dx*t)**2+(z-a.z-dz*t)**2<clear2) return true; } return false; };
+  for(const c of streetcarMeshes) if(c.mesh.visible&&near(c.mesh.position.x,c.mesh.position.z)) c.mesh.visible=false;
+  for(const c of cartMeshes) if(c.mesh.visible&&near(c.mesh.position.x,c.mesh.position.z)) c.mesh.visible=false;
   const colLen=(parade.marchers.length/parade.files)*1.4+8;
   parade.t=(parade.t+P.speed*dt)%(R.totalLen+colLen);
   const stepPh=parade.t/0.7*Math.PI;
   let bi=0;
   for(let i=0;i<parade.marchers.length;i++){
     const m=parade.marchers[i], d=parade.t-8-m.r*1.4;
-    if(d<0||d>R.totalLen){ _pdM.makeScale(0,0,0); bodies.setMatrixAt(i,_pdM); heads.setMatrixAt(i,_pdM); if(m.r<parade.bandRanks) brass.setMatrixAt(bi++,_pdM); continue; }
+    if(d<0||d>R.totalLen||parade.age<m.r*(P.fadeIn?.rankStepSeconds??0.04)){ _pdM.makeScale(0,0,0); bodies.setMatrixAt(i,_pdM); heads.setMatrixAt(i,_pdM); if(m.r<parade.bandRanks) brass.setMatrixAt(bi++,_pdM); continue; }
     const s=sampleRoute(R,d/R.totalLen), lat=(m.f-(parade.files-1)/2)*1.2;
     const x=s.x+s.px*lat, z=s.z+s.pz*lat;
     _pdQ.setFromAxisAngle(_pdU,s.yaw);
@@ -8949,6 +9001,8 @@ function startLoop(){
     tickFires(dt);
     tickFireEngines(dt);
     tickParades(dt);
+    tickFireCues();
+    tickBeacons(dt);
     tickMosquitoes(dt);
     tickUtilityPoles();
     tickOxbow();
@@ -9279,16 +9333,20 @@ function _stormCaption(st){
   if(!el){
     const dc=document.getElementById('date-control'); if(!dc) return;
     el=document.createElement('div'); el.id='storm-caption';
-    el.addEventListener('click',()=>{   // parade caption: fly to the head of the column
-      if(!parade?.head||fpsMode) return;
-      const h=parade.head; orbit.target.set(h.x,0,h.z); camera.position.set(h.x+120,110,h.z+140); orbit.update();
+    el.addEventListener('click',()=>{   // parade / fire caption: fly there
+      if(fpsMode) return;
+      const h=parade?.head??(el._fire?{x:el._fire.x,z:el._fire.z}:null); if(!h) return;
+      orbit.target.set(h.x,0,h.z); camera.position.set(h.x+120,110,h.z+140); orbit.update();
     });
     el.style.cssText='font-size:0.7rem;color:#9ab0c8;letter-spacing:0.04em;text-align:center;max-width:420px;pointer-events:auto;';
     dc.appendChild(el);
   }
   const pa=!st&&!effectsSuppressed()?paradeAt(currentViewDate):null;
-  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:pa?`🎖 Parade — ${pa.note} · click to go there`:'';
-  el.style.cursor=pa&&!st?'pointer':'default';
+  const fire=!st&&!pa&&!effectsSuppressed()?activeFireSpots.find(s=>s.flames>0.05):null;
+  el._fire=fire;
+  const txt=st?`${st.s.type==='blizzard'?'❄ Blizzard':'⛈ Thunderstorm'} — ${st.s.note}`:pa?`🎖 Parade — ${pa.note} · click to go there`
+           :fire?`🔥 Fire — ${fire.f.name||'a building'}${fire.f.survive?'':' (destroyed)'} · click to go there`:'';
+  el.style.cursor=(pa||fire)&&!st?'pointer':'default';
   if(el.textContent!==txt){ el.textContent=txt; el.style.display=txt?'block':'none'; }
 }
 function _buildBolt(){
@@ -9329,6 +9387,8 @@ function tickWeather(dt){
   _weatherActive=!!st;
   _weatherT+=dt;
   const W=blizzard?C.blizzard:C.thunderstorm, kk=Math.min(1,k*1.15);
+  { const l=Math.hypot(1,0.35), sp=(W.smokeWind??(blizzard?18:10))*k;   // same heading as the rain/snow
+    _stormWind.x=sp/l; _stormWind.z=sp*0.35/l; _stormWind.k=k; }
   // Sky, fog and light toward the storm
   _wc.a.setHex(_skyBase.sky).lerp(_wc.b.setHex(W.skyColor),kk*0.9);
   let flash=0;
@@ -9382,6 +9442,7 @@ function tickWeather(dt){
     _rainNoise.gain.setTargetAtTime(st&&!blizzard?C.thunderstorm.rainGain*k:0,now,0.5);
   }
   if(!st){   // storm over: hand the sky back to setTimeOfDay's clear values
+    _stormWind.x=_stormWind.z=_stormWind.k=0;
     scene.fog.density=CONFIG.scene.fog.density; hazeUniforms.uFogDensity.value=scene.fog.density;
     setTimeOfDay(currentTodFraction);
   }

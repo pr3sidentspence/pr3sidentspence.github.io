@@ -740,6 +740,8 @@ export const CONFIG = {
     halfWidth: 15,
     speed: 1.3,                 // m/s marching
     decor: { spacing: 30, poleHeight: 7, colors: [0xB02020, 0xF2F2F2, 0x1A3A8A] },   // flag poles + pennant strings along the route
+    fadeIn: { crowdSeconds: 4, flagStepSeconds: 0.06, rankStepSeconds: 0.04 },   // staggered arrival
+    trafficClearM: 25,         // streetcars/carts this close to the route are off the street during a parade
     list: [
       { date: '1885-07-15', to: '1885-07-17', route: 'mainFromCPR', marchers: 400, uniforms: [0x1E2E22, 0x9A2A22, 0x1A1C22], crowd: 1600,
         note: 'North West Field Force returns from the 1885 Resistance — the 17th: "the biggest day Winnipeg has ever seen"' },
@@ -789,6 +791,12 @@ export const CONFIG = {
     sag: 0.7, sagSegments: 4,
     color: 0x5A4A3A, wireColor: 0x1A1816,
   },
+
+  // ── Event cues ──────────────────────────────────────────────────────
+  // When a parade or a fire starts, a pulsing column of light rises over it
+  // for a few seconds so you can find it; the caption under the date bar
+  // names it — click it to fly there.
+  cues: { beacon: true, beaconHeight: 160, beaconRadius: 7, beaconSeconds: 6, beaconOpacity: 0.35 },
 
   // ── Fire engines ────────────────────────────────────────────────────
   // Run in along the nearest street when a building catches fire and park
