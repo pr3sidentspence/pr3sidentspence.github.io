@@ -803,32 +803,50 @@ function flattenDEM(h, S, cellM, protect=null){
 const creekUniforms={uCreekTex:{value:null},uCreekBox:{value:new THREE.Vector4(0,0,1,1)},uCreekOn:{value:0}};
 let creekValley=null;   // {meshes:[], cuts:[[x,z,r]], born, died, seen:Set, lastCol}
 function creekFloorDrop(){ return creekValley?CONFIG.terrain.creek.depth:0; }
-// Called once per creek feature (the creek is stored as several pieces):
-// each gets its own strip; all share one cut mask, rebuilt as pieces arrive.
+// Called once per creek feature (the creek is stored as several pieces).
+// Pieces are collected and ALL strips rebuilt each time from one valley
+// field: depth(x,z) = max over pieces of profile(distance to piece) × end
+// taper — so where pieces meet (the Y) they share one surface instead of
+// one piece's tapered end lying across the other's trench. Ends that touch
+// another piece aren't tapered.
 function carveCreekTerrain(lines,born,died){
   const C=CONFIG.terrain.creek; if(!C||!_demLoaded) return;
-  creekValley??={meshes:[],cuts:[],born,died,seen:new Set(),lastCol:-1};
+  creekValley??={meshes:[],pieces:[],born,died,seen:new Set(),lastCol:-1};
   const V=creekValley; V.born=Math.min(V.born,born); V.died=Math.max(V.died,died);
-  const W=C.halfWidth, D=C.depth, step=C.stepM??4, NA=12, taper=C.endTaperM??30;
-  const prof=o=>0.5*(1+Math.cos(Math.PI*Math.min(1,Math.abs(o)/W)));   // 0..1 across
   for(const line of lines){
     const k0=line[0].join(',')+'|'+line[line.length-1].join(',');
-    if(V.seen.has(k0)) continue; V.seen.add(k0);   // the 1880 layer repeats the same creek
-    const P=line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];});
-    const R=[P[0]]; let total=0;
-    for(let i=1;i<P.length;i++){ const[a,b]=P[i-1],[c,d]=P[i], L=Math.hypot(c-a,d-b), n=Math.max(1,Math.ceil(L/step)); for(let k=1;k<=n;k++) R.push([a+(c-a)*k/n,b+(d-b)*k/n]); total+=L; }
-    if(R.length<2) continue;
-    const along=[0]; for(let i=1;i<R.length;i++) along.push(along[i-1]+Math.hypot(R[i][0]-R[i-1][0],R[i][1]-R[i-1][1]));
+    if(V.seen.has(k0)||line.length<2) continue; V.seen.add(k0);   // the 1880 layer repeats the same creek
+    V.pieces.push(line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];}));
+  }
+  _rebuildCreekValley();
+}
+function _rebuildCreekValley(){
+  const C=CONFIG.terrain.creek, V=creekValley;
+  for(const m of V.meshes){ scene.remove(m); m.geometry.dispose(); m.material.dispose(); }
+  V.meshes=[];
+  const W=C.halfWidth, D=C.depth, step=C.stepM??3, NA=C.across??10, taper=C.endTaperM??25;
+  const segDist=(x,z,P)=>{ let best=1e9,bt=0,acc=0,len=0; for(let i=0;i<P.length-1;i++){ const[a,b]=P[i],[c,d]=P[i+1],dx=c-a,dz=d-b,L2=dx*dx+dz*dz||1,L=Math.sqrt(L2),t=Math.max(0,Math.min(1,((x-a)*dx+(z-b)*dz)/L2)),dd=Math.hypot(x-a-dx*t,z-b-dz*t); if(dd<best){best=dd;bt=acc+t*L;} acc+=L; } return{d:best,at:bt,len:acc}; };
+  // which ends are free (not touching another piece)?
+  const pieces=V.pieces.map((P,pi)=>{
+    const free=[P[0],P[P.length-1]].map(([x,z])=>!V.pieces.some((Q,qi)=>qi!==pi&&segDist(x,z,Q).d<W*0.6));
+    return{P,free};
+  });
+  const prof=o=>0.5*(1+Math.cos(Math.PI*Math.min(1,o/W)));
+  const field=(x,z)=>{ let w=0; for(const{P,free}of pieces){ const r=segDist(x,z,P); if(r.d>=W) continue;
+      let e=1; if(free[0]) e=Math.min(e,r.at/taper); if(free[1]) e=Math.min(e,(r.len-r.at)/taper); e=Math.max(0,Math.min(1,e)); e=e*e*(3-2*e);
+      w=Math.max(w,prof(r.d)*e); } return w; };
+  const cuts=[];
+  for(const{P}of pieces){
+    const R=[P[0]];
+    for(let i=1;i<P.length;i++){ const[a,b]=P[i-1],[c,d]=P[i], n=Math.max(1,Math.ceil(Math.hypot(c-a,d-b)/step)); for(let k=1;k<=n;k++) R.push([a+(c-a)*k/n,b+(d-b)*k/n]); }
     const pos=[], col=[], dirtW=[], idx=[], life=[], build=[];
     R.forEach((p,i)=>{
-      // ease the valley in/out over `taper` m at the ends (no abrupt ends, no holes)
-      const e=Math.min(1,Math.min(along[i],total-along[i])/taper), ee=e*e*(3-2*e);
       const q=R[Math.min(R.length-1,i+1)], r0=R[Math.max(0,i-1)], tx=q[0]-r0[0], tz=q[1]-r0[1], tl=Math.hypot(tx,tz)||1, nx=-tz/tl, nz=tx/tl;
       for(let j=0;j<=NA;j++){
-        const o=-W+2*W*j/NA, x=p[0]+nx*o, z=p[1]+nz*o, w=prof(o)*ee;
+        const o=-W+2*W*j/NA, x=p[0]+nx*o, z=p[1]+nz*o, w=field(x,z);
         pos.push(x,sampleTerrainY(x,z)+0.04-D*w,z); dirtW.push(w); col.push(1,1,1); life.push(V.born,V.died); build.push(0,0,0,0);
       }
-      if(ee>0.05) V.cuts.push([p[0],p[1],W*(C.cutShare??0.8)*ee]);
+      const wc=field(p[0],p[1]); if(wc>0.05) cuts.push([p[0],p[1],W*(C.cutShare??0.9)*Math.min(1,wc*1.2)]);
       if(i>0){ const r=(i-1)*(NA+1), c=i*(NA+1); for(let j=0;j<NA;j++) idx.push(r+j,c+j,r+j+1, r+j+1,c+j,c+j+1); }
     });
     const g=new THREE.BufferGeometry();
@@ -841,17 +859,17 @@ function carveCreekTerrain(lines,born,died){
     const mesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));
     mesh.receiveShadow=true; scene.add(mesh); V.meshes.push(mesh);
   }
-  // Rebuild the terrain cut mask from every piece's cut discs
-  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z,r]of V.cuts){x0=Math.min(x0,x-r);x1=Math.max(x1,x+r);z0=Math.min(z0,z-r);z1=Math.max(z1,z+r);}
-  if(!V.cuts.length) return;
+  // terrain cut mask
+  if(!cuts.length) return;
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z,r]of cuts){x0=Math.min(x0,x-r);x1=Math.max(x1,x+r);z0=Math.min(z0,z-r);z1=Math.max(z1,z+r);}
   x0-=4;z0-=4;x1+=4;z1+=4;
-  const c=2, MW=Math.ceil((x1-x0)/c), MH=Math.ceil((z1-z0)/c), data=new Uint8Array(MW*MH);
-  for(const[x,z,r]of V.cuts){ const gx=Math.floor((x-x0)/c), gz=Math.floor((z-z0)/c), rr=Math.ceil(r/c);
+  const c=1.5, MW=Math.ceil((x1-x0)/c), MH=Math.ceil((z1-z0)/c), data=new Uint8Array(MW*MH);
+  for(const[x,z,r]of cuts){ const gx=Math.floor((x-x0)/c), gz=Math.floor((z-z0)/c), rr=Math.ceil(r/c);
     for(let j=-rr;j<=rr;j++) for(let i=-rr;i<=rr;i++){ if(i*i+j*j>rr*rr) continue; const X=gx+i,Z=gz+j; if(X>=0&&Z>=0&&X<MW&&Z<MH) data[Z*MW+X]=255; } }
   const tex=new THREE.DataTexture(data,MW,MH,THREE.RedFormat); tex.magFilter=tex.minFilter=THREE.LinearFilter; tex.needsUpdate=true;
   creekUniforms.uCreekTex.value?.dispose?.(); creekUniforms.uCreekTex.value=tex; creekUniforms.uCreekBox.value.set(x0,z0,x1,z1);
   V.lastCol=-1;
-  console.log(`🏞 Brown's Creek valley: ${V.meshes.length} piece(s), ${V.cuts.length} cut samples (≤ ${D} m deep)`);
+  console.log(`🏞 Brown's Creek valley: ${pieces.length} piece(s) (${pieces.map(p=>p.free.map(f=>f?'free':'joined').join('/')).join(', ')}), ≤ ${D} m deep`);
 }
 window._debugCreek=()=>creekValley?{on:creekUniforms.uCreekOn.value,pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
 // Per frame: valley on/off with the creek's dates; vertex colours = the
