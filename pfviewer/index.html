@@ -64,6 +64,8 @@ canvas{display:block;position:fixed;inset:0;}
   user-select:none;}
 #walk-btn.active{background:rgba(200,160,90,0.3);}
 #touch-overlay{display:none;position:fixed;inset:0;z-index:20;touch-action:none;}
+/* UI panels sit above the walk-mode touch overlay so they stay tappable on phones */
+#date-control,#tod-control,#flood-control,#layer-bar,#minimap-btn,#minimap-wrap,#info-panel,#legend{z-index:24 !important;}
 #joy-pad{position:fixed;bottom:32px;left:32px;width:100px;height:100px;
   border-radius:50%;background:rgba(9,8,10,0.55);border:1.5px solid #3a2810;
   pointer-events:none;}
@@ -3066,7 +3068,7 @@ async function buildCity(geojson){
       const nm=(props.name||'').toLowerCase();
       const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
-                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
+                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks
       const isElevator=nm.includes('elevator');
       const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
       const noWindows=isWall||isElevator||isLumberYard||isWalkway;
@@ -3074,6 +3076,18 @@ async function buildCity(geojson){
       // No windows on outbuildings (tiny footprints, one-storey industrial sheds) —
       // hundreds of thousands of panes nobody can see
       const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);
+      // Churches: one row of tall narrow (lancet) windows along each free wall
+      if(!isPlatform&&isChurch&&!noWindows&&!isBridge&&floors>0.5&&CONFIG.windows.church!==false){
+        const CW=CONFIG.windows.church??{}, sp=CW.spacing??4, ww=CW.width??1.0, sill=CW.sill??1.6;
+        const wh=Math.max(1.5,Math.min(height*(CW.heightShare??0.6),height-sill-1.0));
+        for(const e of wallEdgesOf(outer)){
+          if(e.len<sp*0.8) continue;
+          if(partyWallFraction(partyGrid,e,_featIdx,_lifeBorn)>0.6) continue;
+          const n=Math.max(1,Math.floor(e.len/sp)), wins=[];
+          for(let k=0;k<n;k++){ const c=(k+0.5)/n; wins.push({u0:c-ww/2/e.len,u1:c+ww/2/e.len,v0:sill/height,v1:(sill+wh)/height}); }
+          placeMaskWindows(glassVerts,e.ax,e.az,e.bx,e.bz,e.nx,e.nz,height,wins,e.len);
+        }
+      }
       if(!isPlatform&&!isChurch&&!noWindows&&!isOutbuilding&&floors>0.5){
         // Edges with outward normals (all of them, incl. the closing edge)
         const wEdges=wallEdgesOf(outer);
@@ -5506,14 +5520,22 @@ function enterFPS(){
 }
 function exitFPS(){
   fpsMode=false;falling=false;fallVelocity=0;
+  sprinting=false; sprintBtn?.classList.remove('active');   // sprint doesn't carry over to the next walk
   arStop();
   if(!isMobile){document.exitPointerLock();}
   else{hideTouchControls();}
-  // Set orbit target 30m ahead of camera at ground level — prevents snap to old target
-  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
-  fwd.y=0;if(fwd.lengthSq()<0.001)fwd.set(0,0,-1);else fwd.normalize();
-  orbit.target.copy(camera.position).addScaledVector(fwd,30);
-  orbit.target.y=camera.position.y;  // keep target at eye height — allows looking up and down
+  // Orbit around the point you were looking at, along the FULL view direction
+  // (pitch included) — flattening it to horizontal made the view jump up by
+  // whatever you'd been looking down. Looking down: the spot where the gaze
+  // meets the ground; otherwise ~30 m ahead.
+  const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion).normalize();
+  let dist=30;
+  if(fwd.y<-0.05){
+    const h=camera.position.y-sampleTerrainY(camera.position.x,camera.position.z);
+    dist=Math.min(400,Math.max(10,h/-fwd.y));
+  }
+  dist=Math.max(dist,(orbit.minDistance||0)+1);
+  orbit.target.copy(camera.position).addScaledVector(fwd,dist);
   orbit.enabled=true;
   orbit.update();
   document.getElementById('crosshair').style.display='none';
@@ -5923,7 +5945,7 @@ window.addEventListener('keydown',e=>{
   initAudio();
 });
 window.addEventListener('keyup',e=>{keys[e.code]=false;sprinting=e.shiftKey;});
-window.addEventListener('blur',()=>{Object.keys(keys).forEach(k=>keys[k]=false);sprinting=false;});
+window.addEventListener('blur',()=>{Object.keys(keys).forEach(k=>keys[k]=false);sprinting=false;sprintBtn?.classList.remove('active');});
 document.addEventListener('mousemove',e=>{
   if(fpsMode&&document.pointerLockElement===renderer.domElement){
     yaw-=e.movementX*CONFIG.fpsControls.mouseLookSensitivity;pitch-=e.movementY*CONFIG.fpsControls.mouseLookSensitivity;
@@ -9977,7 +9999,7 @@ function rebuildGlassMesh(layerEntry){
       const nm=(props.name||'').toLowerCase();
       const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
-                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('st.')||nm.includes('trinity');
+                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks
       const noWindows=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls')||nm.includes('elevator')||props.type==='lumber';
       // Terrain base for this building (centroid + up to 4 ring samples)
       const _rbNPts=outer.length-1;

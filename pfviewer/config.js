@@ -256,6 +256,7 @@ export const CONFIG = {
 
   // ── Procedural window dimensions/density ───────────────────────────
   windows: {
+    church: { spacing: 4, width: 1.0, sill: 1.6, heightShare: 0.6 },   // lancet windows on churches (false = none)
     width: 1.00,           // standard window width (m)
     height: 1.75,          // standard window height (m)
     sillHeight: 0.90,      // sill height above floor (m)
