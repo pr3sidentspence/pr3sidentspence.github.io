@@ -1121,6 +1121,20 @@
         "roof_color": "copper",
         "parapet": false
       }
+    },
+    "85346c6d-e4a6-535e-b66b-47adc821ffce": {
+      "name": "Université de Saint-Boniface (St. Boniface College)",
+      "notes": "Sprawling complex: roof built per wing (roof_type wings) — per Mike.",
+      "set": {
+        "roof_type": "wings"
+      }
+    },
+    "7d155cf6-128d-5f4d-a2f3-44bde4a6cd72": {
+      "name": "St. Boniface Hospital",
+      "notes": "Sprawling complex: roof built per wing (roof_type wings) — per Mike.",
+      "set": {
+        "roof_type": "wings"
+      }
     }
   }
 }

@@ -298,6 +298,9 @@ export const CONFIG = {
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
                 'roof_height','roof_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
+    // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
+    // ridge height = pitch × half the wing's short side, capped at maxRidgeM
+    wingRoof: { auto: true, pitch: 0.6, maxRidgeM: 9 },   // auto: false = complex outlines stay flat unless roof_type 'wings'
     platformHeight: 0.6, // low platform/loading-dock structures
     minHeight: 2.0,
     eyeHeight: 1.75,     // walk-mode eye level

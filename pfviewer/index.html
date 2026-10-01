@@ -1843,6 +1843,55 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.computeVertexNormals();return geom;
 }
+// Complex outlines (wings, courtyards-less complexes, ragged digitizing):
+// split the footprint into convex pieces — triangulate, then merge
+// neighbouring pieces while the union stays convex (Hertel–Mehlhorn) — and
+// give each piece its own ridge along its long side. The intersecting
+// roofs read as cross-gabled wings. Ridge height ≈ pitch × half the
+// piece's short side (clamped), or roof_height.
+function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null){
+  // tidy: drop near-duplicate and near-collinear points
+  let ring=ringIn.filter((p,i)=>{const q=ringIn[(i+1)%ringIn.length];return Math.hypot(p[0]-q[0],p[1]-q[1])>0.4;});
+  for(let pass=0;pass<2;pass++) ring=ring.filter((p,i)=>{const a=ring[(i-1+ring.length)%ring.length],b=ring[(i+1)%ring.length];
+    const ux=p[0]-a[0],uz=p[1]-a[1],vx=b[0]-p[0],vz=b[1]-p[1];
+    return Math.abs(ux*vz-uz*vx)/((Math.hypot(ux,uz)*Math.hypot(vx,vz))||1)>0.12;});
+  if(ring.length<3) return null;
+  let A=0; for(let i=0;i<ring.length;i++){const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%ring.length];A+=x1*z2-x2*z1;}
+  if(A<0) ring=ring.slice().reverse();
+  const tris=THREE.ShapeUtils.triangulateShape(ring.map(([x,z])=>new THREE.Vector2(x,z)),[]);
+  let polys=tris.map(t=>t.slice());
+  const convex=poly=>{ let sg=0; for(let i=0;i<poly.length;i++){const a=ring[poly[i]],b=ring[poly[(i+1)%poly.length]],c=ring[poly[(i+2)%poly.length]];
+    const cr=(b[0]-a[0])*(c[1]-b[1])-(b[1]-a[1])*(c[0]-b[0]); if(Math.abs(cr)<1e-6) continue; const sgn=Math.sign(cr); if(!sg) sg=sgn; else if(sgn!==sg) return false;} return true; };
+  let merged=true;
+  while(merged){
+    merged=false;
+    outer: for(let i=0;i<polys.length;i++) for(let j=i+1;j<polys.length;j++){
+      const P=polys[i],Q=polys[j];
+      for(let a=0;a<P.length;a++){ const u=P[a],v=P[(a+1)%P.length];
+        for(let b=0;b<Q.length;b++){ if(Q[b]!==v||Q[(b+1)%Q.length]!==u) continue;
+          // splice Q into P across the shared edge u→v
+          const U=[]; for(let k=0;k<P.length;k++){ U.push(P[(a+1+k)%P.length]); }       // v … u
+          for(let k=2;k<Q.length;k++) U.push(Q[(b+k)%Q.length]);                         // Q's other vertices after u
+          if(convex(U)){ polys[i]=U; polys.splice(j,1); merged=true; break outer; }
+        } }
+    }
+  }
+  const pitch=CONFIG.building.wingRoof?.pitch??0.6, geos=[];
+  for(const poly of polys){
+    const pr=poly.map(k=>ring[k]);
+    let pa=0; for(let i=0;i<pr.length;i++){const[x1,z1]=pr[i],[x2,z2]=pr[(i+1)%pr.length];pa+=x1*z2-x2*z1;}
+    if(Math.abs(pa)/2<4) continue;
+    // short side of the piece's min-area rectangle → ridge height
+    let best=Infinity,short=0;
+    for(let i=0;i<pr.length;i++){const[x1,z1]=pr[i],[x2,z2]=pr[(i+1)%pr.length],L=Math.hypot(x2-x1,z2-z1); if(L<0.3) continue;
+      const ux=(x2-x1)/L,uz=(z2-z1)/L; let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
+      for(const[x,z]of pr){const u=x*ux+z*uz,v=-x*uz+z*ux;a0=Math.min(a0,u);a1=Math.max(a1,u);b0=Math.min(b0,v);b1=Math.max(b1,v);}
+      if((a1-a0)*(b1-b0)<best){best=(a1-a0)*(b1-b0);short=Math.min(a1-a0,b1-b0);}}
+    const rh=ridgeHOverride??Math.max(1.2,Math.min(CONFIG.building.wingRoof?.maxRidgeM??9,short*0.5*pitch));
+    const g=buildRoofGeometry(pr,roofBaseY,rh); if(g) geos.push(g);
+  }
+  return geos.length?mergeGeometries(geos,false):null;
+}
 // Curved tower roofs (roof_type conical / dome / bell): the footprint ring is
 // shrunk toward its centroid as the roof rises, so a square tower gets a
 // square dome. bell = ogee (flares out at the eaves, curves in to a point).
@@ -2791,7 +2840,7 @@ async function buildCity(geojson){
     const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
     // Explicit roof-type override from planimetro (overrides material/floor heuristics).
     const roofTypeOverride=props.roof_type||'';
-    const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod']);
+    const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod','wings']);
     const forcePeaked=PEAKED_ROOF_TYPES.has(roofTypeOverride);
     const curvedRoof=CURVED_ROOF_TYPES.has(roofTypeOverride);
     const forceFlat=roofTypeOverride==='flat';
@@ -3096,10 +3145,13 @@ async function buildCity(geojson){
           applyVertexColour(cg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate);
           towerRoofGeos.push(cg); }
       }
-      else if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&outer.length<=14))){
+      else if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&(outer.length<=14||CONFIG.building.wingRoof?.auto!==false)))){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
-        const rg=buildRoofGeometry(ring,height+0.05,props.roof_height??null);
+        // Complex outlines (> 14 points, or roof_type 'wings'): a roof per wing; simple ones: one ridge
+        const rg=(roofTypeOverride==='wings'||outer.length>14)&&roofTypeOverride!=='mansard'
+          ?buildWingRoof(ring,height+0.05,props.roof_height??null)
+          :buildRoofGeometry(ring,height+0.05,props.roof_height??null);
         if(rg){ rg.translate(0,buildingBaseY,0);
           if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }   // e.g. copper
           else roofGeos[mat].push(rg); }
