@@ -190,6 +190,7 @@ body:not(.advanced) #flood-control{display:none !important;}
 <div id="date-control" style="display:none;position:fixed;top:14px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.88);border:1px solid #2a1e0e;border-radius:10px;padding:10px 22px 12px;flex-direction:column;align-items:center;gap:7px;pointer-events:auto;z-index:14;width:min(640px,80vw);">
   <div style="display:flex;align-items:center;justify-content:center;gap:14px;width:100%;">
     <button id="timeline-play-btn" title="Play (slow)" style="background:transparent;border:1px solid #3a2810;border-radius:50%;width:30px;height:30px;color:#C8A05A;font-size:0.8rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶</button>
+    <button id="timeline-day-btn" title="Day by day: the sun crosses the sky (~6 s a day)" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">☀</button>
     <button id="timeline-ff-btn" title="Fast forward" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶</button>
     <button id="timeline-ffm-btn" title="One summer day per year, 1 year/s" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶▶</button>
     <button id="timeline-fff-btn" title="Years fly by (one summer day per year)" style="background:transparent;border:1px solid #3a2810;border-radius:15px;min-width:30px;height:30px;padding:0 9px;color:#C8A05A;font-size:0.8rem;letter-spacing:-0.1em;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;font-family:Georgia,serif;">▶▶▶▶</button>
@@ -926,7 +927,7 @@ function tickOxbow(){
   let fill=_seasonChannel(_oxKeys,viewDayOfYear(currentViewDate));
   const wet=moistureAt(currentViewDate); fill*=1+wet*L.wetEffect;
   fill=Math.max(0,Math.min(1,fill));
-  oxbow.mesh.visible=fill>0.03;
+  oxbow.mesh.visible=fill>0.03&&oxWaterUniforms.uOxOn.value>0.5;   // flooded over the rim: it's the river's water now
   if(!oxbow.mesh.visible) return;
   oxbow.mesh.position.y=oxbow.floor+fill*oxbow.range;
   const ice=season.ice, snow=season.snow;
@@ -3951,6 +3952,21 @@ async function buildRoads(geojson){
     if(activeLayer==='all'||activeLayer==='combined'||activeLayer===yr)
       for(const c of cents) activeCents.push(c);
   }
+  // Plus buildings in decades not built yet (deferred chunks) — with their
+  // dates, so the road network (and its street lights, construction stacks)
+  // is the same whatever date you started from; the lifespan shader still
+  // hides each segment until something stands beside it.
+  if(activeLayer==='pastforward'||activeLayer==='all'||activeLayer==='combined'){
+    for(const ch of deferredChunks){
+      if(!ch._cents){
+        ch._cents=[];
+        for(const f of ch.gj.features){ let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
+          let x=0,z=0; for(const q of c){const[sx,sy]=project(q[0],q[1]);x+=sx;z-=sy;}
+          ch._cents.push({cx:x/c.length,cz:z/c.length,born:parseYearOrSentinel(f.properties?.born,NO_BORN),died:parseYearOrSentinel(f.properties?.died,NO_DIED)}); }
+      }
+      for(const c of ch._cents) activeCents.push(c);
+    }
+  }
   console.log(`buildRoads: activeLayer='${activeLayer}', keys=[${[...buildingCentroids.keys()]}], activeCents=${activeCents.length}`);
   const CENT_CELL = ROAD_NEAR_M;
   const centGrid  = new Map();
@@ -6223,6 +6239,10 @@ function initDateControl(){
     timelineMode=timelineMode==='paused'?'play':'paused';
     updateTimelineButtons();
   });
+  document.getElementById('timeline-day-btn').addEventListener('click',()=>{
+    timelineMode=timelineMode==='day'?'play':'day';
+    updateTimelineButtons();
+  });
   document.getElementById('timeline-ff-btn').addEventListener('click',()=>{
     timelineMode=timelineMode==='fast'?'play':'fast';
     updateTimelineButtons();
@@ -6244,7 +6264,7 @@ function initDateControl(){
 function updateTimelineButtons(){
   const play=document.getElementById('timeline-play-btn'), ff=document.getElementById('timeline-ff-btn');
   if(play){ play.textContent=timelineMode==='paused'?'▶':'⏸'; play.title=timelineMode==='paused'?'Play (slow)':'Pause'; }
-  for(const[id,mode,title]of[['timeline-ff-btn','fast','Fast forward'],['timeline-ffm-btn','yearsWalk','One summer day per year, 1 year/s'],['timeline-fff-btn','years','Years fly by (one summer day per year, 10 years/s)']]){
+  for(const[id,mode,title]of[['timeline-day-btn','day','Day by day: the sun crosses the sky (~6 s a day)'],['timeline-ff-btn','fast','Fast forward'],['timeline-ffm-btn','yearsWalk','One summer day per year, 1 year/s'],['timeline-fff-btn','years','Years fly by (one summer day per year, 10 years/s)']]){
     const b=document.getElementById(id); if(!b) continue;
     const on=timelineMode===mode;
     b.style.background=on?'#C8A05A':'transparent'; b.style.color=on?'#09080a':'#C8A05A';
@@ -6347,6 +6367,18 @@ function tickTimeline(dt){
         setCurrentViewDate(new Date(yr,m-1,d,12),dateResolutionMode);
       }
     }
+    return;
+  }
+  if(timelineMode==='day'){
+    // One day per dayCycle.secondsPerDay: the clock runs the TIME slider's
+    // range (04:00–22:00) and rolls over to the next morning
+    const D=CONFIG.timeline.dayCycle??{secondsPerDay:6};
+    let t=currentTodFraction+dt/D.secondsPerDay, d=currentViewDate;
+    if(t>=1){ t-=1; d=new Date(d.getFullYear(),d.getMonth(),d.getDate()+1); if(d.getFullYear()>TIMELINE_MAX_YEAR) d=new Date(TIMELINE_MIN_YEAR,0,1); }
+    const hr=TOD_START_H+t*TOD_RANGE_H;
+    setCurrentViewDate(new Date(d.getFullYear(),d.getMonth(),d.getDate(),Math.floor(hr),Math.round((hr%1)*60)),dateResolutionMode);
+    setTimeOfDay(t);
+    const ts=document.getElementById('tod-slider'); if(ts) ts.value=t;
     return;
   }
   if(timelineMode==='play'){
@@ -8783,6 +8815,89 @@ function initShanties(){
   mesh.castShadow=true; mesh.receiveShadow=true; scene.add(mesh);
   console.log(`🏚 Shanties: ${huts.length} in the yards (${huts.map(h=>Math.floor(h.born)).sort((a,b)=>a-b).join(',')})`);
 }
+// ── Automobiles (CONFIG.autos) ─────────────────────────────────────
+// Period cars wander the road network (random turn at each intersection,
+// only on roads that exist that year, keeping right). How many by year;
+// early ones tall, boxy and mostly black, later ones lower, longer and
+// coloured. Cars far from the camera respawn near it. Three InstancedMeshes
+// (body, cabin, wheels) — cheap. Off the street during a parade.
+let autos=null;   // {meshes, cars:[], graph, segsN}
+function _autoGraph(){
+  const key=(x,z)=>`${Math.round(x)},${Math.round(z)}`, ends=new Map();
+  roadSegs.forEach((s,i)=>{ for(const[e,x,z]of[[0,s.x1,s.z1],[1,s.x2,s.z2]]){ const k=key(x,z); if(!ends.has(k)) ends.set(k,[]); ends.get(k).push({i,e}); } });
+  return {ends,key};
+}
+window._debugAutos=()=>autos?{cars:autos.cars.length,drawn:autos.meshes[0].count,placed:autos.cars.filter(c=>c.seg>=0).length}:null;
+function initAutos(){
+  const A=CONFIG.autos; if(!A||OFF.has('vehicles')||!roadSegs.length) return;
+  const N=A.max;
+  const body=new THREE.BoxGeometry(1,1,1).translate(0,0.5,0), cabin=new THREE.BoxGeometry(1,1,1).translate(0,0.5,0);
+  const wheels=mergeGeometries([[-0.42,0.33],[0.42,0.33],[-0.42,-0.33],[0.42,-0.33]].map(([x,z])=>new THREE.CylinderGeometry(0.34,0.34,0.18,10).rotateZ(Math.PI/2).translate(x*1.9,0.34,z*3.4)),false);
+  const meshes=[body,cabin,wheels].map((g,i)=>{ const m=new THREE.InstancedMesh(g,new THREE.MeshLambertMaterial({color:i===2?0x141414:0xffffff}),N); m.count=0; m.castShadow=i<2; m.frustumCulled=false; scene.add(m); return m; });
+  autos={meshes,cars:[],graph:_autoGraph(),segsN:roadSegs.length};
+  console.log(`🚗 Autos: pool ${N}`);
+}
+function _autoPlace(car,yr,nearCam){
+  const R=CONFIG.autos.spawnRadiusM, cam=camera.position;
+  for(let tries=0;tries<60;tries++){
+    const s=roadSegs[Math.floor(Math.random()*roadSegs.length)];
+    if(yr<s.span[0]||yr>=s.span[1]) continue;
+    const mx=(s.x1+s.x2)/2, mz=(s.z1+s.z2)/2;
+    if(nearCam&&(mx-cam.x)**2+(mz-cam.z)**2>R*R) continue;
+    const i=roadSegs.indexOf(s);
+    car.seg=i; car.dir=Math.random()<0.5?1:-1; car.t=Math.random();
+    return true;
+  }
+  return false;
+}
+function _autoStyle(car,yr){
+  const A=CONFIG.autos, r=car.rnd;
+  const early=yr<(A.modernFrom??1928);
+  car.len=early?3.4+r*0.5:4.4+r*0.7; car.w=early?1.6:1.8; car.h=early?1.05:0.85;
+  car.ch=early?1.15:0.75; car.cl=early?1.6:2.2;
+  const pal=early?(r<0.8?A.colorsEarly.slice(0,1):A.colorsEarly):A.colorsLate;
+  car.col=pal[Math.floor(car.rnd2*pal.length)];
+  car.speed=(early?A.speedEarly:A.speedLate)*(0.8+r*0.4);
+}
+const _auM=new THREE.Matrix4(), _auQ=new THREE.Quaternion(), _auP=new THREE.Vector3(), _auS=new THREE.Vector3(), _auC=new THREE.Color(), _auU=new THREE.Vector3(0,1,0);
+function tickAutos(dt){
+  const A=CONFIG.autos; if(!A) return;
+  if(!autos){ initAutos(); if(!autos) return; }
+  if(autos.segsN!==roadSegs.length){ autos.graph=_autoGraph(); autos.segsN=roadSegs.length; for(const c of autos.cars) c.seg=-1; }
+  const yr=yearFrac(currentViewDate), want=Math.min(A.max,Math.round(sbKey(A.count,yr)*(A.scale??1)));
+  const [mb,mc,mw]=autos.meshes;
+  while(autos.cars.length<want) autos.cars.push({seg:-1,rnd:Math.random(),rnd2:Math.random(),styleYr:-1});
+  autos.cars.length=Math.min(autos.cars.length,want);
+  const cam=camera.position, far2=(A.spawnRadiusM*1.4)**2, {ends,key}=autos.graph;
+  let n=0;
+  for(const car of autos.cars){
+    if(Math.floor(yr/5)!==car.styleYr){ car.styleYr=Math.floor(yr/5); _autoStyle(car,yr); }
+    if(car.seg<0||!roadSegs[car.seg]){ if(!_autoPlace(car,yr,true)) continue; }
+    let s=roadSegs[car.seg];
+    if(yr<s.span[0]||yr>=s.span[1]){ if(!_autoPlace(car,yr,true)) continue; s=roadSegs[car.seg]; }
+    const L=Math.hypot(s.x2-s.x1,s.z2-s.z1)||1;
+    car.t+=car.dir*car.speed*dt/L;
+    if(car.t>1||car.t<0){
+      // at the junction: pick a connected segment that exists this year
+      const ex=car.t>1?s.x2:s.x1, ez=car.t>1?s.z2:s.z1, opts=(ends.get(key(ex,ez))||[]).filter(o=>o.i!==car.seg&&yr>=roadSegs[o.i].span[0]&&yr<roadSegs[o.i].span[1]);
+      if(opts.length){ const o=opts[Math.floor(Math.random()*opts.length)]; car.seg=o.i; car.dir=o.e===0?1:-1; car.t=o.e===0?0:1; s=roadSegs[car.seg]; }
+      else { car.dir*=-1; car.t=Math.max(0,Math.min(1,car.t)); }   // dead end: turn round
+    }
+    const Ls=Math.hypot(s.x2-s.x1,s.z2-s.z1)||1, ux=(s.x2-s.x1)/Ls*car.dir, uz=(s.z2-s.z1)/Ls*car.dir;
+    const lane=Math.min(s.w*0.25,3);   // keep right
+    const x=s.x1+(s.x2-s.x1)*car.t-uz*lane, z=s.z1+(s.z2-s.z1)*car.t+ux*lane;
+    if((x-cam.x)**2+(z-cam.z)**2>far2){ car.seg=-1; continue; }          // drifted away: respawn near the camera
+    if(parade&&parade.segs.some(([a,b])=>{const dx=b.x-a.x,dz=b.z-a.z,LL=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/LL));return (x-a.x-dx*t)**2+(z-a.z-dz*t)**2<(CONFIG.parades.trafficClearM??25)**2;})) continue;
+    const yaw=Math.atan2(ux,uz), y=vehicleY(x,z,0,0,yaw);
+    _auQ.setFromAxisAngle(_auU,yaw);
+    _auM.compose(_auP.set(x,y+0.35,z),_auQ,_auS.set(car.w,car.h,car.len)); mb.setMatrixAt(n,_auM); mb.setColorAt(n,_auC.setHex(car.col));
+    _auM.compose(_auP.set(x-ux*car.len*0.1,y+0.35+car.h,z-uz*car.len*0.1),_auQ,_auS.set(car.w*0.92,car.ch,car.cl)); mc.setMatrixAt(n,_auM); mc.setColorAt(n,_auC.setHex(car.col).multiplyScalar(0.8));
+    _auM.compose(_auP.set(x,y,z),_auQ,_auS.set(car.w/1.6,1,car.len/3.4)); mw.setMatrixAt(n,_auM);
+    n++;
+  }
+  for(const m of autos.meshes){ m.count=n; m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true; }
+}
+
 // ── Small craft (CONFIG.smallCraft) ────────────────────────────────
 // Canoes, York boats, rowboats, launches. Each works a stretch of river
 // back and forth at an offset from the centreline (kept inside the river
@@ -9150,6 +9265,7 @@ function startLoop(){
     }else{orbit.update();updateHover();}
     tickStreetcars(dt);
     tickCarts(dt);
+    tickAutos(dt);
     tickDroppings(dt);
     tickTimeline(dt);
     tickTrains(dt);
@@ -9488,7 +9604,7 @@ function _makePrecip(kind){
   o.frustumCulled=false; o.visible=false; o.renderOrder=5; scene.add(o);
   return{o,u,n,verts:snow?1:2};
 }
-let _rain=null,_snowP=null,_weatherActive=false,_weatherT=0;
+let _rain=null,_snowP=null,_weatherActive=false,_weatherT=0,_wxK=0,_lastStorm=null;
 let _lightning={next:3,t:-1,bolt:null,dist:0};
 let _rainNoise=null;
 const _wc={a:new THREE.Color(),b:new THREE.Color()};
@@ -9544,8 +9660,14 @@ function _thunder(dist,gain){
 }
 function tickWeather(dt){
   const C=CONFIG.storms; if(!C) return;
-  const st=effectsSuppressed()?null:stormAt(currentViewDate);
-  _stormCaption(st);
+  const target=effectsSuppressed()?null:stormAt(currentViewDate);
+  _stormCaption(target);
+  // Fade in/out (~0.3 s) instead of switching: strength eases toward the
+  // date's value; a storm that just ended keeps its look while fading.
+  if(target) _lastStorm=target.s;
+  _wxK+=((target?target.k:0)-_wxK)*Math.min(1,dt/(C.fadeSeconds??0.1));
+  const st=(target||_wxK>0.004)&&_lastStorm?{s:_lastStorm,k:_wxK}:null;
+  if(!st) _wxK=0;
   const k=st?st.k:0, blizzard=st?.s.type==='blizzard';
   if(!st&&!_weatherActive) return;
   _weatherActive=!!st;
@@ -9576,7 +9698,11 @@ function tickWeather(dt){
   scene.background.copy(_wc.a); hemiLight.color.copy(_wc.a);
   _wc.a.setHex(_skyBase.fog).lerp(_wc.b.setHex(W.skyColor),kk);
   scene.fog.color.copy(_wc.a); hazeUniforms.uFogColor.value.copy(_wc.a);
-  scene.fog.density=CONFIG.scene.fog.density+(W.fogDensity-CONFIG.scene.fog.density)*kk;
+  // Storm fog is tuned for street level: ease it off with camera height so
+  // the overview doesn't white/black out (full at the ground, ~half at fogHalfHeight)
+  const camH=Math.max(0,camera.position.y-sampleTerrainY(camera.position.x,camera.position.z));
+  const zoomF=1/(1+(camH/(C.fogHalfHeight??180))**2);
+  scene.fog.density=CONFIG.scene.fog.density+(W.fogDensity-CONFIG.scene.fog.density)*kk*zoomF;
   hazeUniforms.uFogDensity.value=scene.fog.density;
   sun.intensity=_skyBase.sunInt*(1-(1-W.sunMult)*kk);
   ambLight.intensity=_skyBase.ambInt*(1-(1-W.ambientMult)*kk)+flash*1.6;

@@ -817,6 +817,21 @@ export const CONFIG = {
     colors: [0x6A6058, 0x5A4E42, 0x7A6E60, 0x4A4440, 0x6E5A44, 0x3A3632],
   },
 
+  // ── Automobiles ─────────────────────────────────────────────────────
+  // First cars in Winnipeg c. 1901–03; common by the 1910s–20s. count =
+  // cars on the road by year (around the camera — they respawn within
+  // spawnRadiusM). Early: tall, boxy, mostly black; from modernFrom:
+  // lower, longer, coloured. Speeds m/s (stylised).
+  autos: {
+    count: [[1902,0],[1905,3],[1912,20],[1920,45],[1930,70],[1945,95],[1955,140]],
+    max: 150, scale: 1,
+    spawnRadiusM: 900,
+    modernFrom: 1928,
+    speedEarly: 6, speedLate: 10,
+    colorsEarly: [0x141414, 0x1E2A3A, 0x3A1E1E, 0x2A3A2A],
+    colorsLate:  [0x141414, 0x5A6E8A, 0x7A2A24, 0x2E4A3A, 0xB8B0A0, 0x8A7A5A, 0x3A4A6A],
+  },
+
   // ── Fire engines ────────────────────────────────────────────────────
   // Run in along the nearest street when a building catches fire and park
   // there until it's out. Winnipeg: volunteer brigade 1874 (from); first
@@ -996,6 +1011,8 @@ export const CONFIG = {
     seasonCycle: { enabled: true, daysPerSecond: 2, wrapWithinYear: true },
     // ▶▶▶▶ years fly by: one summer day shown per year; 10/s → 1850–1960 in ~11 s
     yearsFly: { yearsPerSecond: 10, day: '07-15' },
+    // ☀ day by day: the clock runs 04:00→22:00 in secondsPerDay, then the next morning
+    dayCycle: { secondsPerDay: 6 },
     // ▶▶▶ in between: a frame per month (each 1/12 s), 1 year/s (~2 min for 1850–1960)
     yearsWalk: { yearsPerSecond: 1 },
     // Events (storms, parades, floods from the river levels, fires within
@@ -1021,6 +1038,8 @@ export const CONFIG = {
     rampHours: 6,
     offPeak: 0.75,
     snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
+    fadeSeconds: 0.1,          // time constant of the storm fade in/out (~3× this to settle)
+    fogHalfHeight: 180,        // storm fog halves at this camera height above ground (so zoomed-out views don't white/black out)
     boxSize: 180,              // metres — precipitation volume that travels with the camera
     rain: {
       count: 14000,            // streaks at intensity 1
@@ -1291,6 +1310,7 @@ export const CONFIG = {
     seasons:  { floeCount: 450 },
     streetLights: { spacing: 70, radius: 1800 },
     trains:   { maxCars: 25 },
+    autos:    { max: 50, scale: 0.4 },
   },
 
   // ── Minimap ─────────────────────────────────────────────────────────
