@@ -548,7 +548,6 @@ function setTimeOfDay(t){
     windowPaintUniforms.uWinLate.value=late; }
   windowPaintUniforms.uWinGlass.value.set(CONFIG.glass.color);
   windowPaintUniforms.uWinGlow.value.setRGB(CONFIG.glass.nightGlowColor.r, CONFIG.glass.nightGlowColor.g, CONFIG.glass.nightGlowColor.b);
-  { const D=CONFIG.glass.maxDistance??1800; windowPaintUniforms.uWinFade.value.set(D*0.72, D*0.92); }
   // Chimney smoke TOD multiplier — time-of-day × season
   const _todHour=TOD_START_H+t*TOD_RANGE_H;
   const _todCurve=CONFIG.chimneys.todCurve;
@@ -902,6 +901,12 @@ window._debugRails=()=>{ const yf=yearFrac(currentViewDate), by={};
   for(const t of trainConsists){ const alive=yf>=t.born&&yf<t.died; by[t.kind]=(by[t.kind]||0)+(alive?1:0); }
   const feats=(railGeojson?.features||[]); const dated=feats.filter(f=>f.properties.born);
   return {date:currentViewDate.toISOString().slice(0,10),trainsAlive:by,trainsTotal:trainConsists.length,stretchesBuilt:dated.filter(f=>_isoYearFrac(f.properties.born,0)<=yf).length+'/'+feats.length}; };
+window._debugWx=()=>({mode:timelineMode,date:currentViewDate.toISOString().slice(0,16),k:+_wxK.toFixed(3),active:_weatherActive,fog:+scene.fog.density.toFixed(5),stormNow:!!stormAt(currentViewDate),hold:!!_hold});
+window._debugCam=(x,y,z,tx,ty,tz)=>{ camera.position.set(x,y,z); orbit.target.set(tx,ty,tz); orbit.update(); tickGlassLOD(); tickDetailLOD(); renderer.render(scene,camera); renderer.render(scene,camera); const i=renderer.info.render;
+  return {tris:i.triangles,calls:i.calls,glassTilesVisible:glassTiles.filter(t=>t.mesh.visible).length+'/'+glassTiles.length,glassPanesVisible:glassTiles.filter(t=>t.mesh.visible).reduce((a,t)=>a+(t.mesh.geometry.index?.count||t.mesh.geometry.userData.n||0)/6,0),detailTilesVisible:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
+window._debugLOD=(x,y,z)=>{ camera.position.set(x,y,z); for(let k=0;k<8;k++){ tickGlassLOD(); tickDetailLOD(); }
+  const vis=glassTiles.filter(t=>t.mesh.visible);
+  return {glassTiles:vis.length+'/'+glassTiles.length,panes:vis.reduce((a,t)=>a+t.n,0),paintedFrom:+windowPaintUniforms.uWinFade.value.x.toFixed(0),detail:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
 window._debugCreek=()=>creekValley?{on:creekUniforms.uCreekOn.value,pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
 // Per frame: valley on/off with the creek's dates; vertex colours = the
 // seasonal ground colour, blending to bank dirt toward the floor (summer;
@@ -1493,9 +1498,9 @@ function mergeByTile(geos, keys){
   }
   return out;
 }
-function tickDetailLOD(){
-  const D=CONFIG.building.detailDistance??1500, D2=D*D, c=camera.position;
-  for(const t of detailTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2<(t.d2??D2);
+function tickDetailLOD(){   // 3D distance: from high up the small details aren't drawn at all
+  const D=CONFIG.building.detailDistance??1500, D2=D*D, c=camera.position, h2=Math.max(0,c.y)**2;
+  for(const t of detailTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2+h2<(t.d2??D2);
 }
 // ExtrudeGeometry closes the base with a downward-facing cap nobody ever sees
 // (buildings sit on the ground) — drop those triangles.
@@ -2900,6 +2905,15 @@ async function applyBuildingHistory(geojson){
 // Before building a layer: drop features beyond CONFIG.building.loadRadius
 // (set by the mobile profile — phones can't hold the whole city), apply the
 // building-history overrides, then trim properties to CONFIG.building.keepProps.
+// Anything named "stacked wood" / "stacked lumber" (/ cord wood) is a lumber pile:
+// material and type 'lumber' (the Stacked Lumber look) whatever the source colour
+// code gave it — most came in as 'blue' (railway siding) or plain wood.
+const STACKED_LUMBER_RE=/\bstacked\s+(cord\s*)?(wood|lumber)\b/i;
+function fixStackedLumber(geojson){
+  let n=0;
+  for(const f of geojson.features){ const p=f.properties; if(p&&STACKED_LUMBER_RE.test(p.name||'')&&(p.material!=='lumber'||p.type!=='lumber')){ p.material='lumber'; p.type='lumber'; n++; } }
+  if(n) console.log(`🪵 Stacked wood/lumber: ${n} feature(s) set to the lumber material`);
+}
 async function prepareBuildings(geojson){
   const R=CONFIG.building?.loadRadius;
   if(R){
@@ -2913,6 +2927,7 @@ async function prepareBuildings(geojson){
     console.log(`Load radius ${R} m: kept ${geojson.features.length} / ${n0} features`);
   }
   await applyBuildingHistory(geojson);
+  fixStackedLumber(geojson);
   // Keep only the properties the viewer uses — the data files carry ~70
   // (notes, matching/basis bookkeeping, centroids…) and 50k features' worth
   // of them is a lot of heap. Files on disk are untouched.
@@ -2933,7 +2948,29 @@ async function prepareBuildings(geojson){
 // rest wait in decade chunks (by born − estimated construction time) and are
 // built in the background as the clock approaches (maybeBuildDeferred). Chunks
 // already built stay built when scrubbing back.
+// Centroid record for a building. Big ones also keep their outline in world
+// coordinates (trees are tested against the real footprint, not a circle —
+// a long powerhouse is much wider than its circle).
+const BIG_FOOTPRINT_M2=250;
+function _ringWorld(ll){ return ll.slice(0,-1).map(q=>{const[x,y]=project(q[0],q[1]);return{x,z:-y};}); }
+function _centroidRec(cx,cz,born,died,outerLL){
+  const area=ringAreaM2(outerLL), r={cx,cz,born,died,area};
+  if(area>BIG_FOOTPRINT_M2) r.ring=_ringWorld(outerLL);
+  return r;
+}
 const deferredChunks=[];   // {start, decade, gj} sorted by start
+// Centroid, footprint area and dates of every feature in a not-yet-built decade chunk (cached on the chunk)
+function chunkCentroids(ch){
+  if(ch._cents) return ch._cents;
+  ch._cents=[];
+  for(const f of ch.gj.features){ let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
+    let x=0,z=0; for(const q of c){const[sx,sy]=project(q[0],q[1]);x+=sx;z-=sy;}
+    const area=f.properties?.area_m2||(c.length>3?ringAreaM2(c):100);
+    const rec={cx:x/c.length,cz:z/c.length,area,born:parseYearOrSentinel(f.properties?.born,NO_BORN),died:parseYearOrSentinel(f.properties?.died,NO_DIED)};
+    if(area>BIG_FOOTPRINT_M2&&c.length>3) rec.ring=_ringWorld(c);
+    ch._cents.push(rec); }
+  return ch._cents;
+}
 const DEFER_MARGIN=0.1;    // years (~5 weeks): same margin for "build now" at load and for opening a chunk
 let _deferBusy=false;
 function deferFutureBuildings(gj){
@@ -3092,7 +3129,7 @@ async function buildCity(geojson){
           wallInfos[mat].push({name:props.name||null,floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
           matCounts[mat]++;
           buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
-          buildingCentroids.get(year).push({cx:mcx,cz:mcz,born:_lifeBorn,died:_lifeDied,area:ringAreaM2(outer)});
+          buildingCentroids.get(year).push(_centroidRec(mcx,mcz,_lifeBorn,_lifeDied,outer));
           if(RIVER_STRUCTURE_RE.test(props.name||'')) riverStructures.push({x:mcx,z:mcz});
           continue;
         }
@@ -3213,7 +3250,7 @@ async function buildCity(geojson){
       }
       // mcx,mcz already computed above; register for road generation (all buildings, incl. lumber/walkway)
       buildingCentroids.set(year,(buildingCentroids.get(year)||[]));
-      buildingCentroids.get(year).push({cx:mcx,cz:mcz,born:_lifeBorn,died:_lifeDied,area:ringAreaM2(outer)});
+      buildingCentroids.get(year).push(_centroidRec(mcx,mcz,_lifeBorn,_lifeDied,outer));
           if(RIVER_STRUCTURE_RE.test(props.name||'')) riverStructures.push({x:mcx,z:mcz});
       // wallInfos must only gain an entry when this building actually landed in
       // wallGeos[mat] (the branch above) — lumber/walkway buildings go into
@@ -4020,14 +4057,33 @@ function makeGlassMeshes(group, glassVerts, glassIdx){
     m.renderOrder=1;
     if(OFF.has('glass')) m.visible=false;
     group.add(m);
-    glassTiles.push({mesh:m,x:cx/n+(group.position.x||0),z:cz/n+(group.position.z||0)});
+    glassTiles.push({mesh:m,x:cx/n+(group.position.x||0),z:cz/n+(group.position.z||0),n});
   }
 }
 // Per frame: hide window tiles far from the camera
+// Real window panes are drawn within a radius of the camera, nearest tiles
+// first, up to a pane budget (CONFIG.glass.maxPanes) — so the cost is bounded
+// (it used to jump when you zoomed in, and ignored camera height, so the
+// panes under you were drawn even from 4 km up). Distance is 3D (to the
+// tile's ground centre). At most `tilesPerFrame` new tiles are switched on
+// per frame (GPU upload spreads over frames instead of one stall). The
+// painted windows on the walls take over exactly where the real glass ends:
+// uWinFade follows the effective radius.
+const _glSorted=[];
 function tickGlassLOD(){
   if(OFF.has('glass')) return;
-  const D=CONFIG.glass.maxDistance??1800, D2=D*D, c=camera.position;
-  for(const t of glassTiles) t.mesh.visible=(t.x-c.x)**2+(t.z-c.z)**2<D2;
+  const G=CONFIG.glass, D=G.maxDistance??1800, T=G.tileMetres??400, budget=G.maxPanes??1e9, perFrame=G.tilesPerFrame??2, c=camera.position, h2=Math.max(0,c.y)**2;
+  if(_glSorted.length!==glassTiles.length){ _glSorted.length=0; for(const t of glassTiles) _glSorted.push(t); }
+  for(const t of glassTiles) t.d=Math.sqrt((t.x-c.x)**2+(t.z-c.z)**2+h2);
+  _glSorted.sort((a,b)=>a.d-b.d);
+  let panes=0, R=D, on=0;
+  for(const t of _glSorted){
+    if(t.d>D){ if(t.mesh.visible) t.mesh.visible=false; continue; }
+    if(R<D||panes+t.n>budget){ R=Math.min(R,Math.max(0,t.d-0.5*T)); if(t.mesh.visible) t.mesh.visible=false; continue; }   // over budget: this and farther tiles off
+    if(!t.mesh.visible){ if(on>=perFrame){ R=Math.min(R,Math.max(0,t.d-0.5*T)); continue; } t.mesh.visible=true; on++; }
+    panes+=t.n;
+  }
+  R=Math.max(R,3); windowPaintUniforms.uWinFade.value.set(R*0.8,R*0.97);   // painted windows start where the real glass stops
 }
 
 // ── Ground-cover density map ───────────────────────────────────────
@@ -4139,15 +4195,7 @@ async function buildRoads(geojson){
   // is the same whatever date you started from; the lifespan shader still
   // hides each segment until something stands beside it.
   if(activeLayer==='pastforward'||activeLayer==='all'||activeLayer==='combined'){
-    for(const ch of deferredChunks){
-      if(!ch._cents){
-        ch._cents=[];
-        for(const f of ch.gj.features){ let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
-          let x=0,z=0; for(const q of c){const[sx,sy]=project(q[0],q[1]);x+=sx;z-=sy;}
-          ch._cents.push({cx:x/c.length,cz:z/c.length,born:parseYearOrSentinel(f.properties?.born,NO_BORN),died:parseYearOrSentinel(f.properties?.died,NO_DIED)}); }
-      }
-      for(const c of ch._cents) activeCents.push(c);
-    }
+    for(const ch of deferredChunks) for(const c of chunkCentroids(ch)) activeCents.push(c);
   }
   console.log(`buildRoads: activeLayer='${activeLayer}', keys=[${[...buildingCentroids.keys()]}], activeCents=${activeCents.length}`);
   const CENT_CELL = ROAD_NEAR_M;
@@ -4724,7 +4772,22 @@ function buildRiverTrees(){
     for(let i=0;i<c.length;i+=3) if((c[i]-x)**2+(c[i+1]-z)**2<c[i+2]*c[i+2]) return true;
     return false;
   };
-  for(const[,cs]of buildingCentroids) for(const c of cs) addEx(c.cx,c.cz,Math.sqrt(c.area||100)*0.6+T.clearBuilding);
+  // Buildings no longer exclude trees outright: each tree keeps the time spans
+  // in which a building stands over it (hidden then, back when it's gone).
+  const BG=new Map(), addB=c=>{ if(c.born<=NO_BORN+1&&c.died>=NO_DIED-1) return;   // (undated: always there)
+    let x0,x1,z0,z1,e;
+    if(c.ring){ let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of c.ring){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+      e={ring:c.ring,b:c.born,d:c.died,m:T.clearBuilding}; x0=Math.floor((ax-e.m)/CELL);x1=Math.floor((bx+e.m)/CELL);z0=Math.floor((az-e.m)/CELL);z1=Math.floor((bz+e.m)/CELL); }
+    else { const r=Math.sqrt(c.area||100)*0.6+T.clearBuilding; e={x:c.cx,z:c.cz,r,b:c.born,d:c.died}; x0=Math.floor((c.cx-r)/CELL);x1=Math.floor((c.cx+r)/CELL);z0=Math.floor((c.cz-r)/CELL);z1=Math.floor((c.cz+r)/CELL); }
+    for(let i=x0;i<=x1;i++)for(let j=z0;j<=z1;j++){const k=i+','+j;if(!BG.has(k))BG.set(k,[]);BG.get(k).push(e);} };
+  for(const[,cs]of buildingCentroids) for(const c of cs){ if(c.born<=NO_BORN+1&&c.died>=NO_DIED-1) addEx(c.cx,c.cz,Math.sqrt(c.area||100)*0.6+T.clearBuilding); else addB(c); }   // undated buildings: always
+  for(const ch of deferredChunks) for(const c of chunkCentroids(ch)) addB(c);
+  const distToRing=(x,z,ring)=>{ let best=1e9; for(let i=0,j=ring.length-1;i<ring.length;j=i++){ const a=ring[j],b=ring[i],dx=b.x-a.x,dz=b.z-a.z,L=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/L)); best=Math.min(best,Math.hypot(x-a.x-dx*t,z-a.z-dz*t)); } return best; };
+  const hideSpans=(x,z)=>{ const c=BG.get(Math.floor(x/CELL)+','+Math.floor(z/CELL)); if(!c) return null; let out=null;
+    for(const e of c){
+      const hit=e.ring?(pointInPolygon(x,z,e.ring)||distToRing(x,z,e.ring)<e.m):((e.x-x)**2+(e.z-z)**2<e.r*e.r);
+      if(hit) (out??=[]).push(e.b,e.d); }
+    return out; };
   const addLines=(gj,halfW)=>{
     if(!gj) return;
     for(const f of gj.features){
@@ -4770,10 +4833,11 @@ function buildRiverTrees(){
           const y=sampleTerrainY(x,z);
           if(y<waterMin) continue;
           if(blocked(x-offX,z-offZ)) continue;
+          const hide=hideSpans(x-offX,z-offZ);
           let pick=rnd()*wTot, sp=T.species[0];
           for(const s of T.species){if((pick-=s.weight)<=0){sp=s;break;}}
           const sc=sp.scale[0]+rnd()*(sp.scale[1]-sp.scale[0]);
-          placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc,sy:0.9+0.2*rnd(),sp:sp.name,phase:rnd()*0.5,aPhase:rnd()*0.4,
+          placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc,sy:0.9+0.2*rnd(),sp:sp.name,phase:rnd()*0.5,aPhase:rnd()*0.4,hide,
                                  col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
         }
       }
@@ -4805,9 +4869,10 @@ function buildRiverTrees(){
       scene.add(mesh);
     }
     crown.instanceColor.needsUpdate=true;
-    riverTreeMeshes.push({mesh:wood,crown:false},{mesh:crown,crown:true,list});
+    riverTreeMeshes.push({mesh:wood,crown:false,list},{mesh:crown,crown:true,list,wood});
     total+=list.length;
   }
+  delete _applied.treeBld;   // re-evaluate which trees a building stands over
   console.log(`River trees: ${total} (vase ${placed.vase.length}, round ${placed.round.length}, tall ${placed.tall.length})`);
 }
 
@@ -8967,6 +9032,7 @@ function _allBuildingSpots(){
   const add=gj=>{ for(const f of gj.features){ const p=f.properties; if(!p) continue;
     let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
     let x=0,z=0; for(const q of c){const[sx,sy]=project(q[0],q[1]);x+=sx;z-=sy;} x/=c.length; z/=c.length;
+    const fl=p.floors; if(p.type==='walkway'||p.type==='fence'||p.type==='bridge'||(fl!=null&&fl<0.5)) continue;   // only real, permanent structures
     out.push({x,z,born:_isoYearFrac(p.born,NO_BORN),died:_isoYearFrac(p.died,NO_DIED)}); } };
   for(const lg of layerGroups) if(lg.geojson) add(lg.geojson);
   for(const ch of deferredChunks) add(ch.gj);
@@ -8989,32 +9055,40 @@ function initShanties(){
   const yard=segs.filter(s=>s.yard&&inBox((s.x1+s.x2)/2,(s.z1+s.z2)/2));
   if(!yard.length){ console.warn('Shanties: no yard tracks in area'); return; }
   const dSeg=(x,z,s)=>{const dx=s.x2-s.x1,dz=s.z2-s.z1,L=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-s.x1)*dx+(z-s.z1)*dz)/L));return Math.hypot(x-s.x1-dx*t,z-s.z1-dz*t);};
-  const spots=_allBuildingSpots().filter(b=>inBox(b.x,b.z));
+  // Permanent structures near the area (dated), in a grid for the clearance test
+  const PC=SH.permanentClearM, spots=_allBuildingSpots().filter(b=>b.x>bx0-PC-5&&b.x<bx1+PC+5&&b.z>bz0-PC-5&&b.z<bz1+PC+5);
+  const sg=new Map(), SC=PC; for(const b of spots){ const k=Math.floor(b.x/SC)+','+Math.floor(b.z/SC); if(!sg.has(k)) sg.set(k,[]); sg.get(k).push(b); }
+  const nearPermanent=(x,z)=>{ const out=[]; const gx=Math.floor(x/SC), gz=Math.floor(z/SC);
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const b of sg.get((gx+i)+','+(gz+j))||[]) if((b.x-x)**2+(b.z-z)**2<PC*PC) out.push(b);
+    return out; };
   const rnd=mulberry('shanties');
   const pos=[],col=[],life=[],build=[], huts=[];
   let tries=0;
-  while(huts.length<SH.count&&tries++<SH.count*60){
-    const s=yard[Math.floor(rnd()*yard.length)], t=rnd(), side=rnd()<0.5?-1:1;
-    const dx=s.x2-s.x1,dz=s.z2-s.z1,L=Math.hypot(dx,dz)||1;
-    const off=SH.trackClearM+rnd()*SH.spreadM;
-    const x=s.x1+dx*t-dz/L*side*off, z=s.z1+dz*t+dx/L*side*off;
+  while(huts.length<SH.count&&tries++<SH.count*250){
+    let x,z,minBorn=0, face=rnd()*Math.PI*2;   // the way the hut faces
+    if(rnd()<SH.trackShare){   // beside the yard tracks
+      const s=yard[Math.floor(rnd()*yard.length)], t=rnd(), side=rnd()<0.5?-1:1;
+      const dx=s.x2-s.x1,dz=s.z2-s.z1,L=Math.hypot(dx,dz)||1, off=SH.trackClearM+rnd()*SH.spreadM;
+      x=s.x1+dx*t-dz/L*side*off; z=s.z1+dz*t+dx/L*side*off; face=Math.atan2(dx,dz); if(s.born>0) minBorn=s.born+0.5;   // not before the track beside it
+    }else{                      // open ground anywhere in the area, west and north included
+      x=bx0+rnd()*(bx1-bx0); z=bz0+rnd()*(bz1-bz0);
+    }
     if(!inBox(x,z)) continue;
     if(segs.some(q=>dSeg(x,z,q)<SH.trackClearM)) continue;
-    if(riverRings.some(r=>pointInPolygon(x,z,r))) continue;
+    if(riverRings.some(r=>pointInPolygon(x,z,r))||sampleTerrainY(x,z)<CONFIG.water.startY+1.2) continue;
     if(huts.some(h=>Math.hypot(h.x-x,h.z-z)<SH.minSpacingM)) continue;
-    let born=Math.max(s.born>0?s.born+0.5:0,SH.years[0]+rnd()*(SH.years[1]-SH.years[0]));   // not before the track beside it
+    let born=Math.max(minBorn,SH.years[0]+rnd()*(SH.years[1]-SH.years[0]));
     let died=born+SH.lifeYears[0]+rnd()*(SH.lifeYears[1]-SH.lifeYears[0]);
     let ok=true;
-    for(const b of spots){
-      if(Math.hypot(b.x-x,b.z-z)>SH.buildingClearM) continue;
-      if(b.born<=born&&b.died>born){ ok=false; break; }        // something already stands here
-      if(b.born>born) died=Math.min(died,b.born-0.05);          // displaced by a new building
+    for(const b of nearPermanent(x,z)){   // coverage ends within permanentClearM of a permanent structure
+      if(b.born<=born&&b.died>born){ ok=false; break; }        // one already stands within range
+      if(b.born>born) died=Math.min(died,b.born-0.05);          // displaced when one is built
     }
     if(!ok||died-born<1) continue;
     huts.push({x,z,born,died});
     // ── the hut: crooked box walls, a tilted shed roof, maybe a stovepipe ──
     const w=SH.size[0]+rnd()*(SH.size[1]-SH.size[0]), d=w*(0.6+rnd()*0.4), h=1.9+rnd()*0.5;
-    const yaw=Math.atan2(dx,dz)+(rnd()-0.5)*0.6, lean=(rnd()-0.5)*0.08, y0=sampleTerrainY(x,z);
+    const yaw=face+(rnd()-0.5)*0.6, lean=(rnd()-0.5)*0.08, y0=sampleTerrainY(x,z);
     const wall=new THREE.Color(SH.colors[Math.floor(rnd()*SH.colors.length)]).multiplyScalar(0.8+rnd()*0.35);
     const roofC=new THREE.Color(rnd()<0.5?0x2A2622:0x5A5048).multiplyScalar(0.8+rnd()*0.4);
     const parts=[];
@@ -9037,7 +9111,8 @@ function initShanties(){
   g.setAttribute('aBuild',new THREE.Float32BufferAttribute(build,4));
   g.computeVertexNormals();
   const mesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true})));
-  mesh.castShadow=true; mesh.receiveShadow=true; scene.add(mesh);
+  mesh.castShadow=true; mesh.receiveShadow=true; mesh.customDepthMaterial=makeLifespanDepthMaterial(false);   // shadows only while the hut stands
+  scene.add(mesh);
   console.log(`🏚 Shanties: ${huts.length} in the yards (${huts.map(h=>Math.floor(h.born)).sort((a,b)=>a-b).join(',')})`);
 }
 // ── Automobiles (CONFIG.autos) ─────────────────────────────────────
@@ -9705,6 +9780,7 @@ function applySeason(force){
   if(_changed('doy',Math.floor(S.doy),0.5)) setTimeOfDay(currentTodFraction);
   const autumn=Math.max(S.autumn,Math.max(0,-wet)*(M.treeYellowing??0.3)*S.leaf);   // drought: early yellowing
   if(_changed('trees',S.leaf*3+autumn,0.004)) updateTreeSeason(S.leaf,autumn);
+  if(_changed('treeBld',Math.floor(yearFrac(currentViewDate)*12),0.5)) updateTreeBuildings();
   const btn=document.getElementById('winter-btn');
   if(btn&&_changed('btn',S.snow>0.5?1:0,0.5)) btn.textContent=S.snow>0.5?'☀ Summer':'❄ Winter';
 }
@@ -10012,13 +10088,34 @@ function tickFloes(dt){
 // leaf 0→1 = leaf-out (May) / 1→0 = leaf-drop (Oct); autumn 0→1 = colour turn.
 // Each tree has its own phase so a stand turns and drops gradually.
 const _tm=new THREE.Matrix4(), _tq=new THREE.Quaternion(), _ts=new THREE.Vector3(), _tp=new THREE.Vector3(), _tc=new THREE.Color(), _tc2=new THREE.Color();
+let _treeLeaf=1,_treeAut=0;
+// Month by month: hide trees that a building now stands over (trunk and crown),
+// bring them back when the building is gone. Spans are [born-0.5 y, died).
+function updateTreeBuildings(){
+  const yf=yearFrac(currentViewDate); let changed=false;
+  for(const e of riverTreeMeshes){
+    if(!e.crown||!e.list||!e.wood) continue;
+    e.list.forEach((t,i)=>{
+      if(!t.hide) return;
+      let h=false; for(let k=0;k<t.hide.length;k+=2) if(yf>=t.hide[k]-0.5&&yf<t.hide[k+1]){h=true;break;}
+      if(h===!!t.hid) return;
+      t.hid=h; changed=true;
+      _tq.setFromAxisAngle(_brY,t.rot);
+      _tm.compose(_tp.set(t.x,t.y,t.z),_tq,h?_ts.set(0,0,0):_ts.set(t.sc,t.sc*t.sy,t.sc));
+      e.wood.setMatrixAt(i,_tm);
+    });
+    e.wood.instanceMatrix.needsUpdate=true;
+  }
+  if(changed) updateTreeSeason(_treeLeaf,_treeAut);
+}
 function updateTreeSeason(leaf,autumn){
+  _treeLeaf=leaf; _treeAut=autumn;
   const late=_sc.c.set(SEASON.lateAutumnColor);
   for(const e of riverTreeMeshes){
     if(!e.crown||!e.list) continue;
     e.list.forEach((t,i)=>{
       const sLeaf=Math.max(0,Math.min(1,(leaf-t.phase)/0.5));            // this tree's leaf fullness
-      const k=sLeaf<0.02?0:t.sc*(0.4+0.6*sLeaf);
+      const k=t.hid||sLeaf<0.02?0:t.sc*(0.4+0.6*sLeaf);
       _tq.setFromAxisAngle(_brY,t.rot);
       _tm.compose(_tp.set(t.x,t.y,t.z),_tq,_ts.set(k,k*t.sy,k));
       e.mesh.setMatrixAt(i,_tm);

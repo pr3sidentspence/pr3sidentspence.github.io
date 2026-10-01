@@ -35,6 +35,8 @@ LINES = {
       'CPR main line west, Winnipeg–Portage la Prairie, built direct in late 1881 (MHS, "Rails Across the Red")'),
   'cpr_yardtrk': ('1881-07-26', None, 'medium',
       'CPR Point Douglas yard tracks — yard dates from 1881, tracks added as traffic grew (spread to 1900)'),
+  'cpr_eastbank': ('1881-07-26', None, 'medium',
+      'CPR line east of the Red River (St. Boniface side): CPR trains came in from the east over the Louise Bridge from 26 Jul 1881 (CBC / MHS); the Point Douglas bridge that carries it across the river here is 1902'),
   'cpr_bridge':  ('1902-07-01', None, 'high',
       'CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)'),
   'cpr_sw':      ('1882-01-01', None, 'low',
@@ -64,9 +66,9 @@ put('cpr_weston', 180,181,182,183,184,186,187,188,189,190,191,192,194,195,200,20
 # unclassified long lines (class None)
 OTHER = {282:'cnor_east', 283:'gwwd'}
 # split long features at vertex indices → pieces (first piece = from vertex 0)
-#   246 = "CPR Mainline" (10 km): vertices 0–3 east of the Red (the 1902 bridge is between 2 and 3),
+#   246 = "CPR Mainline" (10 km): vertices 0–2 east of the Red (from 1881), 2–3 the Point Douglas bridge (1902),
 #   3–14 through the yards, 14–19 main line west
-SPLITS = {246: [(0, 3, 'cpr_bridge'), (3, 14, 'cpr_louise'), (14, 19, 'cpr_west')]}
+SPLITS = {246: [(0, 2, 'cpr_eastbank'), (2, 3, 'cpr_bridge'), (3, 14, 'cpr_louise'), (14, 19, 'cpr_west')]}
 # short through lines in these yards are yard tracks (spread), the rest are main tracks (at the line date)
 YARD_TRACK_MAX_M = 1000
 SPREAD_TO = {'cpr_louise': '1900-01-01', 'cpr_weston': '1906-01-01', 'npm_forks': '1904-01-01',

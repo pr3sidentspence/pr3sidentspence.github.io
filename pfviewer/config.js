@@ -251,7 +251,9 @@ export const CONFIG = {
     shininess: 90,
     specular: 0x4868A0,
     tileMetres: 400,      // windows are grouped in map tiles of this size…
-    maxDistance: 1800,    // …and tiles farther than this from the camera are hidden
+    maxDistance: 1800,    // …and tiles farther than this (3D) from the camera are hidden, nearest first…
+    maxPanes: 150000,     // …up to this many real panes at once (the painted windows take over beyond); 0-cost cap on close-up work
+    tilesPerFrame: 2,     // new tiles switched on per frame (spreads GPU uploads)
     // Warm amber glow added to glass at night, scaled by darkness (0..1).
     nightGlowColor: { r: 0.47, g: 0.19, b: 0.02 },
   },
@@ -816,10 +818,15 @@ export const CONFIG = {
   // `years`, lasts `lifeYears`, and is displaced early by any building built
   // within buildingClearM.
   shanties: {
-    areaWorld: [-100, 100, 900, 1100],
-    count: 30,
+    // areaWorld = world x0,z0,x1,z1: the East Yards at the Forks plus open ground west
+    // and north of them. Huts go beside yard tracks (trackShare) or on open ground, up
+    // to permanentClearM from any permanent structure that stands at the time; each
+    // stands `lifeYears` and is displaced early when a permanent building is built
+    // within permanentClearM.
+    areaWorld: [-700, -700, 900, 1100],
+    count: 70, trackShare: 0.45,
     years: [1882, 1938], lifeYears: [3, 15],
-    trackClearM: 6, spreadM: 22, minSpacingM: 9, buildingClearM: 12,
+    trackClearM: 6, spreadM: 22, minSpacingM: 9, permanentClearM: 100,
     size: [2.4, 4.2],
     colors: [0x6A6058, 0x5A4E42, 0x7A6E60, 0x4A4440, 0x6E5A44, 0x3A3632],
   },
@@ -1117,7 +1124,7 @@ export const CONFIG = {
   // ── Streetcars ───────────────────────────────────────────────────────
   streetcars: {
     speed: 4.5,              // m/s (~16 km/h)
-    carSpacingMeters: 400,   // target distance (map units/metres) between cars along a
+    carSpacingMeters: 900,   // (was 400 — ~730 cars; now about 40%) target distance (map units/metres) between cars along a
                              // route, each direction — car count per direction = route
                              // length / this value (floored by carsPerDirectionMin below).
                              // Shorter routes get fewer cars, longer ones get more. Lower
@@ -1310,7 +1317,7 @@ export const CONFIG = {
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
     // (painted windows cover the distance). Phones share one GPU process across all tabs.
     building: { loadRadius: 3000, detailDistance: 600, roofCap: { bigDistance: 2500 } },
-    glass:    { maxDistance: 700 },
+    glass:    { maxDistance: 700, maxPanes: 45000 },
     camera:   { pixelRatioCap: 1.25 },
     lighting: { sun: { shadowMapSize: 1024 } },
     trees:    { spacing: 14 },

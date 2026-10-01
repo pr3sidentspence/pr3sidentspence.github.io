@@ -1170,6 +1170,34 @@
       "name": "Point Douglas rail bridge (Goad footprint)",
       "notes": "Replaced by the generated bridge (9 m wide; the Goad/Planimetro footprint was 43.5 m) — per Mike.",
       "remove": true
+    },
+    "9846382b-7f5b-4b4b-be8a-13e67064159d": {
+      "name": "Fire Hall No. 2 — main building",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/firehall2.shtml"
+      ],
+      "notes": "Fire Hall No. 2 (South Fire Hall), Smith St at York Ave: built 1882, major additions 1907–08 (Bruce & Smith), closed 1941 and demolished (date not given — left standing). The Goad-derived main-building date (1903) was too late; hose tower was the 1880 placeholder.",
+      "set": {
+        "born": "1882-06-01",
+        "construction_months": 8,
+        "date_precision": {
+          "born": "year"
+        }
+      }
+    },
+    "3424d95e-6bc3-43f7-bf6d-2a3de9b59d19": {
+      "name": "Fire Hall No. 2 — hose tower",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/firehall2.shtml"
+      ],
+      "notes": "Fire Hall No. 2 (South Fire Hall), Smith St at York Ave: built 1882, major additions 1907–08 (Bruce & Smith), closed 1941 and demolished (date not given — left standing). The Goad-derived main-building date (1903) was too late; hose tower was the 1880 placeholder.",
+      "set": {
+        "born": "1882-06-01",
+        "construction_months": 8,
+        "date_precision": {
+          "born": "year"
+        }
+      }
     }
   }
 }

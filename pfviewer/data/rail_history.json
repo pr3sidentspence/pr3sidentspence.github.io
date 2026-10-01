@@ -19,6 +19,12 @@
    "confidence": "medium",
    "basis": "CPR Point Douglas yard tracks — yard dates from 1881, tracks added as traffic grew (spread to 1900)"
   },
+  "cpr_eastbank": {
+   "born": "1881-07-26",
+   "died": null,
+   "confidence": "medium",
+   "basis": "CPR line east of the Red River (St. Boniface side): CPR trains came in from the east over the Louise Bridge from 26 Jul 1881 (CBC / MHS); the Point Douglas bridge that carries it across the river here is 1902"
+  },
   "cpr_bridge": {
    "born": "1902-07-01",
    "died": null,
@@ -2032,16 +2038,26 @@
    "confidence": "medium"
   },
   "247/0": {
+   "line": "cpr_eastbank",
+   "born": "1881-07-26",
+   "died": null,
+   "kind": "through",
+   "basis": "CPR line east of the Red River (St. Boniface side): CPR trains came in from the east over the Louise Bridge from 26 Jul 1881 (CBC / MHS); the Point Douglas bridge that carries it across the river here is 1902",
+   "confidence": "medium",
+   "from": 0,
+   "to": 2
+  },
+  "247/1": {
    "line": "cpr_bridge",
    "born": "1902-07-01",
    "died": null,
    "kind": "through",
    "basis": "CPR Red River bridge at Point Douglas and its approaches: built 1901–02, first train early July 1902 (MHS)",
    "confidence": "high",
-   "from": 0,
+   "from": 2,
    "to": 3
   },
-  "247/1": {
+  "247/2": {
    "line": "cpr_louise",
    "born": "1881-07-26",
    "died": null,
@@ -2051,7 +2067,7 @@
    "from": 3,
    "to": 14
   },
-  "247/2": {
+  "247/3": {
    "line": "cpr_west",
    "born": "1881-12-01",
    "died": null,
