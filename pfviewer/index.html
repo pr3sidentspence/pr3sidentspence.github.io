@@ -2122,7 +2122,7 @@ function applyVertexColour(geom, hexCol){
 // the footprint isn't a 4-corner rectangle or is shorter than
 // CONFIG.bridges.minSpan (caller keeps the slab).
 const _brY=new THREE.Vector3(0,1,0), _brZ=new THREE.Vector3(0,0,1);
-function buildBridgeGeometry(pts,mat){
+function buildBridgeGeometry(pts,mat,styleOverride=null){
   const B=CONFIG.bridges;
   if(pts.length!==4) return null;
   const e0=[pts[1][0]-pts[0][0],pts[1][1]-pts[0][1]], e1=[pts[2][0]-pts[1][0],pts[2][1]-pts[1][1]];
@@ -2144,7 +2144,8 @@ function buildBridgeGeometry(pts,mat){
   const waterY=CONFIG.water.startY;
   const overWater=minG<waterY;
   const isWood=String(mat).includes('wood')||mat==='lumber';
-  const style=overWater&&!isWood?'truss':'trestle';
+  // props.bridge_style: truss | trestle | girder (deck on piers, solid parapets) | arch (girder + arch ribs)
+  const style=styleOverride||(overWater&&!isWood?'truss':'trestle');
   const underside0=B.deckThickness+B.girderDepth;
   const deckTop=Math.max(endA,endB,(overWater?waterY:minG)+B.minClearance+underside0);
   const girderBot=deckTop-underside0;
@@ -2185,7 +2186,29 @@ function buildBridgeGeometry(pts,mat){
   }
   const inner=L-2*B.abutmentLength;
 
-  if(style==='truss'){
+  if(style==='girder'||style==='arch'){
+    const T=B.truss;
+    const nSpans=Math.max(1,Math.ceil(inner/(style==='arch'?(B.archSpan??35):T.maxSpan)));
+    const spanLen=inner/nSpans;
+    for(let si=1;si<nSpans;si++){
+      const u=-inner/2+spanLen*si;
+      const g=Math.min(ground(u,-W/2),ground(u,0),ground(u,W/2))-1;
+      box(u,(g+girderBot)/2,0,T.pierThickness,girderBot-g,W+1,B.colors.stone);
+    }
+    // solid parapet walls
+    for(const side of[-1,1]) box(0,deckTop+0.55,side*(W/2-0.15),L,1.1,0.3,B.colors.stone);
+    if(style==='arch'){
+      // a shallow concrete arch rib under each span, both edges
+      for(let si=0;si<nSpans;si++){
+        const uA=-inner/2+spanLen*si, rise=Math.min(spanLen*0.22,Math.max(1.5,girderBot-((overWater?waterY:minG)+0.5)));
+        const n=10;
+        for(const side of[-1,1]) for(let k=0;k<n;k++){
+          const f0=k/n,f1=(k+1)/n, y0=girderBot-rise*(1-Math.sin(Math.PI*f0)), y1=girderBot-rise*(1-Math.sin(Math.PI*f1));
+          beam([uA+spanLen*f0,y0,side*(W/2-0.6)],[uA+spanLen*f1,y1,side*(W/2-0.6)],0.9,B.colors.stone);
+        }
+      }
+    }
+  }else if(style==='truss'){
     const T=B.truss;
     // Spans between stone piers
     const nSpans=Math.max(1,Math.ceil(inner/T.maxSpan));
@@ -2889,7 +2912,7 @@ async function buildCity(geojson){
       // wallCums/wallInfos entry so hover lookups stay aligned.
       if(props.type==='bridge'){
         const pts=outer.slice(0,-1).map(c=>{const[sx,sy]=project(c[0],c[1]);return[sx,-sy];});
-        const br=buildBridgeGeometry(pts,mat);
+        const br=buildBridgeGeometry(pts,mat,props.bridge_style||null);
         if(br){
           const tg=br.geom, tris=tg.attributes.position.count/3;
           bridgeDecks.push({layer:year,...br.deck});

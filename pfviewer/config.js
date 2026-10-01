@@ -26,6 +26,7 @@ export const CONFIG = {
     autoload: [
       './data/pastforward_2026_assessment.geojson',  // growth master + assessment/heritage dates (matching/merge_assessment.py) — no OSM data
       './data/pastforward_2026_osm.geojson',         // new pre-1907 buildings with OSM footprints — ODbL, kept as a separate database
+      './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
       './data/pastforward_2026_legislature_osm.geojson',   // Legislative Building + dome, Government House, outbuildings, drives/paths — OSM (ODbL)
       // './data/pastforward_2026.geojson',  // dated growth master without assessment data (no OSM) — swap back by un-commenting
       './data/wpg_rivers.geojson',
@@ -297,7 +298,7 @@ export const CONFIG = {
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
-                'roof_height','roof_color'],
+                'roof_height','roof_color','bridge_style'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
     // ridge height = pitch × half the wing's short side, capped at maxRidgeM

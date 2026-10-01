@@ -1135,6 +1135,36 @@
       "set": {
         "roof_type": "wings"
       }
+    },
+    "e6dd4257-3a82-4937-9ced-f0fd11c6036e": {
+      "name": "Louise Bridge (Goad)",
+      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+      "remove": true
+    },
+    "9eea30c8-cb0b-4c29-8be6-80b7cb8dfe8c": {
+      "name": "Salter Street overpass (Goad)",
+      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+      "remove": true
+    },
+    "bf035551-b5d4-48cd-9275-b46f5c3d819e": {
+      "name": "Salter Street overpass (Goad, duplicate)",
+      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+      "remove": true
+    },
+    "c9f4f0e4-cfa2-4bc4-9b08-d34dc9dacf50": {
+      "name": "Main Street subway (duplicate)",
+      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+      "remove": true
+    },
+    "f5b78f17-5e40-4439-bb61-66176fc9ae4b": {
+      "name": "CPR Main Street Subway",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/mainstreetsubway.shtml"
+      ],
+      "notes": "Multi-span concrete bridge for eight CPR tracks, opened November 1904 (MHS).",
+      "set": {
+        "born": "1904-11-01"
+      }
     }
   }
 }
