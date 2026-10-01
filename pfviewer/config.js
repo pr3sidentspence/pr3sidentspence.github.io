@@ -454,6 +454,9 @@ export const CONFIG = {
       // untouched, regional rise kept (strength 0 = off; see flattenDEM)
       flatten: { radiusM: 300, strength: 0.85, bankSlope: 0.08, bufferM: 40, featherM: 20,
                  minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
+    // Brown's Creek: a shallow valley carved along its line while it exists
+    // (filled in since — the LiDAR is flat there); cosine profile, metres
+    creek: { depth: 1.8, halfWidth: 30 },   // terrain vertices are ~20 m apart — narrower reads as notches
     // The cut-off oxbow east of the Forks (St Boniface/Norwood): found in the
     // LiDAR (relBelowM under a contextM-wide average, inside bbox lon/lat
     // [W, S, E, N], clear of the river banks), kept out of the flattening,

@@ -784,6 +784,46 @@ function flattenDEM(h, S, cellM, protect=null){
   console.log(`🗺 DEM flattened (≈${F.radiusM} m, strength ${F.strength}) — ${changed.toLocaleString()} cells`);
 }
 
+// ── Brown's Creek valley (CONFIG.terrain.creek) ─────────────────────
+// The creek was filled in long ago, so the LiDAR is flat where it ran.
+// Carve a shallow valley into the terrain mesh along its line (cosine
+// profile: `depth` at the centre line easing to 0 at `halfWidth`), shown
+// while the creek exists; today's ground comes back after its died date
+// (swapped in tickCreekTerrain). Once per load, whichever layer has it.
+let creekCarve=null;   // {idx, carved, today, born, died, state}
+function carveCreekTerrain(lines,born,died){
+  const C=CONFIG.terrain.creek; if(!C||creekCarve||!_demLoaded) return;
+  const segs=[];
+  for(const line of lines) for(let i=0;i<line.length-1;i++){
+    const[a1,b1]=project(line[i][0],line[i][1]),[a2,b2]=project(line[i+1][0],line[i+1][1]);
+    segs.push([a1,-b1,a2,-b2]);
+  }
+  if(!segs.length) return;
+  const pos=terrainMesh.geometry.attributes.position, v=new THREE.Vector3(), R=C.halfWidth, idx=[], carved=[], today=[];
+  terrainMesh.updateMatrixWorld(true);
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[a,b,c,d]of segs){x0=Math.min(x0,a,c);x1=Math.max(x1,a,c);z0=Math.min(z0,b,d);z1=Math.max(z1,b,d);}
+  for(let i=0;i<pos.count;i++){
+    v.set(pos.getX(i),0,pos.getZ(i)); terrainMesh.localToWorld(v);
+    if(v.x<x0-R||v.x>x1+R||v.z<z0-R||v.z>z1+R) continue;
+    let dmin=1e9;
+    for(const[a,b,c,d]of segs){ const dx=c-a,dz=d-b,L=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((v.x-a)*dx+(v.z-b)*dz)/L)); dmin=Math.min(dmin,Math.hypot(v.x-a-dx*t,v.z-b-dz*t)); }
+    if(dmin>=R) continue;
+    const y=pos.getY(i), dy=C.depth*0.5*(1+Math.cos(Math.PI*dmin/R));
+    idx.push(i); today.push(y); carved.push(y-dy); pos.setY(i,y-dy);
+  }
+  pos.needsUpdate=true; terrainMesh.geometry.computeVertexNormals();
+  creekCarve={idx,carved:Float32Array.from(carved),today:Float32Array.from(today),born,died,state:'carved'};
+  console.log(`🏞 Brown's Creek valley: ${idx.length} terrain vertices lowered (≤ ${C.depth} m)`);
+}
+function tickCreekTerrain(){
+  if(!creekCarve) return;
+  const yr=yearFrac(currentViewDate), want=yr>=creekCarve.born&&yr<creekCarve.died?'carved':'today';
+  if(want===creekCarve.state) return;
+  const W=creekCarve, arr=W[want], pos=terrainMesh.geometry.attributes.position;
+  for(let k=0;k<W.idx.length;k++) pos.setY(W.idx[k],arr[k]);
+  pos.needsUpdate=true; terrainMesh.geometry.computeVertexNormals(); W.state=want;
+}
+
 // ── The oxbow east of the Forks (CONFIG.terrain.oxbow) ──────────────
 // A cut-off meander loop, filled in since: in the LiDAR it's a ring 1–2 m
 // below its surroundings. detectOxbow() finds it (inside a lon/lat box,
@@ -3549,6 +3589,7 @@ async function buildCity(geojson){
       const hw=CONFIG.water.widths.brownsCreek;  // half-width in metres
       const lines2=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
       const _cb=_isoYearFrac(feat.properties.born,NO_BORN), _cd=_isoYearFrac(feat.properties.died,NO_DIED);
+      carveCreekTerrain(lines2,_cb,_cd);   // a shallow valley for it, while it exists (before the ribbon samples the ground)
       creekRibbonLife.push(_cb,_cd,creekRibbonVerts.length);   // span for the verts pushed below
       let _acc=20;
       for(const line of lines2){
@@ -9308,6 +9349,7 @@ function startLoop(){
     tickUtilityPoles();
     if(!shantiesBuilt) initShanties();
     tickOxbow();
+    tickCreekTerrain();
     tickSoundHooks(dt);
     applySeason();
     tickWeather(dt);
