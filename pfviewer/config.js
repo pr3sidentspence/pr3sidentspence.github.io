@@ -798,6 +798,20 @@ export const CONFIG = {
   // names it — click it to fly there.
   cues: { beacon: true, beaconHeight: 160, beaconRadius: 7, beaconSeconds: 6, beaconOpacity: 0.35 },
 
+  // ── Shantytown in the CNR East Yards ────────────────────────────────
+  // Ramshackle huts and cabins beside the yard tracks (areaWorld = world
+  // x0,z0,x1,z1 box around the East Yards at the Forks). Each goes up in
+  // `years`, lasts `lifeYears`, and is displaced early by any building built
+  // within buildingClearM.
+  shanties: {
+    areaWorld: [-100, 100, 900, 1100],
+    count: 30,
+    years: [1882, 1938], lifeYears: [3, 15],
+    trackClearM: 6, spreadM: 22, minSpacingM: 9, buildingClearM: 12,
+    size: [2.4, 4.2],
+    colors: [0x6A6058, 0x5A4E42, 0x7A6E60, 0x4A4440, 0x6E5A44, 0x3A3632],
+  },
+
   // ── Fire engines ────────────────────────────────────────────────────
   // Run in along the nearest street when a building catches fire and park
   // there until it's out. Winnipeg: volunteer brigade 1874 (from); first
@@ -1158,6 +1172,14 @@ export const CONFIG = {
     passengerRouteCount: 12,        // top-N longest segments get passenger service
     freightThroughMinLengthM: 900,  // mainline-scale threshold for through freight
     smokePuffsPerLocomotive: 7,
+    // Cars per train by year (linear between; each train ±20%, capped by its
+    // route) — trains got much longer as locomotives got bigger.
+    carsByYear: {
+      passenger: [[1880,3],[1900,6],[1930,10],[1960,12]],
+      freight:   [[1880,8],[1900,20],[1930,40],[1960,55]],
+      switcher:  [[1880,2],[1960,6]],
+    },
+    maxCars: 45,                    // cap per train (draw calls) — mobile profile lowers it
     colors: {
       locoBody: 0x14110f, locoCab: 0x2a2420,
       tender: 0x1c1814, tenderCoal: 0x0c0c0c,
@@ -1263,6 +1285,7 @@ export const CONFIG = {
     trees:    { spacing: 14 },
     seasons:  { floeCount: 450 },
     streetLights: { spacing: 70, radius: 1800 },
+    trains:   { maxCars: 25 },
   },
 
   // ── Minimap ─────────────────────────────────────────────────────────

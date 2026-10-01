@@ -3099,7 +3099,10 @@ async function buildCity(geojson){
       else if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&outer.length<=14))){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
-        const rg=buildRoofGeometry(ring,height+0.05);if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
+        const rg=buildRoofGeometry(ring,height+0.05,props.roof_height??null);
+        if(rg){ rg.translate(0,buildingBaseY,0);
+          if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }   // e.g. copper
+          else roofGeos[mat].push(rg); }
       }
 
       // Church/cathedral: steep peaked roof regardless of material or floor count.
@@ -7622,17 +7625,16 @@ function spawnTrain(route,kind,seed){
   const loco=buildLocoGroup();
   scene.add(loco);
   const cars=[];
-  let carCount,carLen,carBuilder;
-  if(kind==='passenger'){
-    carCount=4+Math.floor(seededRand(seed+1)*3);          // 4–6 wooden coaches
-    carLen=PASS_CAR_L; carBuilder=i=>buildPassengerCar(i);
-  }else if(kind==='freight'){
-    carCount=14+Math.floor(seededRand(seed+1)*9);         // 14–22 cars
-    carLen=FREIGHT_CAR_L; carBuilder=i=>buildFreightCar(seed*7+i);
-  }else{
-    carCount=2+Math.floor(seededRand(seed+1)*3);          // 2–4 cars, yard shunt
-    carLen=SWITCH_CAR_L; carBuilder=i=>buildFreightCar(seed*11+i);
-  }
+  // Built at the longest this train will ever be (CONFIG.trains.carsByYear,
+  // capped by the route); tickTrains shows only as many cars as the year has.
+  let carLen,carBuilder;
+  if(kind==='passenger'){ carLen=PASS_CAR_L; carBuilder=i=>buildPassengerCar(i); }
+  else if(kind==='freight'){ carLen=FREIGHT_CAR_L; carBuilder=i=>buildFreightCar(seed*7+i); }
+  else{ carLen=SWITCH_CAR_L; carBuilder=i=>buildFreightCar(seed*11+i); }
+  const CBY=CONFIG.trains.carsByYear?.[kind]??[[1850,kind==='freight'?18:kind==='passenger'?5:3]];
+  const lenMult=0.8+seededRand(seed+1)*0.4;   // this train: ±20%
+  const routeCap=Math.max(1,Math.floor((route.totalLen*0.8-(LOCO_BODY_L+CAR_GAP+TENDER_L))/(carLen+CAR_GAP)));
+  const carCount=Math.min(routeCap,CONFIG.trains.maxCars??999,Math.max(1,Math.round(Math.max(...CBY.map(k=>k[1]))*lenMult)));
   for(let i=0;i<carCount;i++){const c=carBuilder(i);scene.add(c);cars.push(c);}
   const headLen=LOCO_BODY_L+CAR_GAP+TENDER_L;
   const carSpacingM=carLen+CAR_GAP;
@@ -7647,6 +7649,7 @@ function spawnTrain(route,kind,seed){
     pauseTimer:0, dwellMin:dwellRange[0], dwellMax:dwellRange[1],
     smoke:buildSmokePool(seed+5), smokeNext:0, smokeTimer:0,
     smokeInterval: kind==='freight'?0.22:(kind==='switcher'?0.5:0.30),
+    carsFor:yr=>Math.min(carCount,Math.max(1,Math.round(sbKey(CBY,yr)*lenMult))),
   };
   trainConsists.push(train);
   return train;
@@ -8621,6 +8624,90 @@ function tickUtilityPoles(){
   poleSet=set;
 }
 
+// ── Shantytown in the CNR East Yards (CONFIG.shanties) ─────────────
+// Ramshackle huts and cabins scattered beside the yard tracks: each goes up
+// at a random date, lasts a few years, and comes down early if a building is
+// built on its spot (displaced). One merged mesh, dated by the lifespan
+// shader. Placed once rails, rivers, terrain and building data are in.
+let shantiesBuilt=false;
+function _allBuildingSpots(){
+  const out=[];
+  const add=gj=>{ for(const f of gj.features){ const p=f.properties; if(!p) continue;
+    let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
+    let x=0,z=0; for(const q of c){const[sx,sy]=project(q[0],q[1]);x+=sx;z-=sy;} x/=c.length; z/=c.length;
+    out.push({x,z,born:_isoYearFrac(p.born,NO_BORN),died:_isoYearFrac(p.died,NO_DIED)}); } };
+  for(const lg of layerGroups) if(lg.geojson) add(lg.geojson);
+  for(const ch of deferredChunks) add(ch.gj);
+  return out;
+}
+function initShanties(){
+  const SH=CONFIG.shanties; if(!SH||shantiesBuilt||OFF.has('vehicles')) return;
+  if(!railGeojson||!riverRings.length||!_demLoaded||!layerGroups.length) return;
+  shantiesBuilt=true;
+  const [bx0,bz0,bx1,bz1]=SH.areaWorld;
+  const segs=[];
+  for(const f of railGeojson.features){
+    const lines=f.geometry.type==='MultiLineString'?f.geometry.coordinates:[f.geometry.coordinates];
+    for(const line of lines) for(let i=0;i<line.length-1;i++){
+      const[ax,ay]=project(line[i][0],line[i][1]),[cx,cy]=project(line[i+1][0],line[i+1][1]);
+      segs.push({x1:ax,z1:-ay,x2:cx,z2:-cy,yard:f.properties.rail_class!=='through'});
+    }
+  }
+  const inBox=(x,z)=>x>=bx0&&x<=bx1&&z>=bz0&&z<=bz1;
+  const yard=segs.filter(s=>s.yard&&inBox((s.x1+s.x2)/2,(s.z1+s.z2)/2));
+  if(!yard.length){ console.warn('Shanties: no yard tracks in area'); return; }
+  const dSeg=(x,z,s)=>{const dx=s.x2-s.x1,dz=s.z2-s.z1,L=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-s.x1)*dx+(z-s.z1)*dz)/L));return Math.hypot(x-s.x1-dx*t,z-s.z1-dz*t);};
+  const spots=_allBuildingSpots().filter(b=>inBox(b.x,b.z));
+  const rnd=mulberry('shanties');
+  const pos=[],col=[],life=[],build=[], huts=[];
+  let tries=0;
+  while(huts.length<SH.count&&tries++<SH.count*60){
+    const s=yard[Math.floor(rnd()*yard.length)], t=rnd(), side=rnd()<0.5?-1:1;
+    const dx=s.x2-s.x1,dz=s.z2-s.z1,L=Math.hypot(dx,dz)||1;
+    const off=SH.trackClearM+rnd()*SH.spreadM;
+    const x=s.x1+dx*t-dz/L*side*off, z=s.z1+dz*t+dx/L*side*off;
+    if(!inBox(x,z)) continue;
+    if(segs.some(q=>dSeg(x,z,q)<SH.trackClearM)) continue;
+    if(riverRings.some(r=>pointInPolygon(x,z,r))) continue;
+    if(huts.some(h=>Math.hypot(h.x-x,h.z-z)<SH.minSpacingM)) continue;
+    let born=SH.years[0]+rnd()*(SH.years[1]-SH.years[0]);
+    let died=born+SH.lifeYears[0]+rnd()*(SH.lifeYears[1]-SH.lifeYears[0]);
+    let ok=true;
+    for(const b of spots){
+      if(Math.hypot(b.x-x,b.z-z)>SH.buildingClearM) continue;
+      if(b.born<=born&&b.died>born){ ok=false; break; }        // something already stands here
+      if(b.born>born) died=Math.min(died,b.born-0.05);          // displaced by a new building
+    }
+    if(!ok||died-born<1) continue;
+    huts.push({x,z,born,died});
+    // ── the hut: crooked box walls, a tilted shed roof, maybe a stovepipe ──
+    const w=SH.size[0]+rnd()*(SH.size[1]-SH.size[0]), d=w*(0.6+rnd()*0.4), h=1.9+rnd()*0.5;
+    const yaw=Math.atan2(dx,dz)+(rnd()-0.5)*0.6, lean=(rnd()-0.5)*0.08, y0=sampleTerrainY(x,z);
+    const wall=new THREE.Color(SH.colors[Math.floor(rnd()*SH.colors.length)]).multiplyScalar(0.8+rnd()*0.35);
+    const roofC=new THREE.Color(rnd()<0.5?0x2A2622:0x5A5048).multiplyScalar(0.8+rnd()*0.4);
+    const parts=[];
+    const box=new THREE.BoxGeometry(w,h,d).translate(0,h/2,0); parts.push([box,wall]);
+    const roof=new THREE.BoxGeometry(w+0.4,0.08,d+0.5); roof.rotateZ(0.18+rnd()*0.12); roof.translate(0,h+0.25,0); parts.push([roof,roofC]);
+    if(rnd()<0.5){ const pipe=new THREE.CylinderGeometry(0.07,0.07,0.9,5).translate(w*0.25,h+0.6,d*0.2); parts.push([pipe,new THREE.Color(0x1A1816)]); }
+    if(rnd()<0.6){ const patch=new THREE.BoxGeometry(w*0.4,h*0.4,0.04).translate((rnd()-0.5)*w*0.4,h*0.45,d/2+0.03); parts.push([patch,new THREE.Color(SH.colors[Math.floor(rnd()*SH.colors.length)]).multiplyScalar(0.7)]); }
+    const m=new THREE.Matrix4().makeRotationY(yaw).premultiply(new THREE.Matrix4().makeTranslation(x,y0,z)).multiply(new THREE.Matrix4().makeRotationZ(lean));
+    for(const[g,c]of parts){
+      const gi=g.toNonIndexed(); gi.applyMatrix4(m);
+      const p=gi.attributes.position.array; for(let k=0;k<p.length;k++) pos.push(p[k]);
+      for(let k=0;k<p.length/3;k++){ col.push(c.r,c.g,c.b); life.push(born,died); build.push(0,0,0,0); }
+    }
+  }
+  if(!huts.length){ console.warn('Shanties: none placed'); return; }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setAttribute('aLifespan',new THREE.Float32BufferAttribute(life,2));
+  g.setAttribute('aBuild',new THREE.Float32BufferAttribute(build,4));
+  g.computeVertexNormals();
+  const mesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true})));
+  mesh.castShadow=true; mesh.receiveShadow=true; scene.add(mesh);
+  console.log(`🏚 Shanties: ${huts.length} in the yards (${huts.map(h=>Math.floor(h.born)).sort((a,b)=>a-b).join(',')})`);
+}
 // ── Small craft (CONFIG.smallCraft) ────────────────────────────────
 // Canoes, York boats, rowboats, launches. Each works a stretch of river
 // back and forth at an offset from the centreline (kept inside the river
@@ -8829,7 +8916,8 @@ function tickTrains(dt){
   if(railRailLineMesh) railRailLineMesh.visible=visible;
   for(const train of trainConsists){
     train.loco.visible=visible;
-    for(const c of train.cars) c.visible=visible;
+    const nShow=train.carsFor?train.carsFor(viewYear):train.cars.length;   // trains grow longer over the years
+    for(let i=0;i<train.cars.length;i++) train.cars[i].visible=visible&&i<nShow;
     if(!visible){
       for(const slot of train.smoke) if(slot.spr) slot.spr.visible=false;
       train.moving=false;
@@ -9005,6 +9093,7 @@ function startLoop(){
     tickBeacons(dt);
     tickMosquitoes(dt);
     tickUtilityPoles();
+    if(!shantiesBuilt) initShanties();
     tickOxbow();
     tickSoundHooks(dt);
     applySeason();

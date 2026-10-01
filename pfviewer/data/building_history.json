@@ -1109,6 +1109,18 @@
       "name": "Steamboat Landing (building)",
       "notes": "Removed per Mike.",
       "remove": true
+    },
+    "e1714c01-c3c8-5eb1-89ee-ae5b190bbfff": {
+      "name": "Fort Garry Hotel",
+      "address": "222 Broadway",
+      "notes": "Château-style railway hotel (1913): tall steep copper roof with many dormers. Walls 11.5 storeys + ~10 m mansard in weathered (verdigris) copper — per Mike.",
+      "set": {
+        "floors": 11.5,
+        "roof_type": "mansard",
+        "roof_height": 10,
+        "roof_color": "copper",
+        "parapet": false
+      }
     }
   }
 }
