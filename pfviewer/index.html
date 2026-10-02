@@ -9227,6 +9227,10 @@ function pcLoad(list){
   PC.xs=new Float64Array(n); PC.zs=new Float64Array(n); PC.azs=new Float32Array(n); PC.els=new Float32Array(n); PC.ms=new Float64Array(n); PC.ylo=new Float32Array(n); PC.yhi=new Float32Array(n); PC.myr=new Float32Array(n);
   PC.views.forEach((v,i)=>{PC.xs[i]=v.x;PC.zs[i]=v.z;PC.azs[i]=v.az;PC.els[i]=v.el;PC.ms[i]=v.ms??NaN;PC.ylo[i]=v.yLo;PC.yhi[i]=v.yHi;PC.myr[i]=v.ms!=null?new Date(v.ms).getFullYear():NaN;});
   if(far||badYr) console.warn(`📮 Postcard views: skipped ${far} far-away record(s); ${badYr} had an out-of-range photo year (ignored)`);
+  const fits=pcFits(); let nFit=0;   // apply saved alignments over the data file
+  for(const v of PC.views){ const f=fits[v.id]; if(!f) continue; v.az0=v.az;v.el0=v.el;v.fov0=v.fov; v.az=f.az;v.el=f.el;v.fov=f.fov;v.h=f.h; if(f.lon!=null){ const[sx,sy]=project(f.lon,f.lat); v.x=sx;v.z=-sy; } v.corrected=true; nFit++; }
+  PC.views.forEach((v,i)=>{PC.xs[i]=v.x;PC.zs[i]=v.z;PC.azs[i]=v.az;PC.els[i]=v.el;});
+  if(nFit) console.log(`📮 ${nFit} saved alignment(s) applied`);
   PC.last.az=-999;   // force a check
   if(n) _pcUI(); console.log(`📮 Postcard views: ${n}`);
 }
@@ -9281,18 +9285,41 @@ function _pcUI(){
   #pc-panel .sec{margin:6px 0 2px;letter-spacing:.12em;font-size:.65rem;color:#8a7040}
   #pc-ov{position:fixed;inset:0;z-index:25;display:none;pointer-events:none;align-items:center;justify-content:center}
   #pc-ov img{max-width:100%;max-height:100%;object-fit:contain}
-  #pc-ovbar{position:fixed;left:50%;transform:translateX(-50%);bottom:112px;z-index:27;background:rgba(9,8,10,.88);border:1px solid #3a2810;border-radius:10px;padding:6px 14px;display:none;gap:10px;align-items:center;color:#C8A05A;font:.75rem Georgia,serif;pointer-events:auto}
-  #pc-ovbar .btn{cursor:pointer;padding:1px 9px;border:1px solid #3a2810;border-radius:10px}`;
+  #pc-ovbar{position:fixed;left:50%;transform:translateX(-50%);bottom:112px;z-index:27;background:rgba(9,8,10,.88);border:1px solid #3a2810;border-radius:10px;padding:6px 14px;display:none;gap:8px 12px;flex-wrap:wrap;justify-content:center;align-items:center;max-width:94vw;color:#C8A05A;font:.75rem Georgia,serif;pointer-events:auto}
+  #pc-ovbar .btn{cursor:pointer;padding:1px 9px;border:1px solid #3a2810;border-radius:10px}
+  #pc-ovbar .btn.on{background:rgba(200,160,90,.3);border-color:#C8A05A}
+  #pc-hz{position:fixed;left:0;right:0;height:30px;margin-top:-15px;z-index:26;display:none;cursor:ns-resize;touch-action:none;pointer-events:auto}
+  #pc-hz::before{content:'';position:absolute;left:0;right:0;top:14px;height:2px;background:repeating-linear-gradient(90deg,#ff5a3c 0 14px,transparent 14px 22px)}
+  #pc-hz span{position:absolute;right:10px;top:-2px;font:.7rem Georgia,serif;color:#ff9a80;background:rgba(9,8,10,.7);padding:1px 8px;border-radius:8px}
+  #pc-toast{position:fixed;left:50%;transform:translateX(-50%);bottom:160px;z-index:30;background:rgba(9,8,10,.92);border:1px solid #C8A05A;color:#C8A05A;font:.78rem Georgia,serif;padding:6px 14px;border-radius:10px;display:none}`;
   document.head.appendChild(css);
   const mk=(tag,id,parent=document.body)=>{const e=document.createElement(tag); if(id) e.id=id; parent.appendChild(e); return e;};
   const badge=mk('div','pc-badge'), panel=mk('div','pc-panel'), ov=mk('div','pc-ov'), bar=mk('div','pc-ovbar');
   ov.appendChild(document.createElement('img'));
-  bar.innerHTML='<span>📮 card overlay</span><input id="pc-op" type="range" min="0" max="1" step="0.02" style="width:120px;accent-color:#C8A05A"><span class="btn" id="pc-flip">flip</span><span class="btn" id="pc-close">✕ close</span>';
+  bar.innerHTML='<span>📮 card overlay</span><input id="pc-op" type="range" min="0" max="1" step="0.02" style="width:110px;accent-color:#C8A05A" title="overlay opacity"><span class="btn" id="pc-flip">flip</span>'
+    +'<span>FoV <b id="pc-fovv">60</b>°</span><input id="pc-fov" type="range" min="15" max="130" step="0.5" style="width:130px;accent-color:#C8A05A" title="rendering field of view (vertical)"><span class="btn" id="pc-fovreset" title="back to the card\'s own field of view">card</span>'
+    +'<span class="btn" id="pc-hzbtn" title="drag the red line to the photo\'s horizon: the camera pitch is set so the 3D horizon lands there">⟷ horizon</span>'
+    +'<span class="btn" id="pc-save" title="remember this camera (position, heading, pitch, FoV) for this card">💾 save fit</span>'
+    +'<span class="btn" id="pc-export" title="copy all saved fits as JSON (for FastForward)">⧉ export</span>'
+    +'<span class="btn" id="pc-close">✕ close</span>';
   PC.el={badge,panel,ov,bar};
   badge.addEventListener('click',()=>pcPanel(!PC.open));
   document.getElementById('pc-op').addEventListener('input',e=>{ov.style.opacity=e.target.value;});
+  const setFov=f=>{ camera.fov=f; camera.updateProjectionMatrix(); document.getElementById('pc-fovv').textContent=(+f).toFixed(1).replace(/\.0$/,''); document.getElementById('pc-fov').value=f; };
+  PC.setFov=setFov;
+  document.getElementById('pc-fov').addEventListener('input',e=>setFov(+e.target.value));
+  document.getElementById('pc-fovreset').addEventListener('click',()=>setFov(PC.cardFov??PC.savedFov??camera.fov));
   document.getElementById('pc-flip').addEventListener('click',()=>{const o=document.getElementById('pc-op'); o.value=+o.value>0.5?0.15:0.95; ov.style.opacity=o.value;});
   document.getElementById('pc-close').addEventListener('click',pcOverlayClose);
+  const hz=mk('div','pc-hz'); hz.innerHTML='<span>photo horizon</span>'; PC.el.hz=hz; mk('div','pc-toast');
+  document.getElementById('pc-hzbtn').addEventListener('click',()=>pcHorizon(hz.style.display!=='block'));
+  document.getElementById('pc-save').addEventListener('click',pcSaveFit);
+  document.getElementById('pc-export').addEventListener('click',pcExportFits);
+  const dragY=y=>{ hz.style.top=Math.max(40,Math.min(innerHeight-40,y))+'px'; };
+  let dragging=false;
+  hz.addEventListener('pointerdown',e=>{dragging=true;hz.setPointerCapture(e.pointerId);dragY(e.clientY);e.preventDefault();});
+  hz.addEventListener('pointermove',e=>{if(dragging) dragY(e.clientY);});
+  hz.addEventListener('pointerup',e=>{ if(!dragging) return; dragging=false; pcApplyHorizon(parseFloat(hz.style.top)); });
   window.addEventListener('keydown',e=>{ if(e.target.matches?.('input,textarea')) return; if(e.code==='KeyP'&&!e.ctrlKey&&!e.metaKey&&!e.altKey){ pcPanel(!PC.open); e.preventDefault(); } if(e.code==='Escape'){ if(PC.open) pcPanel(false); else pcOverlayClose(); } });
   badge.style.display='block'; badge.textContent='📮 '+PC.views.length;
 }
@@ -9311,7 +9338,7 @@ function pcRender(){
     if(v.thumb||v.img){ const im=document.createElement('img'); im.loading='lazy'; im.src=v.thumb||v.img; r.appendChild(im); }
     const t=document.createElement('div'); t.className='t'; r.appendChild(t);
     const h=document.createElement('div'); h.textContent=v.title||v.id||'(postcard)'; t.appendChild(h);
-    const m=document.createElement('div'); m.className='m'; m.textContent=[pcPhotoYears(v),v.date?('mailed '+v.date):'',meta].filter(Boolean).join(' · '); t.appendChild(m);
+    const m=document.createElement('div'); m.className='m'; m.textContent=[v.corrected?'✓ aligned':'',pcPhotoYears(v),v.date?('mailed '+v.date):'',meta].filter(Boolean).join(' · '); t.appendChild(m);
     const go=document.createElement('span'); go.className='btn'; go.textContent='go to view'; go.onclick=()=>pcGo(v); t.appendChild(go);
     if(v.img){ const o=document.createElement('span'); o.className='btn'; o.textContent='overlay'; o.onclick=()=>{pcGo(v,true);}; t.appendChild(o); }
     if(v.url){ const a=document.createElement('a'); a.className='btn'; a.textContent='card ↗'; a.href=v.url; a.target='_blank'; a.rel='noopener'; t.appendChild(a); }
@@ -9335,6 +9362,7 @@ function pcGo(v,overlay=false){
   const C=CONFIG.postcards, az=v.az*Math.PI/180, el=v.el*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
   const gy=sampleTerrainY(v.x,v.z)+v.h;
   if(PC.savedFov==null) PC.savedFov=camera.fov;
+  PC.current=v; PC.cardFov=v.fov||camera.fov;
   if(v.fov){ camera.fov=v.fov; camera.updateProjectionMatrix(); }
   if(fpsMode){ camera.position.set(v.x,gy,v.z); yaw=-az; pitch=el; }
   else{ camera.position.set(v.x,gy,v.z); orbit.target.copy(camera.position).addScaledVector(dir,Math.max(30,(orbit.minDistance||0)+1)); orbit.update(); }
@@ -9344,11 +9372,44 @@ function pcGo(v,overlay=false){
     else if(v.ms!=null) to=new Date(v.ms);
     if(to){ setCurrentViewDate(new Date(to.getFullYear(),to.getMonth(),to.getDate(),12),'day'); timelineMode='paused'; updateTimelineButtons(); }
   }
-  if(overlay&&v.img){ const im=PC.el.ov.querySelector('img'); im.src=v.img; PC.el.ov.style.display='flex'; PC.el.bar.style.display='flex'; const o=document.getElementById('pc-op'); o.value=C.defaultOpacity; PC.el.ov.style.opacity=C.defaultOpacity; }
+  if(overlay&&v.img){ const im=PC.el.ov.querySelector('img'); im.src=v.img; PC.el.ov.style.display='flex'; PC.el.bar.style.display='flex'; const o=document.getElementById('pc-op'); o.value=C.defaultOpacity; PC.el.ov.style.opacity=C.defaultOpacity; PC.setFov(camera.fov); }
   pcPanel(false);
 }
+// ── Aligning a view to its photo ──────────────────────────────────
+// Horizon: a camera pitched up by p (vertical FoV θ) sees the level horizon at
+// screen y = H/2 + (H/2)·tan p / tan(θ/2); so a horizon drawn at screen y gives
+// p = atan((2y/H − 1)·tan(θ/2)). The camera is re-aimed (same heading) to that
+// pitch. Saved fits go to localStorage and override the data file next load.
+function _pcToast(t){ const e=document.getElementById('pc-toast'); e.textContent=t; e.style.display='block'; clearTimeout(PC._tt); PC._tt=setTimeout(()=>e.style.display='none',2600); }
+function pcHorizon(on){
+  const hz=PC.el.hz; hz.style.display=on?'block':'none'; document.getElementById('pc-hzbtn').classList.toggle('on',on);
+  if(on){ // start where the 3D horizon is now
+    const cam=_pcCamera(), H=innerHeight, th=Math.tan(camera.fov*Math.PI/360), y=H/2*(1+Math.tan(cam.el*Math.PI/180)/th);
+    hz.style.top=Math.max(40,Math.min(H-40,y))+'px'; }
+}
+function pcApplyHorizon(yPx){
+  const H=innerHeight, p=Math.atan((2*yPx/H-1)*Math.tan(camera.fov*Math.PI/360));   // radians, + up
+  const cam=_pcCamera(), az=cam.az*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(p),Math.sin(p),-Math.cos(az)*Math.cos(p));
+  if(fpsMode){ pitch=p; }
+  else{ const d=camera.position.distanceTo(orbit.target)||30; orbit.target.copy(camera.position).addScaledVector(dir,d); orbit.update(); }
+  _pcToast(`pitch set to ${(p*180/Math.PI).toFixed(1)}° (horizon at ${(100*yPx/H).toFixed(0)}% of the screen)`);
+}
+const PC_FITS_KEY='pfviewer.postcardFits';
+function pcFits(){ try{ return JSON.parse(localStorage.getItem(PC_FITS_KEY)||'{}'); }catch(e){ return {}; } }
+function pcSaveFit(){
+  const v=PC.current; if(!v){ _pcToast('open a card first (go to view / overlay)'); return; }
+  const cam=_pcCamera(), [lon,lat]=unproject(cam.x,cam.z), fits=pcFits();
+  fits[v.id]={id:v.id,lon:+lon.toFixed(7),lat:+lat.toFixed(7),h:+(camera.position.y-sampleTerrainY(cam.x,cam.z)).toFixed(2),az:+cam.az.toFixed(2),el:+cam.el.toFixed(2),fov:+camera.fov.toFixed(2),was:{lon:v.lon,lat:v.lat,az:v.az0??v.az,el:v.el0??v.el,fov:v.fov0??v.fov}};
+  try{ localStorage.setItem(PC_FITS_KEY,JSON.stringify(fits)); }catch(e){ _pcToast('could not save (storage blocked)'); return; }
+  Object.assign(v,{az:cam.az,el:cam.el,fov:camera.fov,h:fits[v.id].h,corrected:true}); _pcToast(`saved fit for ${v.id} (${Object.keys(fits).length} saved)`);
+}
+function pcExportFits(){
+  const fits=Object.values(pcFits()); if(!fits.length){ _pcToast('no saved fits yet'); return; }
+  const txt=JSON.stringify(fits,null,1);
+  (navigator.clipboard?.writeText(txt)||Promise.reject()).then(()=>_pcToast(`${fits.length} fit(s) copied as JSON`)).catch(()=>{ console.log(txt); _pcToast(`${fits.length} fit(s) printed to the console`); });
+}
 function pcOverlayClose(){
-  if(!PC.el) return; PC.el.ov.style.display='none'; PC.el.bar.style.display='none';
+  if(!PC.el) return; PC.el.ov.style.display='none'; PC.el.bar.style.display='none'; pcHorizon(false);
   if(PC.savedFov!=null){ camera.fov=PC.savedFov; camera.updateProjectionMatrix(); PC.savedFov=null; }
 }
 function tickPostcards(){
@@ -9365,6 +9426,20 @@ function tickPostcards(){
 }
 // Test hooks: inject views / time the matcher on n random views
 window._pcLoad=list=>pcLoad(list);
+window._pcHorizonTest=()=>{ const v=PC.views.find(v=>v.fov&&v.img&&v.id!==undefined); localStorage.removeItem(PC_FITS_KEY); pcGo(v,true);
+  const H=innerHeight, out={fov:camera.fov, viewport:H}; 
+  for(const frac of [0.3,0.5,0.62]){ pcApplyHorizon(H*frac); const cam=_pcCamera(), th=Math.tan(camera.fov*Math.PI/360), yBack=H/2*(1+Math.tan(cam.el*Math.PI/180)/th);
+    out['drag'+frac]={pitchDeg:+cam.el.toFixed(2),horizonBackAtPct:+(100*yBack/H).toFixed(1)}; }
+  pcSaveFit(); const f=pcFits()[v.id]; out.saved={id:v.id,az:f.az,el:f.el,fov:f.fov,was:f.was};
+  const id=v.id, list=PC.views.map(q=>({id:q.id,lon:q.lon,lat:q.lat,az:q.az0??q.az,el:q.el0??q.el,fov:q.fov0??q.fov,title:q.title,img:q.img}));
+  pcLoad(list); const w=PC.views.find(q=>q.id===id); out.reloaded={corrected:!!w.corrected,el:+w.el.toFixed(2),fov:w.fov};
+  localStorage.removeItem(PC_FITS_KEY); pcOverlayClose(); return out; };
+window._pcFovTest=()=>{ const v=PC.views.find(v=>v.fov&&v.img); const orig=camera.fov; pcGo(v,true);
+  const f0=camera.fov, shown=document.getElementById('pc-ovbar').style.display;
+  const sl=document.getElementById('pc-fov'); sl.value=95; sl.dispatchEvent(new Event('input')); const f1=camera.fov, lab=document.getElementById('pc-fovv').textContent;
+  document.getElementById('pc-fovreset').click(); const f2=camera.fov;
+  sl.value=40; sl.dispatchEvent(new Event('input')); document.getElementById('pc-close').click(); const f3=camera.fov;
+  return {cardFov:v.fov,afterGo:f0,bar:shown,slider95:f1,label:lab,resetToCard:f2,afterCloseRestored:f3,originalFov:orig}; };
 window._pcEraStats=(years)=>{ const out={}; for(const y of years){ let vis=0,m=0,o=0,a=0;
     for(let k=0;k<PC.views.length;k+=5){ const v=PC.views[k]; if(Math.hypot(v.x,v.z)>3000) continue; vis++;
       const q=pcQuery({x:v.x,z:v.z,az:v.az,el:v.el},y+0.5); if(q.match.some(e=>PC.views[e.i].id===v.id)) m++; else if(q.otherEra.some(e=>PC.views[e.i].id===v.id)) o++; }
