@@ -801,6 +801,10 @@ export const CONFIG = {
     matchRadiusM: 40, matchAzDeg: 35, matchElDeg: 25,
     nearbyRadiusM: 400, listMax: 8, matchListMax: 20, sameDateDays: 7,   // listMax = nearby rows; matchListMax = matching rows
     defaultHeightM: 2.5, defaultOpacity: 0.5, jumpDate: true,
+    // Photo era (year_low..year_high): a card matches a view only while the viewer's
+    // year is inside it (± dateSlackYears); cards with no years match any era.
+    // Records farther than maxDistanceKm from the model are skipped as bad data.
+    eraFilter: true, dateSlackYears: 2, maxDistanceKm: 500,
     checkEveryMs: 250,
   },
 

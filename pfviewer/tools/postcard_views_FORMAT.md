@@ -12,11 +12,25 @@ modern street view:
   "el": 3,                                // pitch, degrees (+ up) (optional, default 0)
   "fov": 60,                              // VERTICAL field of view, degrees (optional: keep the current one)
   "title": "Portage Ave looking west, 1912",
-  "date": "1912-07-04",                   // sent / postmark / photo date (optional; enables "On this date")
+  "year_low": 1909, "year_high": 1913,    // the PHOTO's year range (optional; either may be missing → that one year)
+  "date": "1912-07-04",                   // date MAILED (optional; can be long after the photo; feeds "On this date")
   "url": "https://pastforward.winnipeg.ca/digital/collection/…/id/…",   // the card on CONTENTdm (opens in a new tab)
   "img": "https://…/full/1000,/0/default.jpg",                           // image to overlay on the 3D view (optional)
   "thumb": "https://…/full/160,/0/default.jpg" }                         // list thumbnail (optional)
 ```
+
+Dates: **matching a card to a view uses the photo years** (`year_low`/`year_high`):
+the card matches while the viewer's year is inside them (± `dateSlackYears`, 2).
+A card with a single year is that year ± slack. A card with no photo years but a
+mailed `date` is treated as "no later than the year mailed" (mailing can be long
+after the photo, so it is only an upper bound); no years and no date → any era.
+Years outside 1800–2030 are ignored as bad data. A card that is at the right spot
+and heading but in the wrong era appears under "same view, other era" in the list
+(and as "N here, other era" on the badge); the **era filter** toggle in the panel
+turns the date test off. "go to view" jumps to the mailed date if it falls inside
+the photo years, else mid-range (1 July), else the mailed date. The "On this date"
+tab uses only the mailed `date`. Records more than `maxDistanceKm` (500) from the
+model are skipped as bad coordinates (logged).
 
 Behaviour (all tunable under `CONFIG.postcards`):
 - The camera is checked ≤ 4×/s, only when it has moved or turned. A **badge**
