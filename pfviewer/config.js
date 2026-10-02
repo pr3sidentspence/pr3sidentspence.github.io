@@ -767,6 +767,8 @@ export const CONFIG = {
         note: 'Armistice — 3,000 in uniform march from Market Square past City Hall to Portage and Main' },
       { date: '1919-03-24', route: 'cityHallToPortage', marchers: 450, uniforms: [0x6E6446], crowd: 1800, kilts: true,
         note: 'The 43rd Cameron Highlanders come home, parade, and march to Minto Armoury for discharge' },
+      { date: '1924-06-18', route: 'cityHallToPortage', marchers: 450, uniforms: [0x6E6446, 0x2A3450, 0x1A2A4A], crowd: 3000,
+        note: "Winnipeg's 50th anniversary (Jubilee) parade, a civic holiday — bands and floats (CPR, HBC, Rotary, the Icelandic community …) on Main Street and Portage Avenue" },
       { date: '1942-02-19', route: 'cityHallToPortage', marchers: 250, uniforms: [0x3A3A3A, 0x6E6446], crowd: 1600,
         note: 'If Day — mock Nazi occupation, then the Victory Bond parade down Portage ("It MUST Not Happen Here!")' },
       { date: '1945-05-08', route: 'cityHallToPortage', marchers: 400, uniforms: [0x6E6446, 0x2A3450], crowd: 2400,

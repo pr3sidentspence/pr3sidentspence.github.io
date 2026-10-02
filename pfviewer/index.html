@@ -9212,7 +9212,7 @@ function tickAutos(dt){
 // Matching is brute force over typed arrays — ~20,000 views cost well under a
 // millisecond a query (see window._pcBench) — run at most every checkEveryMs
 // and only when the camera has moved or turned.
-const PC={views:[],xs:null,zs:null,azs:null,els:null,ms:null,ylo:null,yhi:null,myr:null,el:null,open:false,tab:'here',anyEra:false,last:{x:0,z:0,az:-999,el:0,t:0,yr:0},matches:[],savedFov:null};
+const PC={hzMode:'shift',shift:0,views:[],xs:null,zs:null,azs:null,els:null,ms:null,ylo:null,yhi:null,myr:null,el:null,open:false,tab:'here',anyEra:false,last:{x:0,z:0,az:-999,el:0,t:0,yr:0},matches:[],savedFov:null};
 const _pcYear=y=>(typeof y==='number'&&y>=1800&&y<=2030)?y:NaN;   // years outside this are bad data
 function pcLoad(list){
   const C=CONFIG.postcards; PC.views=[]; let far=0, badYr=0;
@@ -9228,7 +9228,7 @@ function pcLoad(list){
   PC.views.forEach((v,i)=>{PC.xs[i]=v.x;PC.zs[i]=v.z;PC.azs[i]=v.az;PC.els[i]=v.el;PC.ms[i]=v.ms??NaN;PC.ylo[i]=v.yLo;PC.yhi[i]=v.yHi;PC.myr[i]=v.ms!=null?new Date(v.ms).getFullYear():NaN;});
   if(far||badYr) console.warn(`📮 Postcard views: skipped ${far} far-away record(s); ${badYr} had an out-of-range photo year (ignored)`);
   const fits=pcFits(); let nFit=0;   // apply saved alignments over the data file
-  for(const v of PC.views){ const f=fits[v.id]; if(!f) continue; v.az0=v.az;v.el0=v.el;v.fov0=v.fov; v.az=f.az;v.el=f.el;v.fov=f.fov;v.h=f.h; if(f.lon!=null){ const[sx,sy]=project(f.lon,f.lat); v.x=sx;v.z=-sy; } v.corrected=true; nFit++; }
+  for(const v of PC.views){ const f=fits[v.id]; if(!f) continue; v.az0=v.az;v.el0=v.el;v.fov0=v.fov; v.az=f.az;v.el=f.el;v.fov=f.fov;v.h=f.h;v.shift=f.shift||0; if(f.lon!=null){ const[sx,sy]=project(f.lon,f.lat); v.x=sx;v.z=-sy; } v.corrected=true; nFit++; }
   PC.views.forEach((v,i)=>{PC.xs[i]=v.x;PC.zs[i]=v.z;PC.azs[i]=v.az;PC.els[i]=v.el;});
   if(nFit) console.log(`📮 ${nFit} saved alignment(s) applied`);
   PC.last.az=-999;   // force a check
@@ -9288,6 +9288,11 @@ function _pcUI(){
   #pc-ovbar{position:fixed;left:50%;transform:translateX(-50%);bottom:112px;z-index:27;background:rgba(9,8,10,.88);border:1px solid #3a2810;border-radius:10px;padding:6px 14px;display:none;gap:8px 12px;flex-wrap:wrap;justify-content:center;align-items:center;max-width:94vw;color:#C8A05A;font:.75rem Georgia,serif;pointer-events:auto}
   #pc-ovbar .btn{cursor:pointer;padding:1px 9px;border:1px solid #3a2810;border-radius:10px}
   #pc-ovbar .btn.on{background:rgba(200,160,90,.3);border-color:#C8A05A}
+  /* readouts never change width, or the centred bar re-centres and drags a held slider with it */
+  #pc-ovbar .fix{display:inline-block;width:5.4em;white-space:nowrap;text-align:left;font-variant-numeric:tabular-nums}
+  #pc-ovbar .fix b{display:inline-block;width:2.6em;text-align:right;font-weight:normal}
+  #pc-ovbar #pc-hzmode{display:inline-block;width:3.6em;text-align:center;padding-left:0;padding-right:0}
+  #pc-ovbar input[type=range]{flex:none}
   #pc-hz{position:fixed;left:0;right:0;height:30px;margin-top:-15px;z-index:26;display:none;cursor:ns-resize;touch-action:none;pointer-events:auto}
   #pc-hz::before{content:'';position:absolute;left:0;right:0;top:14px;height:2px;background:repeating-linear-gradient(90deg,#ff5a3c 0 14px,transparent 14px 22px)}
   #pc-hz span{position:absolute;right:10px;top:-2px;font:.7rem Georgia,serif;color:#ff9a80;background:rgba(9,8,10,.7);padding:1px 8px;border-radius:8px}
@@ -9297,7 +9302,8 @@ function _pcUI(){
   const badge=mk('div','pc-badge'), panel=mk('div','pc-panel'), ov=mk('div','pc-ov'), bar=mk('div','pc-ovbar');
   ov.appendChild(document.createElement('img'));
   bar.innerHTML='<span>📮 card overlay</span><input id="pc-op" type="range" min="0" max="1" step="0.02" style="width:110px;accent-color:#C8A05A" title="overlay opacity"><span class="btn" id="pc-flip">flip</span>'
-    +'<span>FoV <b id="pc-fovv">60</b>°</span><input id="pc-fov" type="range" min="15" max="130" step="0.5" style="width:130px;accent-color:#C8A05A" title="rendering field of view (vertical)"><span class="btn" id="pc-fovreset" title="back to the card\'s own field of view">card</span>'
+    +'<span class="fix">FoV <b id="pc-fovv">60</b>°</span><input id="pc-fov" type="range" min="15" max="130" step="0.5" style="width:130px;accent-color:#C8A05A" title="rendering field of view (vertical)"><span class="btn" id="pc-fovreset" title="back to the card\'s own field of view">card</span>'
+    +'<span class="btn" id="pc-hzmode" title="shift: keep the camera level and slide the picture so the horizon lands on the line (verticals stay vertical). pitch: tilt the camera instead.">shift</span>'
     +'<span class="btn" id="pc-hzbtn" title="drag the red line to the photo\'s horizon: the camera pitch is set so the 3D horizon lands there">⟷ horizon</span>'
     +'<span class="btn" id="pc-save" title="remember this camera (position, heading, pitch, FoV) for this card">💾 save fit</span>'
     +'<span class="btn" id="pc-export" title="copy all saved fits as JSON (for FastForward)">⧉ export</span>'
@@ -9313,6 +9319,7 @@ function _pcUI(){
   document.getElementById('pc-close').addEventListener('click',pcOverlayClose);
   const hz=mk('div','pc-hz'); hz.innerHTML='<span>photo horizon</span>'; PC.el.hz=hz; mk('div','pc-toast');
   document.getElementById('pc-hzbtn').addEventListener('click',()=>pcHorizon(hz.style.display!=='block'));
+  document.getElementById('pc-hzmode').addEventListener('click',e=>{ PC.hzMode=PC.hzMode==='shift'?'pitch':'shift'; e.target.textContent=PC.hzMode; if(hz.style.display==='block') pcHorizon(true); });
   document.getElementById('pc-save').addEventListener('click',pcSaveFit);
   document.getElementById('pc-export').addEventListener('click',pcExportFits);
   const dragY=y=>{ hz.style.top=Math.max(40,Math.min(innerHeight-40,y))+'px'; };
@@ -9362,7 +9369,7 @@ function pcGo(v,overlay=false){
   const C=CONFIG.postcards, az=v.az*Math.PI/180, el=v.el*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
   const gy=sampleTerrainY(v.x,v.z)+v.h;
   if(PC.savedFov==null) PC.savedFov=camera.fov;
-  PC.current=v; PC.cardFov=v.fov||camera.fov;
+  PC.current=v; PC.cardFov=v.fov||camera.fov; pcSetShift(overlay?(v.shift||0):0);   // saved lens shift travels with the overlay
   if(v.fov){ camera.fov=v.fov; camera.updateProjectionMatrix(); }
   if(fpsMode){ camera.position.set(v.x,gy,v.z); yaw=-az; pitch=el; }
   else{ camera.position.set(v.x,gy,v.z); orbit.target.copy(camera.position).addScaledVector(dir,Math.max(30,(orbit.minDistance||0)+1)); orbit.update(); }
@@ -9384,10 +9391,26 @@ function _pcToast(t){ const e=document.getElementById('pc-toast'); e.textContent
 function pcHorizon(on){
   const hz=PC.el.hz; hz.style.display=on?'block':'none'; document.getElementById('pc-hzbtn').classList.toggle('on',on);
   if(on){ // start where the 3D horizon is now
-    const cam=_pcCamera(), H=innerHeight, th=Math.tan(camera.fov*Math.PI/360), y=H/2*(1+Math.tan(cam.el*Math.PI/180)/th);
+    const cam=_pcCamera(), H=innerHeight, th=Math.tan(camera.fov*Math.PI/360), y=H/2*(1+Math.tan(cam.el*Math.PI/180)/th)+PC.shift*H;
     hz.style.top=Math.max(40,Math.min(H-40,y))+'px'; }
 }
+// Lens shift: slide the picture down by s·H (camera.setViewOffset keeps the projection
+// otherwise intact, so vertical lines stay vertical). Level camera + shift is what a
+// view camera with a rising front does; the horizon lands at H/2 + s·H.
+function pcSetShift(s){ PC.shift=s; pcApplyShift(); }
+function pcApplyShift(){
+  if(!PC.shift){ if(camera.view?.enabled) camera.clearViewOffset(); return; }
+  const W=innerWidth, H=innerHeight; camera.setViewOffset(W,H,0,-PC.shift*H,W,H);
+}
+window._pcApplyShift=pcApplyShift;
 function pcApplyHorizon(yPx){
+  if(PC.hzMode==='shift'){   // level the camera (keep heading), then slide the picture so the horizon is at yPx
+    const H=innerHeight, cam=_pcCamera(), az=cam.az*Math.PI/180;
+    if(fpsMode){ pitch=0; } else { const d=camera.position.distanceTo(orbit.target)||30; orbit.target.set(camera.position.x+Math.sin(az)*d,camera.position.y,camera.position.z-Math.cos(az)*d); orbit.update(); }
+    pcSetShift(yPx/H-0.5);
+    _pcToast(`camera level, picture shifted ${(100*(yPx/H-0.5)).toFixed(0)}% of the screen height (horizon at ${(100*yPx/H).toFixed(0)}%)`); return;
+  }
+  PC.shift=0; pcApplyShift();
   const H=innerHeight, p=Math.atan((2*yPx/H-1)*Math.tan(camera.fov*Math.PI/360));   // radians, + up
   const cam=_pcCamera(), az=cam.az*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(p),Math.sin(p),-Math.cos(az)*Math.cos(p));
   if(fpsMode){ pitch=p; }
@@ -9399,9 +9422,9 @@ function pcFits(){ try{ return JSON.parse(localStorage.getItem(PC_FITS_KEY)||'{}
 function pcSaveFit(){
   const v=PC.current; if(!v){ _pcToast('open a card first (go to view / overlay)'); return; }
   const cam=_pcCamera(), [lon,lat]=unproject(cam.x,cam.z), fits=pcFits();
-  fits[v.id]={id:v.id,lon:+lon.toFixed(7),lat:+lat.toFixed(7),h:+(camera.position.y-sampleTerrainY(cam.x,cam.z)).toFixed(2),az:+cam.az.toFixed(2),el:+cam.el.toFixed(2),fov:+camera.fov.toFixed(2),was:{lon:v.lon,lat:v.lat,az:v.az0??v.az,el:v.el0??v.el,fov:v.fov0??v.fov}};
+  fits[v.id]={id:v.id,lon:+lon.toFixed(7),lat:+lat.toFixed(7),h:+(camera.position.y-sampleTerrainY(cam.x,cam.z)).toFixed(2),az:+cam.az.toFixed(2),el:+cam.el.toFixed(2),fov:+camera.fov.toFixed(2),shift:+PC.shift.toFixed(4),was:{lon:v.lon,lat:v.lat,az:v.az0??v.az,el:v.el0??v.el,fov:v.fov0??v.fov}};
   try{ localStorage.setItem(PC_FITS_KEY,JSON.stringify(fits)); }catch(e){ _pcToast('could not save (storage blocked)'); return; }
-  Object.assign(v,{az:cam.az,el:cam.el,fov:camera.fov,h:fits[v.id].h,corrected:true}); _pcToast(`saved fit for ${v.id} (${Object.keys(fits).length} saved)`);
+  Object.assign(v,{az:cam.az,el:cam.el,fov:camera.fov,h:fits[v.id].h,shift:PC.shift,corrected:true}); _pcToast(`saved fit for ${v.id} (${Object.keys(fits).length} saved)`);
 }
 function pcExportFits(){
   const fits=Object.values(pcFits()); if(!fits.length){ _pcToast('no saved fits yet'); return; }
@@ -9409,7 +9432,7 @@ function pcExportFits(){
   (navigator.clipboard?.writeText(txt)||Promise.reject()).then(()=>_pcToast(`${fits.length} fit(s) copied as JSON`)).catch(()=>{ console.log(txt); _pcToast(`${fits.length} fit(s) printed to the console`); });
 }
 function pcOverlayClose(){
-  if(!PC.el) return; PC.el.ov.style.display='none'; PC.el.bar.style.display='none'; pcHorizon(false);
+  if(!PC.el) return; PC.el.ov.style.display='none'; PC.el.bar.style.display='none'; pcHorizon(false); pcSetShift(0);
   if(PC.savedFov!=null){ camera.fov=PC.savedFov; camera.updateProjectionMatrix(); PC.savedFov=null; }
 }
 function tickPostcards(){
@@ -9426,6 +9449,16 @@ function tickPostcards(){
 }
 // Test hooks: inject views / time the matcher on n random views
 window._pcLoad=list=>pcLoad(list);
+window._pcShiftTest=()=>{ const v=PC.views.find(v=>v.fov&&v.img); pcGo(v,true); const H=innerHeight, out={};
+  for(const frac of [0.35,0.5,0.7]){ pcApplyHorizon(H*frac); camera.updateMatrixWorld(true);
+    const cam=_pcCamera(), az=cam.az*Math.PI/180;   // a point far away at eye level in the view direction = the horizon
+    const P=camera.position.clone().add(new THREE.Vector3(Math.sin(az)*1e5,0,-Math.cos(az)*1e5)).project(camera);
+    // a vertical edge: bottom and top of a 30 m pole 40 m ahead — should stay vertical on screen
+    const f=new THREE.Vector3(Math.sin(az),0,-Math.cos(az)), r=new THREE.Vector3(Math.cos(az),0,Math.sin(az)), base=camera.position.clone().addScaledVector(f,40).addScaledVector(r,12);
+    const b=base.clone().project(camera), t=base.clone().add(new THREE.Vector3(0,30,0)).project(camera);
+    out['horizon'+frac]={pitchDeg:+cam.el.toFixed(2),horizonAtPct:+(100*(1-P.y)/2).toFixed(1),poleLeanPx:+(Math.abs(b.x-t.x)*innerWidth/2).toFixed(2),shift:+PC.shift.toFixed(3)}; }
+  PC.hzMode='pitch'; pcApplyHorizon(H*0.35); out.pitchMode={pitchDeg:+_pcCamera().el.toFixed(1),shiftAfter:PC.shift}; PC.hzMode='shift'; pcOverlayClose(); out.afterClose={shift:PC.shift,viewOffset:!!camera.view?.enabled};
+  return out; };
 window._pcHorizonTest=()=>{ const v=PC.views.find(v=>v.fov&&v.img&&v.id!==undefined); localStorage.removeItem(PC_FITS_KEY); pcGo(v,true);
   const H=innerHeight, out={fov:camera.fov, viewport:H}; 
   for(const frac of [0.3,0.5,0.62]){ pcApplyHorizon(H*frac); const cam=_pcCamera(), th=Math.tan(camera.fov*Math.PI/360), yBack=H/2*(1+Math.tan(cam.el*Math.PI/180)/th);
@@ -10879,7 +10912,7 @@ dropBox.addEventListener('dragover',e=>{e.preventDefault();dropBox.classList.add
 dropBox.addEventListener('dragleave',()=>dropBox.classList.remove('over'));
 dropBox.addEventListener('drop',e=>{e.preventDefault();dropBox.classList.remove('over');loadFiles([...e.dataTransfer.files]);});
 fileInput.addEventListener('change',e=>loadFiles([...e.target.files]));
-window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+window.addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);window._pcApplyShift?.();});
 renderer.render(scene,camera);
 
 // ── Auto-load from ./data/ on startup ─────────────────────────────
