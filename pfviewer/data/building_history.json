@@ -1078,11 +1078,20 @@
       }
     },
     "ccd37dd8-9eb4-475f-9d64-cae6381417ae": {
-      "name": "Union Bank Tower",
-      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+      "name": "Union Bank Building (Union Bank Tower)",
+      "notes": "Light (cream) brick / terra cotta — per Mike. Built 1903–1904 (Darling & Pearson; MHS: ten storeys); Winnipeg's first skyscraper. The 1880 date this footprint carried was a placeholder. Completion mid-1904 assumed, 12 months' construction (starts June 1903).",
       "set": {
-        "wall_color": "cream"
-      }
+        "wall_color": "cream",
+        "born": "1904-06-01",
+        "construction_months": 12,
+        "date_precision": {
+          "born": "year"
+        }
+      },
+      "address": "504 Main Street",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/unionbankbuilding.shtml"
+      ]
     },
     "5c92d894-6309-4ae8-b6f2-dd64f180ca52": {
       "name": "Union Bank Tower",
@@ -1099,11 +1108,20 @@
       }
     },
     "3ffeb9e9-bff5-4544-9055-2510edd2b7db": {
-      "name": "Union Bank Tower",
-      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+      "name": "Union Bank Building (Union Bank Tower)",
+      "notes": "Light (cream) brick / terra cotta — per Mike. Built 1903–1904 (Darling & Pearson; MHS: ten storeys); Winnipeg's first skyscraper. The 1880 date this footprint carried was a placeholder. Completion mid-1904 assumed, 12 months' construction (starts June 1903).",
       "set": {
-        "wall_color": "cream"
-      }
+        "wall_color": "cream",
+        "born": "1904-06-01",
+        "construction_months": 12,
+        "date_precision": {
+          "born": "year"
+        }
+      },
+      "address": "504 Main Street",
+      "sources": [
+        "https://www.mhs.mb.ca/docs/sites/unionbankbuilding.shtml"
+      ]
     },
     "a868d0de-ced3-43e5-afd8-d362b40a94ae": {
       "name": "Steamboat Landing (building)",
