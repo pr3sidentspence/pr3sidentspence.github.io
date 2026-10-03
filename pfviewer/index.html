@@ -9561,6 +9561,16 @@ function pcRender(){
     if(!hits.length){ const n=document.createElement('div'); n.className='m'; n.textContent='No postcards with a date near this day.'; list.appendChild(n); }
   }
 }
+// The card image comes from PastForward's IIIF server. If a size fails (a broken-image
+// icon shows as a tiny rectangle), fall back to a smaller size, then the thumbnail,
+// and say what failed. No referrer is sent (hot-link protection).
+function pcLoadOverlayImg(im,v){
+  const tries=[...new Set([v.img,v.img.replace(/\/full\/[^/]+\//,'/full/800,/'),v.thumb].filter(Boolean))]; let k=0;
+  im.referrerPolicy='no-referrer';
+  im.onload=()=>{ if(k>0) _pcToast(`card loaded at lower resolution (${im.naturalWidth}px)`); };
+  im.onerror=()=>{ if(++k<tries.length){ im.src=tries[k]; } else { im.removeAttribute('src'); _pcToast('card image failed to load: '+tries[0]); console.warn('card image failed',tries); } };
+  im.src=tries[0];
+}
 // Jump to a card's viewpoint (and its date, if configured); optionally overlay its image
 function pcGo(v,overlay=false){
   const C=CONFIG.postcards, az=v.az*Math.PI/180, el=v.el*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
@@ -9576,7 +9586,7 @@ function pcGo(v,overlay=false){
     else if(v.ms!=null) to=new Date(v.ms);
     if(to){ setCurrentViewDate(new Date(to.getFullYear(),to.getMonth(),to.getDate(),12),'day'); timelineMode='paused'; updateTimelineButtons(); }
   }
-  if(overlay&&v.img){ const im=PC.el.ov.querySelector('img'); im.src=v.img; PC.el.ov.style.display='flex'; PC.el.bar.style.display='flex'; const o=document.getElementById('pc-op'); o.value=C.defaultOpacity; PC.el.ov.style.opacity=C.defaultOpacity; PC.setFov(camera.fov); }
+  if(overlay&&v.img){ const im=PC.el.ov.querySelector('img'); pcLoadOverlayImg(im,v); PC.el.ov.style.display='flex'; PC.el.bar.style.display='flex'; const o=document.getElementById('pc-op'); o.value=C.defaultOpacity; PC.el.ov.style.opacity=C.defaultOpacity; PC.setFov(camera.fov); }
   pcPanel(false);
 }
 // ── Aligning a view to its photo ──────────────────────────────────
