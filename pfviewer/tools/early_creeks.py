@@ -77,6 +77,9 @@ CREEKS = {
   "Oxbow outlet creek": ("1910-04-15", [[]]),
   # A second small creek and bridge a little south of it (Parr 1874: bridge mark on the bank, three arms); same dates.
   "Oxbow south outlet creek": ("1910-04-15", [[]]),
+  # South of the Assiniboine, west bank of the Red (Fort Rouge; Parr 1874, among Lot 41's street lines). Date: a guess —
+  # it went as the streets were laid out.
+  "Fort Rouge creek": ("1900-01-01", [[]]),
   "Omand's Creek": (None, [[(1293,1237),(1290,1220),(1283,1209),(1277,1197),(1267,1178),(1260,1168),(1257,1160)]]),
 }
 
@@ -106,6 +109,8 @@ CREEKS_1874 = {
   "Oxbow south outlet creek": [[(1028,943),(1027,936),(1024,922),(1022,907),(1020,898)],
                                [(1028,943),(1022,950),(1018,955)],
                                [(1028,943),(1035,940),(1043,937)]],
+  "Fort Rouge creek": [[(round(812+(X-400)/3.76,1), round(890+(Y-95)/3.76,1)) for X,Y in
+                        [(865,573),(840,562),(822,545),(818,520),(805,495),(775,478),(745,468),(712,463),(690,463),(670,455),(650,447),(630,443)]]],
   "Pritchard's Creek": [[(577,109),(574,111),(566,116),(559,122),(556,131),(553,142),(548,152),(530,159),(514,162),(497,161),(488,159),(478,153)]],
 }
 
@@ -163,6 +168,10 @@ def main():
             om = [px74_to_ll(*CREEKS_1874['Oxbow outlet creek'][0][0])]
             shift = (BRIDGE1[0] - om[0][0], BRIDGE1[1] - om[0][1])
             print(f'{name}: placed by the Grey Nuns monument (shift {shift[0]*M_LON:+.0f} E, {shift[1]*M_LAT:+.0f} N m)')
+        elif name == 'Fort Rouge creek':
+            # place by Upper Fort Garry: the plan draws it at plan pixel (812,890); it stood at ~(-97.1340, 49.8870)
+            f = px74_to_ll(812, 890); shift = (-97.1340 - f[0], 49.8870 - f[1])
+            print(f'{name}: placed by Upper Fort Garry (shift {shift[0]*M_LON:+.0f} E, {shift[1]*M_LAT:+.0f} N m); mouth {d:.0f} m from the OSM river after the shift is applied below')
         elif q and d < 360:        # river polygons only cover part of the map; only snap small corrections
             shift = (q[0] - mouth[0], q[1] - mouth[1])
         print(f'{name}: mouth snapped {d:.0f} m' if q and d < 360 else f'{name}: no OSM river within 360 m ({d:.0f}) — left as traced')
