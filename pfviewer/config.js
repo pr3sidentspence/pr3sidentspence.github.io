@@ -460,7 +460,8 @@ export const CONFIG = {
                  minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
     // Brown's Creek: a shallow valley carved along its line while it exists
     // (filled in since — the LiDAR is flat there); cosine profile, metres
-    creek: { depth: 2.5, halfWidth: 14, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 25, dirt: 1 },   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
+    creek: { bridge: { roads: ['Main'], length: 26, width: 12, clusterM: 30, color: 0x5d4a36 },   // timber bridge where these streets cross the creek
+           toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400, depth: 2.5, halfWidth: 14, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 25, dirt: 1 },   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
     // The cut-off oxbow east of the Forks (St Boniface/Norwood): found in the
     // LiDAR (relBelowM under a contextM-wide average, inside bbox lon/lat
     // [W, S, E, N], clear of the river banks), kept out of the flattening,
@@ -701,6 +702,9 @@ export const CONFIG = {
   // which came down at the start of 1881 (Main St straightened, 1881–82);
   // until then the road went round the outside of the east wall.
   roadHistory: {
+    // Early streets wander: a smooth displacement field (amp metres) that fades out
+    // between fromYear and toYear as the town straightens its streets. amp 0 = off.
+    bend: { amp: 4, fromYear: 1880, toYear: 1905 },
     segments: {
       12728: ['1881-01-01', null],   // Main St, bridge head → through the SE wall
       12729: ['1881-01-01', null],   // Main St, through the NE bastion → north

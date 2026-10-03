@@ -808,6 +808,25 @@ function creekFloorDrop(){ return creekValley?CONFIG.terrain.creek.depth:0; }
 // taper — so where pieces meet (the Y) they share one surface instead of
 // one piece's tapered end lying across the other's trench. Ends that touch
 // another piece aren't tapered.
+// The mapped creek stops ~60 m short of the Red River. Its east end (the line
+// end furthest east, if it's east of C.eastOfLon) is carried on along its own
+// heading until the ground drops to the river's low-water edge
+// (water.startY + C.riverEdgeAbove), so the creek runs into the river. The
+// extended end isn't tapered (riverEnd) — it opens into the river bank.
+function extendCreekToRiver(line){
+  const C=CONFIG.terrain.creek; if(!C||!C.toRiver||!_demLoaded||line.length<3) return line;
+  const last=line[line.length-1];
+  if(last[0]<(C.eastOfLon??-97.1328)) return line;   // only the east end
+  const [ex,sy]=project(last[0],last[1]), ez=-sy;
+  let k=line.length-2, bx,bz; for(; k>=0; k--){ const[qx,qy]=project(line[k][0],line[k][1]); bx=qx; bz=-qy; if(Math.hypot(ex-bx,ez-bz)>=20) break; }
+  let dx=ex-bx, dz=ez-bz; const dl=Math.hypot(dx,dz)||1; dx/=dl; dz/=dl;
+  const edgeY=CONFIG.water.startY+(C.riverEdgeAbove??0.3), step=C.extendStepM??6, maxM=C.extendMaxM??400;
+  const out=line.slice(); let x=ex, z=ez, n=0;
+  while(sampleTerrainY(x,z)>edgeY && n*step<maxM){ x+=dx*step; z+=dz*step; n++; const[lo,la]=unproject(x,z); out.push([lo,la]); }
+  out.riverEnd=true; out.extendedM=n*step;
+  console.log(`🏞 Brown's Creek extended ${n*step} m east to the river edge (ground ${sampleTerrainY(x,z).toFixed(2)} vs edge ${edgeY.toFixed(2)})`);
+  return out;
+}
 function carveCreekTerrain(lines,born,died){
   const C=CONFIG.terrain.creek; if(!C||!_demLoaded) return;
   creekValley??={meshes:[],pieces:[],born,died,seen:new Set(),lastCol:-1};
@@ -815,7 +834,8 @@ function carveCreekTerrain(lines,born,died){
   for(const line of lines){
     const k0=line[0].join(',')+'|'+line[line.length-1].join(',');
     if(V.seen.has(k0)||line.length<2) continue; V.seen.add(k0);   // the 1880 layer repeats the same creek
-    V.pieces.push(line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];}));
+    const pts=line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];}); pts.riverEnd=!!line.riverEnd;
+    V.pieces.push(pts);
   }
   _rebuildCreekValley();
 }
@@ -845,7 +865,7 @@ function _rebuildCreekValley(){
   const segDist=(x,z,P)=>{ let best=1e9,bt=0,acc=0,len=0; for(let i=0;i<P.length-1;i++){ const[a,b]=P[i],[c,d]=P[i+1],dx=c-a,dz=d-b,L2=dx*dx+dz*dz||1,L=Math.sqrt(L2),t=Math.max(0,Math.min(1,((x-a)*dx+(z-b)*dz)/L2)),dd=Math.hypot(x-a-dx*t,z-b-dz*t); if(dd<best){best=dd;bt=acc+t*L;} acc+=L; } return{d:best,at:bt,len:acc}; };
   // which ends are free (not touching another piece)?
   const pieces=V.pieces.map((P,pi)=>{
-    const free=[P[0],P[P.length-1]].map(([x,z])=>!V.pieces.some((Q,qi)=>qi!==pi&&segDist(x,z,Q).d<W*0.6));
+    const free=[P[0],P[P.length-1]].map(([x,z],e)=>!(e===1&&P.riverEnd)&&!V.pieces.some((Q,qi)=>qi!==pi&&segDist(x,z,Q).d<W*0.6));
     return{P,free};
   });
   const prof=o=>0.5*(1+Math.cos(Math.PI*Math.min(1,o/W)));
@@ -3751,7 +3771,7 @@ async function buildCity(geojson){
       // Render as a terrain-hugging ribbon tied to this layer group, not a fence wall.
       // Width and colour come from config so they're easy to tweak.
       const hw=CONFIG.water.widths.brownsCreek;  // half-width in metres
-      const lines2=feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates];
+      const lines2=(feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates]).map(extendCreekToRiver);
       const _cb=_isoYearFrac(feat.properties.born,NO_BORN), _cd=_isoYearFrac(feat.properties.died,NO_DIED);
       carveCreekTerrain(lines2,_cb,_cd);   // a shallow valley for it, while it exists (before the ribbon samples the ground)
       creekRibbonLife.push(_cb,_cd,creekRibbonVerts.length);   // span for the verts pushed below
@@ -4153,6 +4173,95 @@ function buildGroundCover(){
 }
 
 // ── Road surface ───────────────────────────────────────────────────
+// ── Wooden bridge where Main St crosses Brown's Creek ───────────────────
+// Sites are found, not placed by hand: every crossing of a CONFIG.terrain.creek
+// .bridge.roads street with a creek piece (crossings within clusterM of each
+// other — the creek's Y junction sits right on Main — make one bridge). While
+// the creek exists the road is left out of the span (roadCutAt) and a timber
+// deck at road level (rails/ruts sit on it), bents down into the valley and
+// handrails stand in its place; after the creek is filled in the road returns.
+let creekBridgeMesh=null, creekBridgeSites=[];
+function findCreekBridgeSites(roadFeats){
+  const BR=CONFIG.terrain.creek?.bridge; creekBridgeSites=[];
+  if(!BR||!creekValley) return;
+  const names=new Set(BR.roads), hits=[];
+  for(const feat of roadFeats){
+    if(!names.has(feat.properties.st_name)) continue;
+    for(const line of feat.geometry.coordinates) for(let i=0;i<line.length-1;i++){
+      const[ax,ay]=project(line[i][0],line[i][1]), [bx,by]=project(line[i+1][0],line[i+1][1]);
+      const a=[ax,-ay], b=[bx,-by];
+      for(const P of creekValley.pieces) for(let j=0;j<P.length-1;j++){
+        const c=P[j], d=P[j+1], r1x=b[0]-a[0], r1z=b[1]-a[1], r2x=d[0]-c[0], r2z=d[1]-c[1], den=r1x*r2z-r1z*r2x;
+        if(Math.abs(den)<1e-9) continue;
+        const t=((c[0]-a[0])*r2z-(c[1]-a[1])*r2x)/den, u=((c[0]-a[0])*r1z-(c[1]-a[1])*r1x)/den;
+        if(t<0||t>1||u<0||u>1) continue;
+        const L=Math.hypot(r1x,r1z); hits.push({x:a[0]+r1x*t,z:a[1]+r1z*t,ux:r1x/L,uz:r1z/L});
+      }
+    }
+  }
+  for(const h of hits){
+    const site=creekBridgeSites.find(q=>Math.hypot(q.x-h.x,q.z-h.z)<(BR.clusterM??30));
+    if(site){ site.n++; site.sx+=h.x; site.sz+=h.z; site.x=site.sx/site.n; site.z=site.sz/site.n; }
+    else creekBridgeSites.push({x:h.x,z:h.z,sx:h.x,sz:h.z,n:1,ux:h.ux,uz:h.uz});
+  }
+  for(const q of creekBridgeSites){ q.died=creekValley.died; q.halfL=(BR.length??26)/2; }
+}
+// The bridge site whose span covers (x,z) (road is replaced by the deck there), or null.
+function roadCutAt(x,z){
+  for(const q of creekBridgeSites){ const rx=x-q.x, rz=z-q.z; if(Math.abs(rx*q.ux+rz*q.uz)<q.halfL&&Math.abs(-rx*q.uz+rz*q.ux)<60) return q; }
+  return null;
+}
+function buildCreekBridges(){
+  if(creekBridgeMesh){ scene.remove(creekBridgeMesh); creekBridgeMesh.geometry.dispose(); creekBridgeMesh=null; }
+  const BR=CONFIG.terrain.creek?.bridge; if(!BR||!creekBridgeSites.length) return;
+  const geos=[], L=BR.length??26, W=BR.width??12, D=CONFIG.terrain.creek.depth;
+  for(const q of creekBridgeSites){
+    const{x,z,ux,uz}=q, theta=Math.atan2(-uz,ux);
+    const yTop=Math.max(sampleTerrainY(x+ux*L/2,z+uz*L/2),sampleTerrainY(x-ux*L/2,z-uz*L/2),sampleTerrainY(x,z))+0.17;
+    // box along × height × across, centred at (a along, yc, c across) from the site
+    const box=(la,h,lc,a,yc,c)=>{ const g=new THREE.BoxGeometry(la,h,lc); g.rotateY(theta); g.translate(x+ux*a-uz*c,yc,z+uz*a+ux*c); tagLifespan(g,NO_BORN,q.died); geos.push(g); };
+    box(L+2,0.35,W, 0,yTop-0.175,0);                                          // plank deck
+    for(const sd of[-1,1]) box(L,0.6,0.3, 0,yTop-0.65,sd*(W/2-0.15));         // side girders
+    const bentH=D+0.5;
+    for(let a=-L/2+3.5; a<L/2-2; a+=(L-7)/3){                                  // trestle bents down into the valley
+      box(0.45,0.3,W-0.6, a,yTop-0.5,0);
+      for(const sd of[-1,1]) box(0.5,bentH,0.5, a,yTop-0.35-bentH/2,sd*(W/2-0.6));
+    }
+    for(let a=-L/2+0.6; a<=L/2-0.5; a+=2.8) for(const sd of[-1,1]) box(0.18,1.05,0.18, a,yTop+0.52,sd*(W/2-0.12));   // handrail posts
+    for(const sd of[-1,1]){ box(L,0.12,0.14, 0,yTop+1.05,sd*(W/2-0.12)); box(L,0.1,0.12, 0,yTop+0.55,sd*(W/2-0.12)); }
+    console.log(`🌉 Brown's Creek bridge at (${x.toFixed(0)}, ${z.toFixed(0)}), deck ${yTop.toFixed(2)}, bearing ${(Math.atan2(ux,-uz)*180/Math.PI).toFixed(0)}°`);
+  }
+  const mat=withRoadBend(tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:BR.color??0x5d4a36})),'B');
+  creekBridgeMesh=new THREE.Mesh(mergeGeometries(geos,false),mat);
+  creekBridgeMesh.castShadow=creekBridgeMesh.receiveShadow=true;
+  creekBridgeMesh.customDepthMaterial=withRoadBend(makeLifespanDepthMaterial(),'B');
+  scene.add(creekBridgeMesh);
+}
+// Early streets: wandering lines, not today's ruler-straight ones. A smooth
+// low-frequency displacement field (a few sines, wavelengths ~150–300 m) is
+// added to every road / rail / rut vertex in the vertex shader and fades out
+// between CONFIG.roadHistory.bend.fromYear and .toYear (the town straightened
+// its streets as it grew). It's a function of position, so junctions still
+// meet and rails stay on their road. Things placed from the straight lines
+// (street lights, vehicles) aren't moved — the amplitude is a few metres.
+function installRoadBend(shader){
+  const B=CONFIG.roadHistory?.bend; if(!B||!(B.amp>0)) return;
+  shader.uniforms.buildingYear=buildingYearUniform;
+  shader.uniforms.uBend={value:new THREE.Vector3(B.amp,B.fromYear,B.toYear)};
+  shader.vertexShader='uniform float buildingYear;\nuniform vec3 uBend;\n'+shader.vertexShader.replace('#include <begin_vertex>',
+`#include <begin_vertex>
+  { float bf = 1.0 - smoothstep(uBend.y, uBend.z, buildingYear);
+    vec2 q = transformed.xz;
+    transformed.xz += bf * uBend.x * 0.625 * vec2(
+      sin(q.x*0.021 + q.y*0.013 + 1.3) + 0.6*sin(q.y*0.043 - q.x*0.017 + 4.1),
+      sin(q.x*0.016 - q.y*0.024 + 2.2) + 0.6*sin(q.x*0.039 + q.y*0.031 + 0.7)); }`);
+}
+function withRoadBend(mat,key){
+  const base=mat.onBeforeCompile, k0=mat.customProgramCacheKey;
+  mat.onBeforeCompile=sh=>{ base&&base.call(mat,sh); installRoadBend(sh); };
+  mat.customProgramCacheKey=()=>(k0?k0.call(mat):'')+key;
+  return mat;
+}
 async function buildRoads(geojson){
   buildGroundCover();
   if(cityHazeGroup) buildHazeSources();   // same active-layer centroids
@@ -4244,6 +4353,7 @@ async function buildRoads(geojson){
   for(const[id,[b,d]]of Object.entries(RH.segments||{})) segSpans.set(String(id),[_isoYearFrac(b,NO_BORN),_isoYearFrac(d,NO_DIED)]);
   const roadFeats=[...geojson.features,...(RH.extra||[]).map(e=>({properties:{st_name:e.name,st_type:'RD',
     _span:[_isoYearFrac(e.born,NO_BORN),_isoYearFrac(e.died,NO_DIED)],_width:e.width},geometry:{coordinates:[e.path]}}))];
+  findCreekBridgeSites(roadFeats);
   function featSpan(feat,stName,mx,mz){
     const P=feat.properties; if(P._span) return P._span;
     const span=segmentLifespan(stName,mx,mz), o=segSpans.get(String(P.segment_id));
@@ -4292,6 +4402,9 @@ async function buildRoads(geojson){
           const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
           const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
           const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+ROAD_LIFT;
+          let cspan=span;   // the creek bridge's deck stands in for the road while the creek exists
+          const bq=roadCutAt((cx1+cx2)/2,(cz1+cz2)/2);
+          if(bq){ if(span[1]<=bq.died) continue; cspan=[Math.max(span[0],bq.died),span[1]]; }
           for(const[tA,tB]of strips){
             const ax1=cx1+pxu*tA*(w*0.5), az1=cz1+pzu*tA*(w*0.5);
             const bx1=cx1+pxu*tB*(w*0.5), bz1=cz1+pzu*tB*(w*0.5);
@@ -4300,7 +4413,7 @@ async function buildRoads(geojson){
             // 6 verts: two triangles per strip quad
             pos.push(ax1,y,az1, ax2,y,az2, bx1,y,bz1,
                      ax2,y,az2, bx2,y,bz2, bx1,y,bz1);
-            for(let v=0;v<6;v++)life.push(span[0],span[1]);
+            for(let v=0;v<6;v++)life.push(cspan[0],cspan[1]);
             // Vertex colours: lerp dry→wet based on lateral position
         // MeshLambertMaterial: target sRGB ~0x55 edge (dark charcoal), ~0x30 centre (dark mud).
         // Under scene lighting (~1.42x at noon): linear = pow(sRGB/255,2.2)/1.42
@@ -4339,19 +4452,21 @@ async function buildRoads(geojson){
     roadMatRef.transparent=true;
     roadMatRef.onBeforeCompile=shader=>{
       _installLifespanShader(shader);
+      installRoadBend(shader);
       shader.uniforms.uRoadFade={value:new THREE.Vector2(RF[0],RF[1])};
       shader.vertexShader='varying float vRoadDist;\n'+shader.vertexShader
         .replace('#include <project_vertex>','#include <project_vertex>\n  vRoadDist=length(mvPosition.xyz);');
       shader.fragmentShader='uniform vec2 uRoadFade;\nvarying float vRoadDist;\n'+shader.fragmentShader
         .replace('#include <color_fragment>','#include <color_fragment>\n  diffuseColor.a*=1.-smoothstep(uRoadFade.x,uRoadFade.y,vRoadDist);\n  if(diffuseColor.a<.01) discard;');
     };
-    roadMatRef.customProgramCacheKey=()=>'lifespanRoadFade';
+    roadMatRef.customProgramCacheKey=()=>'lifespanRoadFade'+(CONFIG.roadHistory?.bend?.amp>0?'B':'');
   }
   const roadMesh=new THREE.Mesh(geom,roadMatRef);
   roadMesh.position.x = CONFIG.scene?.buildingOffsetX ?? 0;
   roadMesh.position.z = CONFIG.scene?.buildingOffsetZ ?? 0;
   roadMesh.receiveShadow=true;roadMesh.renderOrder=-1;scene.add(roadMesh);   // first of the transparents (it fades)
   buildStreetLights();   // placed from the segments just recorded
+  buildCreekBridges();
 
   // Cart tracks — two narrow ruts per segment, visible in winter only
   const trackPos=[], trackLife=[];
@@ -4395,9 +4510,9 @@ async function buildRoads(geojson){
     tGeom.setAttribute('position',new THREE.Float32BufferAttribute(trackPos,3));
     tGeom.setAttribute('aLifespan',new THREE.Float32BufferAttribute(trackLife,2));
     tGeom.computeVertexNormals();
-    cartTrackMesh=new THREE.Mesh(tGeom,tagMaterialForLifespan(new THREE.MeshLambertMaterial({
+    cartTrackMesh=new THREE.Mesh(tGeom,withRoadBend(tagMaterialForLifespan(new THREE.MeshLambertMaterial({
       color:CONFIG.carts.colors.wagonRut,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3
-    })));
+    })),'B'));
     cartTrackMesh.position.x=CONFIG.scene?.buildingOffsetX??0;
     cartTrackMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     cartTrackMesh.visible=false;   // hidden in summer
@@ -4468,10 +4583,10 @@ async function buildRoads(geojson){
     const rGeom=new THREE.BufferGeometry();
     rGeom.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     rGeom.computeVertexNormals();
-    const mesh=new THREE.Mesh(rGeom,new THREE.MeshPhongMaterial({
+    const mesh=new THREE.Mesh(rGeom,withRoadBend(new THREE.MeshPhongMaterial({
       color:CONFIG.rail.streetcarRailColor,shininess:CONFIG.rail.streetcarRailShininess??40,specular:CONFIG.rail.streetcarRailSpecular,
       polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4
-    }));
+    }),'B'));
     mesh.position.x=CONFIG.scene?.buildingOffsetX??0;
     mesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
     mesh.receiveShadow=true;
