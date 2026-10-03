@@ -4233,6 +4233,17 @@ function findCreekBridgeSites(roadFeats,roadInfo){
     else creekBridgeSites.push({x:h.x,z:h.z,sx:h.x,sz:h.z,n:1,ux:h.ux,uz:h.uz,cid:h.cid,road:h.road,w:h.w,span:h.span});
   }
   for(const q of creekBridgeSites){ const c=creekValley.creeks[q.cid]; q.born=Math.max(q.span[0],c.born); q.died=Math.min(c.died,q.span[1]); q.halfL=(BR.length??26)/2; q.deckW=Math.max(BR.minWidth??5,Math.min(BR.width??12,q.w*0.5)); }
+  // Hand-listed bridges (CONFIG...bridge.extra): alongM metres up a creek from its mouth (first vertex of its first
+  // piece), deck square across the creek — for crossings drawn on old plans where no street of ours crosses.
+  for(const ex of BR.extra||[]){
+    const re=new RegExp(ex.creek,'i'), cid=creekValley.creeks.findIndex(c=>re.test(c.name)); if(cid<0) continue;
+    const P=creekValley.pieces.find(P=>P.cid===cid); if(!P) continue;
+    let left=ex.alongM??20, x=P[0][0], z=P[0][1], tx=1, tz=0;
+    for(let i=0;i<P.length-1;i++){ const dx=P[i+1][0]-P[i][0], dz=P[i+1][1]-P[i][1], L=Math.hypot(dx,dz)||1; tx=dx/L; tz=dz/L;
+      if(left<=L){ x=P[i][0]+tx*left; z=P[i][1]+tz*left; break; } left-=L; x=P[i+1][0]; z=P[i+1][1]; }
+    const c=creekValley.creeks[cid], f=_isoYearFrac(ex.from,NO_BORN), t=_isoYearFrac(ex.to,NO_DIED);
+    creekBridgeSites.push({x,z,ux:-tz,uz:tx,cid,road:null,w:ex.width*2,deckW:ex.width,halfL:(BR.length??26)/2,born:Math.max(f,c.born),died:Math.min(t,c.died),span:[f,t]});
+  }
   creekBridgeSites=creekBridgeSites.filter(q=>q.died>q.born);
 }
 // The bridge site whose span covers (x,z) (road is replaced by the deck there), or null.
@@ -4240,6 +4251,7 @@ function roadCutAt(x,z,road){
   for(const q of creekBridgeSites){ if(q.road!==road) continue; const rx=x-q.x, rz=z-q.z; if(Math.abs(rx*q.ux+rz*q.uz)<q.halfL&&Math.abs(-rx*q.uz+rz*q.ux)<60) return q; }
   return null;
 }
+window._debugBridges=()=>creekBridgeSites.map(q=>{const[lo,la]=unproject(q.x,q.z);return{road:q.road,creek:creekValley?.creeks[q.cid]?.name,lon:+lo.toFixed(5),lat:+la.toFixed(5),w:q.deckW,born:+q.born.toFixed(0),died:+q.died.toFixed(0)};});
 function buildCreekBridges(){
   if(creekBridgeMesh){ scene.remove(creekBridgeMesh); creekBridgeMesh.geometry.dispose(); creekBridgeMesh=null; }
   const BR=CONFIG.terrain.creek?.bridge; if(!BR||!creekBridgeSites.length) return;
