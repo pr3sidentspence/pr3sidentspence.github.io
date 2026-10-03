@@ -11,7 +11,7 @@ early_creeks.py — georeference creeks traced from Figure 1 of
 The polylines below were traced BY HAND (by eye, from the 300 dpi page render,
 page 27 of the PDF) in page-pixel coordinates. Figure 1 is a generalised
 1:50 000-ish map, so positions are good to ~100-300 m at best; mouths are
-snapped to the OSM river banks when within 260 m.
+snapped to the OSM river banks when within 360 m.
 
 Georeferencing: similarity transform fitted by eye so the OSM Red River outline
 overlays the map's river: 13.8 m per pixel, rotation 0.08 rad, with the Red/
@@ -74,6 +74,43 @@ CREEKS = {
   "Omand's Creek": (None, [[(1293,1237),(1290,1220),(1283,1209),(1277,1197),(1267,1178),(1260,1168),(1257,1160)]]),
 }
 
+
+# ── 1874 plan of the City of Winnipeg (J.D. Parr, compiled from surveys by Sinclair, Vaughan,
+# Johnston, Brown and Parr; Copp, Clark & Co., Toronto) — a better source for the town's creeks.
+# Its north points up-left (fleur-de-lis on the compass, 19.5° left of the page's up), scale taken
+# as 3.4 m per pixel of the 1196×1500 scan, fitted so the OSM Red River overlays the plan's river
+# with the Forks at pixel (945,885). Traced by eye; mouths snapped to the OSM river within 360 m.
+# The Colony mouth lands 30 m from the Graham-based one, Logan's and Pritchard's within ~300 m.
+MPP74, ROT74, ANCHOR74 = 3.4, -0.34, (945, 885)
+def _raw74(lon, lat):
+    x = (lon - C_LON) * M_LON / MPP74; y = -(lat - C_LAT) * M_LAT / MPP74
+    c, s = math.cos(ROT74), math.sin(ROT74); return c * x - s * y, s * x + c * y
+_a74 = _raw74(*ANCHOR_LL); TX74, TY74 = ANCHOR74[0] - _a74[0], ANCHOR74[1] - _a74[1]
+def px74_to_ll(px, py):
+    x, y = px - TX74, py - TY74; c, s = math.cos(-ROT74), math.sin(-ROT74)
+    ux, uy = c * x - s * y, s * x + c * y
+    return C_LON + ux * MPP74 / M_LON, C_LAT - uy * MPP74 / M_LAT
+
+# name -> lines in 1874-plan pixels, mouth first. These REPLACE the Graham-based traces of the same name.
+CREEKS_1874 = {
+  "Colony Creek": [[(591,1191),(587,1187),(573,1178),(578,1161),(569,1143),(576,1126),(567,1113),(571,1098),(565,1087),(547,1083),(543,1065),(534,1048),(526,1030),(530,1013),(521,994),(504,974),(480,948),(443,930),(424,915),(419,902),(417,878)]],
+  "Logan's Creek": [[(700,503),(694,489),(689,475),(683,461),(672,444),(661,433),(650,423),(645,418)]],
+  "Pritchard's Creek": [[(577,109),(574,111),(566,116),(559,122),(556,131),(553,142),(548,152),(530,159),(514,162),(497,161),(488,159),(478,153)]],
+}
+
+
+# ── 1836 plan: the meandering "Creek" east of the Red (the Seine's old outlet, cf. Graham fluvial landform 'a')
+MPP36, ROT36, ANCHOR36 = 2.12, -0.43, (855, 1000)
+def _raw36(lon, lat):
+    x = (lon - C_LON) * M_LON / MPP36; y = -(lat - C_LAT) * M_LAT / MPP36
+    c, s = math.cos(ROT36), math.sin(ROT36); return c * x - s * y, s * x + c * y
+_a36 = _raw36(-97.1285, 49.8875); TX36, TY36 = ANCHOR36[0] - _a36[0], ANCHOR36[1] - _a36[1]
+def px36_to_ll(px, py):
+    x, y = px - TX36, py - TY36; c, s = math.cos(-ROT36), math.sin(-ROT36)
+    ux, uy = c * x - s * y, s * x + c * y
+    return C_LON + ux * MPP36 / M_LON, C_LAT - uy * MPP36 / M_LAT
+CREEKS_1836 = {}   # (the plan's meandering east-bank 'Creek' is the Seine itself, already in the OSM river data)
+
 def rings(path):
     g = json.load(open(path)); out = []
     for f in g['features']:
@@ -96,19 +133,24 @@ def nearest_on(rings_, lon, lat):
 def main():
     rv = rings(os.path.join(HERE, '..', 'data', 'wpg_rivers.geojson'))
     feats = []
-    for name, (died, lines) in CREEKS.items():
-        ll = [[px_to_ll(*p) for p in line] for line in lines]
+    for name, (died, lines) in {**CREEKS, **CREEKS_1836}.items():
+        if name in CREEKS_1836:
+            ll = [[px36_to_ll(*p) for p in line] for line in lines]
+        elif name in CREEKS_1874:
+            ll = [[px74_to_ll(*p) for p in line] for line in CREEKS_1874[name]]
+        else:
+            ll = [[px_to_ll(*p) for p in line] for line in lines]
         mouth = ll[0][0]
         d, q = nearest_on(rv, *mouth)
         shift = (0, 0)
-        if q and d < 260:        # river polygons only cover part of the map; only snap small corrections
+        if q and d < 360:        # river polygons only cover part of the map; only snap small corrections
             shift = (q[0] - mouth[0], q[1] - mouth[1])
-        print(f'{name}: mouth snapped {d:.0f} m' if q and d < 260 else f'{name}: no OSM river within 260 m ({d:.0f}) — left as traced')
+        print(f'{name}: mouth snapped {d:.0f} m' if q and d < 360 else f'{name}: no OSM river within 360 m ({d:.0f}) — left as traced')
         for line in ll:
             coords = [[round(x + shift[0], 6), round(y + shift[1], 6)] for x, y in line]
             feats.append({"type": "Feature", "properties": {
                 "name": name, "type": "fence", "material": "unknown", "born": "1700-08-01", "died": died,
-                "source": "Graham 1984, Fig. 1 (traced by eye; ±100–300 m)"},
+                "source": ("1874 plan of the City of Winnipeg (Parr)" if name in CREEKS_1874 else "1836 Plan Red River and Assiniboine" if name in CREEKS_1836 else "Graham 1984, Fig. 1")+" — traced by eye; ±100–300 m"},
                 "geometry": {"type": "LineString", "coordinates": coords}})
     out = os.path.join(HERE, '..', 'data', 'early_creeks.geojson')
     json.dump({"type": "FeatureCollection", "features": feats}, open(out, 'w'))

@@ -4208,45 +4208,47 @@ function buildGroundCover(){
 // deck at road level (rails/ruts sit on it), bents down into the valley and
 // handrails stand in its place; after the creek is filled in the road returns.
 let creekBridgeMesh=null, creekBridgeSites=[];
-function findCreekBridgeSites(roadFeats){
+function findCreekBridgeSites(roadFeats,roadInfo){
   const BR=CONFIG.terrain.creek?.bridge; creekBridgeSites=[];
   if(!BR||!creekValley) return;
-  const names=new Set(BR.roads), hits=[], creekRe=new RegExp(BR.creeks||'.','i');
+  const names=BR.roads?new Set(BR.roads):null, hits=[], creekRe=new RegExp(BR.creeks||'.','i');
   for(const feat of roadFeats){
-    if(!names.has(feat.properties.st_name)) continue;
+    if(names&&!names.has(feat.properties.st_name)) continue;
     for(const line of feat.geometry.coordinates) for(let i=0;i<line.length-1;i++){
       const[ax,ay]=project(line[i][0],line[i][1]), [bx,by]=project(line[i+1][0],line[i+1][1]);
       const a=[ax,-ay], b=[bx,-by];
+      const info=roadInfo(feat,(a[0]+b[0])/2,(a[1]+b[1])/2); if(!info) continue;   // no road there (yet) — nothing to bridge
       for(const P of creekValley.pieces) if(creekRe.test(creekValley.creeks[P.cid].name)) for(let j=0;j<P.length-1;j++){
         const c=P[j], d=P[j+1], r1x=b[0]-a[0], r1z=b[1]-a[1], r2x=d[0]-c[0], r2z=d[1]-c[1], den=r1x*r2z-r1z*r2x;
-        if(Math.abs(den)<1e-9) continue;
+        if(Math.abs(den)<1e-9||Math.abs(den)/(Math.hypot(r1x,r1z)*Math.hypot(r2x,r2z))<0.4) continue;   // a street running along the creek isn't a crossing
         const t=((c[0]-a[0])*r2z-(c[1]-a[1])*r2x)/den, u=((c[0]-a[0])*r1z-(c[1]-a[1])*r1x)/den;
         if(t<0||t>1||u<0||u>1) continue;
-        const L=Math.hypot(r1x,r1z); hits.push({x:a[0]+r1x*t,z:a[1]+r1z*t,ux:r1x/L,uz:r1z/L,cid:P.cid});
+        const L=Math.hypot(r1x,r1z); hits.push({x:a[0]+r1x*t,z:a[1]+r1z*t,ux:r1x/L,uz:r1z/L,cid:P.cid,road:feat.properties.st_name,w:info.w,span:info.span});
       }
     }
   }
   for(const h of hits){
-    const site=creekBridgeSites.find(q=>Math.hypot(q.x-h.x,q.z-h.z)<(BR.clusterM??30));
-    if(site){ site.n++; site.sx+=h.x; site.sz+=h.z; site.x=site.sx/site.n; site.z=site.sz/site.n; }
-    else creekBridgeSites.push({x:h.x,z:h.z,sx:h.x,sz:h.z,n:1,ux:h.ux,uz:h.uz,cid:h.cid});
+    const site=creekBridgeSites.find(q=>q.road===h.road&&q.cid===h.cid&&Math.hypot(q.x-h.x,q.z-h.z)<(BR.clusterM??30));
+    if(site){ site.n++; site.sx+=h.x; site.sz+=h.z; site.x=site.sx/site.n; site.z=site.sz/site.n; site.span=[Math.min(site.span[0],h.span[0]),Math.max(site.span[1],h.span[1])]; }
+    else creekBridgeSites.push({x:h.x,z:h.z,sx:h.x,sz:h.z,n:1,ux:h.ux,uz:h.uz,cid:h.cid,road:h.road,w:h.w,span:h.span});
   }
-  for(const q of creekBridgeSites){ q.died=creekValley.creeks[q.cid].died; q.halfL=(BR.length??26)/2; }
+  for(const q of creekBridgeSites){ const c=creekValley.creeks[q.cid]; q.born=Math.max(q.span[0],c.born); q.died=Math.min(c.died,q.span[1]); q.halfL=(BR.length??26)/2; q.deckW=Math.max(BR.minWidth??5,Math.min(BR.width??12,q.w*0.5)); }
+  creekBridgeSites=creekBridgeSites.filter(q=>q.died>q.born);
 }
 // The bridge site whose span covers (x,z) (road is replaced by the deck there), or null.
-function roadCutAt(x,z){
-  for(const q of creekBridgeSites){ const rx=x-q.x, rz=z-q.z; if(Math.abs(rx*q.ux+rz*q.uz)<q.halfL&&Math.abs(-rx*q.uz+rz*q.ux)<60) return q; }
+function roadCutAt(x,z,road){
+  for(const q of creekBridgeSites){ if(q.road!==road) continue; const rx=x-q.x, rz=z-q.z; if(Math.abs(rx*q.ux+rz*q.uz)<q.halfL&&Math.abs(-rx*q.uz+rz*q.ux)<60) return q; }
   return null;
 }
 function buildCreekBridges(){
   if(creekBridgeMesh){ scene.remove(creekBridgeMesh); creekBridgeMesh.geometry.dispose(); creekBridgeMesh=null; }
   const BR=CONFIG.terrain.creek?.bridge; if(!BR||!creekBridgeSites.length) return;
-  const geos=[], L=BR.length??26, W=BR.width??12, D=CONFIG.terrain.creek.depth;
+  const geos=[], L=BR.length??26, D=CONFIG.terrain.creek.depth;
   for(const q of creekBridgeSites){
-    const{x,z,ux,uz}=q, theta=Math.atan2(-uz,ux);
+    const{x,z,ux,uz}=q, theta=Math.atan2(-uz,ux), W=q.deckW;
     const yTop=Math.max(sampleTerrainY(x+ux*L/2,z+uz*L/2),sampleTerrainY(x-ux*L/2,z-uz*L/2),sampleTerrainY(x,z))+0.17;
     // box along × height × across, centred at (a along, yc, c across) from the site
-    const box=(la,h,lc,a,yc,c)=>{ const g=new THREE.BoxGeometry(la,h,lc); g.rotateY(theta); g.translate(x+ux*a-uz*c,yc,z+uz*a+ux*c); tagLifespan(g,NO_BORN,q.died); geos.push(g); };
+    const box=(la,h,lc,a,yc,c)=>{ const g=new THREE.BoxGeometry(la,h,lc); g.rotateY(theta); g.translate(x+ux*a-uz*c,yc,z+uz*a+ux*c); tagLifespan(g,q.born,q.died); geos.push(g); };
     box(L+2,0.35,W, 0,yTop-0.175,0);                                          // plank deck
     for(const sd of[-1,1]) box(L,0.6,0.3, 0,yTop-0.65,sd*(W/2-0.15));         // side girders
     const bentH=D+0.5;
@@ -4256,8 +4258,8 @@ function buildCreekBridges(){
     }
     for(let a=-L/2+0.6; a<=L/2-0.5; a+=2.8) for(const sd of[-1,1]) box(0.18,1.05,0.18, a,yTop+0.52,sd*(W/2-0.12));   // handrail posts
     for(const sd of[-1,1]){ box(L,0.12,0.14, 0,yTop+1.05,sd*(W/2-0.12)); box(L,0.1,0.12, 0,yTop+0.55,sd*(W/2-0.12)); }
-    console.log(`🌉 Brown's Creek bridge at (${x.toFixed(0)}, ${z.toFixed(0)}), deck ${yTop.toFixed(2)}, bearing ${(Math.atan2(ux,-uz)*180/Math.PI).toFixed(0)}°`);
   }
+  console.log(`🌉 Creek bridges: ${creekBridgeSites.length} (${[...new Set(creekBridgeSites.map(q=>q.road))].join(', ')})`);
   const mat=withRoadBend(tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:BR.color??0x5d4a36})),'B');
   creekBridgeMesh=new THREE.Mesh(mergeGeometries(geos,false),mat);
   creekBridgeMesh.castShadow=creekBridgeMesh.receiveShadow=true;
@@ -4434,7 +4436,10 @@ async function buildRoads(geojson){
   const extraRoads=[...(RH.extra||[]),...(earlyVeg?.trails||[]).map(t=>({name:t.name,born:t.born,died:t.died,width:t.width,path:t.path}))];
   const roadFeats=[...geojson.features,...extraRoads.map(e=>({properties:{st_name:e.name,st_type:'RD',
     _span:[_isoYearFrac(e.born,NO_BORN),_isoYearFrac(e.died,NO_DIED)],_width:e.width},geometry:{coordinates:[e.path]}}))];
-  findCreekBridgeSites(roadFeats);
+  const roadWidthOf=feat=>{ const P=feat.properties, st=P.st_name||'', fr=parseInt(P.from_right||P.from_left||'0')||0;
+    const major=(st==='Portage'&&!(st==='Portage'&&fr<200))||st==='Main'; return P._width??(ROAD_W[P.st_type]??9)*(major?4:2); };
+  findCreekBridgeSites(roadFeats,(feat,mx,mz)=>{ const st=feat.properties.st_name||''; if(isNever(st)) return null;
+    const span=featSpan(feat,st,mx,mz); return span?{span,w:roadWidthOf(feat)}:null; });
   function featSpan(feat,stName,mx,mz){
     const P=feat.properties; if(P._span) return P._span;
     const span=segmentLifespan(stName,mx,mz), o=segSpans.get(String(P.segment_id));
@@ -4486,8 +4491,8 @@ async function buildRoads(geojson){
           const cx2=x1+dx*ct1, cz2=z1+dz*ct1;
           const y=(surfaceY(cx1,cz1,dx,dz)+surfaceY(cx2,cz2,dx,dz))*0.5+ROAD_LIFT;
           let cspan=span;   // the creek bridge's deck stands in for the road while the creek exists
-          const bq=roadCutAt((cx1+cx2)/2,(cz1+cz2)/2);
-          if(bq){ if(span[1]<=bq.died) continue; cspan=[Math.max(span[0],bq.died),span[1]]; }
+          const bq=roadCutAt((cx1+cx2)/2,(cz1+cz2)/2,stName);
+          if(bq){ cspan=[Math.max(span[0],bq.died),span[1]]; if(cspan[0]>=cspan[1]) continue; }
           for(const[tA,tB]of strips){
             const ax1=cx1+pxu*tA*(w*0.5), az1=cz1+pzu*tA*(w*0.5);
             const bx1=cx1+pxu*tB*(w*0.5), bz1=cz1+pzu*tB*(w*0.5);

@@ -32,6 +32,35 @@ def ll(px, py):
     ux, uy = c * x - s * y, s * x + c * y
     return [round(C_LON + ux * MPP / M_LON, 6), round(C_LAT - uy * MPP / M_LAT, 6)]
 
+
+# ── 1836 "Plan Red River and Assiniboine in 1836" (copy dated Fort Garry, 22 Oct 1863; scale bar in chains,
+# 100 chains = 870 px = 2.31 m/px nominal). Its compass puts north 25° left of up. Fitted by overlaying the OSM
+# river with the Forks at pixel (855,1000): the plan's river is drawn ~9% bigger than the bar suggests,
+# so 2.12 m/px fits best. Sketch map: ±300 m at best.
+MPP36, ROT36, ANCHOR36 = 2.12, -0.43, (855, 1000)
+def _raw36(lon, lat):
+    x = (lon - C_LON) * M_LON / MPP36; y = -(lat - C_LAT) * M_LAT / MPP36
+    c, s = math.cos(ROT36), math.sin(ROT36); return c * x - s * y, s * x + c * y
+_a36 = _raw36(-97.1285, 49.8875); TX36, TY36 = ANCHOR36[0] - _a36[0], ANCHOR36[1] - _a36[1]
+def ll36(px, py):
+    x, y = px - TX36, py - TY36; c, s = math.cos(-ROT36), math.sin(-ROT36)
+    ux, uy = c * x - s * y, s * x + c * y
+    return [round(C_LON + ux * MPP36 / M_LON, 6), round(C_LAT - uy * MPP36 / M_LAT, 6)]
+SRC36 = "1836 'Plan Red River and Assiniboine' (traced by eye)"
+# kind, density per 1000 m2, "to" (a guess: when the bush was cleared/built over), polygon in plan pixels
+STANDS36 = [
+  ("South-bank woods (Fort Rouge side)", "poplar", 0.8, "1895-01-01",
+   [(330,1420),(480,1330),(560,1210),(600,1160),(625,1250),(620,1340),(640,1450),(660,1580),(700,1690),(810,1760),(780,1800),(680,1800),(600,1790),(520,1720),(420,1620),(340,1560)]),
+  ("Assiniboine south-bank woods, west", "poplar", 0.8, "1895-01-01",
+   [(40,1750),(200,1740),(330,1790),(430,1850),(420,1900),(300,1940),(100,1950),(40,1900)]),
+  ("St Boniface south woods", "poplar", 0.8, "1890-01-01",
+   [(920,1330),(960,1250),(1100,1260),(1230,1230),(1250,1400),(1200,1480),(1080,1500),(1000,1460),(920,1420)]),
+  ("St Boniface road trees", "poplar", 1.2, "1880-01-01",
+   [(740,540),(830,470),(900,480),(930,640),(1000,800),(990,830),(930,800),(880,730),(820,650),(760,590)]),
+  ("St Boniface convent road trees", "poplar", 1.2, "1880-01-01",
+   [(990,830),(1100,820),(1240,850),(1250,890),(1100,860),(990,850)]),
+]
+
 SRC = "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
 STANDS = [
   # the long wooded oval west-north-west of the Forks, labelled in the plate (a willow wood)
@@ -55,6 +84,13 @@ def main():
     for s in STANDS:
         out["stands"].append(dict(name=s["name"], kind=s["kind"], per1000m2=s["per1000m2"], scale=s["scale"],
                                   from_="1700-01-01", to=None, ring=[ll(*p) for p in s["px"]], source=SRC))
+    for nm,kind,dens,to,px in STANDS36:
+        K = {"poplar": [0.9, 1.3], "willow": [0.9, 1.4]}[kind]
+        # The plan's St Boniface side lands on the wrong bank of the Red (the old Seine outlet drawn on it comes out ~340 m
+        # west of the real Seine's mouth in the OSM data), so the east-bank stands are slid 330 m east.
+        dE = 330.0 if nm.startswith("St Boniface") else 0.0
+        ring = [ll36(*p) for p in px]; ring = [[round(lo + dE / M_LON, 6), la] for lo, la in ring]
+        out["stands"].append(dict(name=nm, kind=kind, per1000m2=dens, scale=K, from_="1700-01-01", to=to, ring=ring, source=SRC36))
     o = OAKS; c = ll(*o["centre_px"])
     out["stands"].append(dict(name=o["name"], kind=o["kind"], scale=o["scale"], count=o["count"], from_="1700-01-01", to="1890-01-01",
                               centre=c, radiusM=round(o["radius_px"] * MPP), source=SRC))
