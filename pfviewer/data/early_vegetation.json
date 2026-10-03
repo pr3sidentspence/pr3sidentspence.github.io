@@ -1,0 +1,329 @@
+{
+ "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)",
+ "stands": [
+  {
+   "name": "Large willow wood (1819 plate)",
+   "kind": "willow",
+   "per1000m2": 1.5,
+   "scale": [
+    0.9,
+    1.4
+   ],
+   "from": "1700-01-01",
+   "to": null,
+   "ring": [
+    [
+     -97.156533,
+     49.88564
+    ],
+    [
+     -97.160033,
+     49.885587
+    ],
+    [
+     -97.164459,
+     49.887168
+    ],
+    [
+     -97.168728,
+     49.888672
+    ],
+    [
+     -97.174118,
+     49.890163
+    ],
+    [
+     -97.179567,
+     49.89192
+    ],
+    [
+     -97.182813,
+     49.893248
+    ],
+    [
+     -97.186669,
+     49.894791
+    ],
+    [
+     -97.189309,
+     49.897804
+    ],
+    [
+     -97.191515,
+     49.900766
+    ],
+    [
+     -97.191951,
+     49.902716
+    ],
+    [
+     -97.190497,
+     49.903123
+    ],
+    [
+     -97.187821,
+     49.901832
+    ],
+    [
+     -97.184358,
+     49.900163
+    ],
+    [
+     -97.180089,
+     49.898658
+    ],
+    [
+     -97.176213,
+     49.897027
+    ],
+    [
+     -97.171256,
+     49.895586
+    ],
+    [
+     -97.167046,
+     49.894348
+    ],
+    [
+     -97.163603,
+     49.892767
+    ],
+    [
+     -97.160218,
+     49.890818
+    ],
+    [
+     -97.157246,
+     49.888832
+    ],
+    [
+     -97.156338,
+     49.886654
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  },
+  {
+   "name": "Assiniboine bank woods A",
+   "kind": "poplar",
+   "per1000m2": 0.7,
+   "scale": [
+    0.9,
+    1.3
+   ],
+   "from": "1700-01-01",
+   "to": null,
+   "ring": [
+    [
+     -97.208878,
+     49.875993
+    ],
+    [
+     -97.209592,
+     49.880451
+    ],
+    [
+     -97.206014,
+     49.880782
+    ],
+    [
+     -97.205024,
+     49.87635
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  },
+  {
+   "name": "Assiniboine bank woods B",
+   "kind": "poplar",
+   "per1000m2": 0.7,
+   "scale": [
+    0.9,
+    1.3
+   ],
+   "from": "1700-01-01",
+   "to": null,
+   "ring": [
+    [
+     -97.2017,
+     49.875301
+    ],
+    [
+     -97.202019,
+     49.877986
+    ],
+    [
+     -97.194077,
+     49.878903
+    ],
+    [
+     -97.193758,
+     49.876218
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  },
+  {
+   "name": "Assiniboine bank woods C",
+   "kind": "poplar",
+   "per1000m2": 0.7,
+   "scale": [
+    0.9,
+    1.3
+   ],
+   "from": "1700-01-01",
+   "to": null,
+   "ring": [
+    [
+     -97.193663,
+     49.878308
+    ],
+    [
+     -97.194379,
+     49.883399
+    ],
+    [
+     -97.18736,
+     49.88405
+    ],
+    [
+     -97.186232,
+     49.878997
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  },
+  {
+   "name": "Assiniboine bank woods D",
+   "kind": "poplar",
+   "per1000m2": 0.7,
+   "scale": [
+    0.9,
+    1.3
+   ],
+   "from": "1700-01-01",
+   "to": null,
+   "ring": [
+    [
+     -97.182132,
+     49.87259
+    ],
+    [
+     -97.183186,
+     49.880455
+    ],
+    [
+     -97.175657,
+     49.881334
+    ],
+    [
+     -97.174288,
+     49.873317
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  },
+  {
+   "name": "Assiniboine bank woods E",
+   "kind": "poplar",
+   "per1000m2": 0.7,
+   "scale": [
+    0.9,
+    1.3
+   ],
+   "from": "1700-01-01",
+   "to": null,
+   "ring": [
+    [
+     -97.168831,
+     49.879071
+    ],
+    [
+     -97.169229,
+     49.882111
+    ],
+    [
+     -97.154367,
+     49.883488
+    ],
+    [
+     -97.153733,
+     49.880652
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  },
+  {
+   "name": "The seven oaks (Seven Oaks)",
+   "kind": "oak",
+   "scale": [
+    1.3,
+    1.7
+   ],
+   "count": 7,
+   "from": "1700-01-01",
+   "to": "1890-01-01",
+   "centre": [
+    -97.119117,
+    49.936341
+   ],
+   "radiusM": 219,
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  }
+ ],
+ "trails": [
+  {
+   "name": "Cart road to Brandon House (Portage trail)",
+   "width": 5,
+   "born": null,
+   "died": "1882-01-01",
+   "path": [
+    [
+     -97.131709,
+     49.89147
+    ],
+    [
+     -97.138121,
+     49.893138
+    ],
+    [
+     -97.142802,
+     49.893971
+    ],
+    [
+     -97.150178,
+     49.895549
+    ],
+    [
+     -97.156392,
+     49.89633
+    ],
+    [
+     -97.163827,
+     49.898175
+    ],
+    [
+     -97.170319,
+     49.900197
+    ],
+    [
+     -97.17555,
+     49.900979
+    ],
+    [
+     -97.180861,
+     49.902116
+    ],
+    [
+     -97.186582,
+     49.901947
+    ],
+    [
+     -97.190928,
+     49.90254
+    ]
+   ],
+   "source": "1819 'Papers relating to the Red River Settlement' Plate 3 (traced by eye)"
+  }
+ ]
+}

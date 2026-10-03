@@ -943,11 +943,33 @@ export const CONFIG = {
   ferries: [
     { name: 'St Boniface ferry', river: 'red',         lon: -97.1273, lat: 49.8920, from: '1860-01-01', to: '1878-06-09', kind: 'scow' },
     { name: 'Adelaide',          river: 'red',         lon: -97.1273, lat: 49.8920, from: '1878-06-09', to: '1882-04-16', kind: 'steam' },
-    { name: 'Assiniboine ferry', river: 'assiniboine', lon: -97.1335, lat: 49.8852, from: '1850-01-01', to: '1881-06-01', kind: 'scow' },
+    { name: 'Assiniboine ferry', river: 'assiniboine', lon: -97.1335, lat: 49.8852, from: '1850-01-01', to: '1881-06-01', kind: 'scow', northEndEastM: 30 },   // north landing 30 m east of the Main St line: Dept. of Resources & Development 1952 plan A-68 (Upper Fort Garry); estimated from the sheet
   ],
   ferryTiming: { crossSeconds: 70, dwellSeconds: 25,
     bankAboveWaterM: 0.4,   // a landing is where the ground rises this far above normal water
     onBankM: 1 },            // …plus this far onto it (the ramp touches the bank)
+
+  // ── Windmills ───────────────────────────────────────────────────────
+  // Red River Settlement tower mills (18 by 1856, 13 of them in St John, St Paul
+  // and St Andrew north of the Forks). Only those I could place from the
+  // sources are listed; positions are APPROXIMATE (±200 m).
+  //  • Robert Logan's mill: ground first 1 Oct 1825 — "a big round building like a tower,
+  //    broader at the bottom than at the top, and it had great sails" (his daughter, MHS
+  //    Manitoba History 2); on the southern edge of Point Douglas, about a mile north of
+  //    Upper Fort Garry, with the old Fort Douglas site.
+  //  • Narcisse Marion's mill, St Boniface, built 1840–43 south of the mission church.
+  // End dates: windmills gave way to steam/water mills from the 1870s — assumed 1880.
+  // Dimensions follow the St Peter's mill (1835): 21.5 ft base, 37 ft tall, sails 17.5 × 6 ft.
+  windmills: {
+    list: [
+      { name: "Logan's windmill (Point Douglas)", lon: -97.1288, lat: 49.9021, from: '1825-10-01', to: '1880-01-01' },
+      { name: "Marion's windmill (St Boniface)",  lon: -97.1232, lat: 49.8872, from: '1840-06-01', to: '1880-01-01' },
+    ],
+    tower: { baseR: 3.3, topR: 2.1, height: 10.5, capH: 3.0, color: 0xD6CEBB, capColor: 0x3B3128 },
+    sail:  { length: 9.5, cloth: 6.0, width: 1.9, color: 0xE9E2CF },
+    wind:  { base: 4.5, swing: 2.5, prevailingFromDeg: 315 },   // m/s breeze, and where it blows from (NW)
+    spinPerMs: 0.13, maxSpin: 2.2,                                  // sail rad/s per m/s of wind, and its cap
+  },
 
   // ── Construction / demolition / fire ─────────────────────────────────
   // Buildings with a born date go up over [born − duration, born] (so they
@@ -1030,6 +1052,17 @@ export const CONFIG = {
     ],
     crownColors: [0x2E4A1C, 0x365421, 0x2A4418, 0x3D5A26, 0x33501F],
     barkColor: 0x4A4036,
+  },
+
+  // ── Early vegetation (stands traced from early plans; see tools/early_vegetation.py) ──
+  earlyVegetation: {
+    file: './data/early_vegetation.json',
+    density: 1,                       // × each stand's per1000m2 (trees per 1000 m²) — the big willow wood is thousands of trees
+    kinds: {                          // crown archetype, autumn-colour key and leaf colours per kind
+      willow: { shape: 'round', species: 'willow', colors: [0x6E8B3A, 0x7A9440, 0x688232, 0x5F7A30] },
+      poplar: { shape: 'tall',  species: 'cottonwood', colors: [0x4F7A2A, 0x5C8A32, 0x46702A, 0x7FA037] },
+      oak:    { shape: 'round', species: 'oak', colors: [0x2F4A1A, 0x3A5A22, 0x34501E] },
+    },
   },
 
   // ── Timeline / date slider ───────────────────────────────────────────
@@ -1338,6 +1371,7 @@ export const CONFIG = {
   // Deep-merged over this config on touch devices (or ?profile=mobile);
   // ?profile=desktop skips it. Same shape as the settings it overrides.
   mobile: {
+    earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
     terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
     // Only buildings within 3 km. Small details and real window glass only near the camera:
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory

@@ -952,6 +952,7 @@ window._debugCam=(x,y,z,tx,ty,tz)=>{ camera.position.set(x,y,z); orbit.target.se
 window._debugLOD=(x,y,z)=>{ camera.position.set(x,y,z); for(let k=0;k<8;k++){ tickGlassLOD(); tickDetailLOD(); }
   const vis=glassTiles.filter(t=>t.mesh.visible);
   return {glassTiles:vis.length+'/'+glassTiles.length,panes:vis.reduce((a,t)=>a+t.n,0),paintedFrom:+windowPaintUniforms.uWinFade.value.x.toFixed(0),detail:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
+window._sampleLL=(lon,lat)=>{ const[sx,sy]=project(lon,lat); return +sampleTerrainY(sx,-sy).toFixed(2); };   // terrain height (world Y) at lon/lat
 window._debugCreek=()=>creekValley?{alive:Array.from(creekUniforms.uCreekAlive.value).slice(0,creekValley.creeks.length).join(''),creeks:creekValley.creeks.map(c=>c.name),pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
 // Per frame: valley on/off with the creek's dates; vertex colours = the
 // seasonal ground colour, blending to bank dirt toward the floor (summer;
@@ -4430,7 +4431,8 @@ async function buildRoads(geojson){
   // went round the east side of Upper Fort Garry until its walls came down).
   const RH=CONFIG.roadHistory||{}, segSpans=new Map();
   for(const[id,[b,d]]of Object.entries(RH.segments||{})) segSpans.set(String(id),[_isoYearFrac(b,NO_BORN),_isoYearFrac(d,NO_DIED)]);
-  const roadFeats=[...geojson.features,...(RH.extra||[]).map(e=>({properties:{st_name:e.name,st_type:'RD',
+  const extraRoads=[...(RH.extra||[]),...(earlyVeg?.trails||[]).map(t=>({name:t.name,born:t.born,died:t.died,width:t.width,path:t.path}))];
+  const roadFeats=[...geojson.features,...extraRoads.map(e=>({properties:{st_name:e.name,st_type:'RD',
     _span:[_isoYearFrac(e.born,NO_BORN),_isoYearFrac(e.died,NO_DIED)],_width:e.width},geometry:{coordinates:[e.path]}}))];
   findCreekBridgeSites(roadFeats);
   function featSpan(feat,stName,mx,mz){
@@ -5039,6 +5041,39 @@ function buildRiverTrees(){
         }
       }
     }
+  }
+
+  // ── Early stands (CONFIG.earlyVegetation, data/early_vegetation.json) ──
+  if(earlyVeg&&CONFIG.earlyVegetation){
+    const EV=CONFIG.earlyVegetation, kinds=EV.kinds; let nStand=0;
+    const inRing=(x,z,ring)=>pointInPolygon(x,z,ring);
+    for(const st of earlyVeg.stands){
+      const K=kinds[st.kind]; if(!K) continue;
+      const b=st.from?_isoYearFrac(st.from,NO_BORN):NO_BORN, d=st.to?_isoYearFrac(st.to,NO_DIED):NO_DIED;
+      const window=[]; if(b>NO_BORN+1) window.push(NO_BORN,b); if(d<NO_DIED-1) window.push(d,NO_DIED);   // hidden outside the stand's years
+      const put=(x,z)=>{
+        if(inWater(x,z)) return false;
+        const y=sampleTerrainY(x,z); if(y<waterMin) return false;
+        if(blocked(x-offX,z-offZ)) return false;
+        const hide=hideSpans(x-offX,z-offZ), hs=(hide||window.length)?[...(hide||[]),...window]:null;
+        const sc=st.scale[0]+rnd()*(st.scale[1]-st.scale[0]);
+        placed[K.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc,sy:0.9+0.2*rnd(),sp:K.species,phase:rnd()*0.5,aPhase:rnd()*0.4,hide:hs,
+                              col:K.colors[Math.floor(rnd()*K.colors.length)]});
+        return true;
+      };
+      if(st.ring){
+        const ring=st.ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
+        let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of ring){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+        if(((ax+bx)/2)**2+((az+bz)/2)**2>R2max*2.2) continue;
+        const area=Math.abs(ring.reduce((a,q,i)=>{const r=ring[(i+1)%ring.length];return a+(q.x*r.z-r.x*q.z);},0))/2;
+        const want=Math.round(area/1000*st.per1000m2*(EV.density??1));
+        for(let k=0,tries=0;k<want&&tries<want*8;tries++){ const x=ax+rnd()*(bx-ax), z=az+rnd()*(bz-az); if(inRing(x,z,ring)&&put(x,z)){k++;nStand++;} }
+      }else if(st.centre){
+        const[sx,sy]=project(st.centre[0],st.centre[1]), cx=sx, cz=-sy;
+        for(let k=0,tries=0;k<st.count&&tries<400;tries++){ const a=rnd()*6.283, r=Math.sqrt(rnd())*st.radiusM; if(put(cx+Math.cos(a)*r,cz+Math.sin(a)*r)){k++;nStand++;} }
+      }
+    }
+    console.log(`🌳 Early stands: ${nStand} trees`);
   }
 
   // ── Instanced meshes ──
@@ -8523,6 +8558,7 @@ function tickSteamboats(dt){
   }
   tickSmallCraft(dt,waterY);
   tickFerries(dt,waterY);
+  tickWindmills(dt);
   tickDocks(dt,waterY);
 
   while(sbSlots.length<nBoats) sbSlots.push({boat:null,idle:0,lastP:null});
@@ -9841,7 +9877,11 @@ function _ferryCrossing(F){
   const wet=(x,z)=>_demLoaded?sampleTerrainY(x,z)<bankY:_inRiver(x,z);
   const reach=sgn=>{let d=2;while(d<300&&wet(s.x+s.px*sgn*d,s.z+s.pz*sgn*d))d+=1;return d>=300?50:d+(CONFIG.ferryTiming?.onBankM??1);};
   const a=reach(1), b=reach(-1);
-  return{x0:s.x+s.px*a,z0:s.z+s.pz*a,x1:s.x-s.px*b,z1:s.z-s.pz*b,yaw:s.yaw,dem:_demLoaded};
+  const X={x0:s.x+s.px*a,z0:s.z+s.pz*a,x1:s.x-s.px*b,z1:s.z-s.pz*b,yaw:s.yaw,dem:_demLoaded};
+  // F.northEndEastM: slide the north landing east (the 1952 Upper Fort Garry plan puts the old
+  // Assiniboine ferry's north end east of the Main St line), which also angles the crossing.
+  if(F.northEndEastM){ const n=X.z0<X.z1?'0':'1'; X['x'+n]+=F.northEndEastM; }
+  return X;
 }
 function buildFerry(F){
   const g=new THREE.Group(), steam=F.kind==='steam';
@@ -9902,6 +9942,62 @@ function tickFerries(dt,waterY){
     f.cable.position.y=waterY+1.2;
   }
 }
+
+// ── Windmills (CONFIG.windmills) ────────────────────────────────────
+// Red River's tower mills: a tapering round tower, a conical cap that turns to
+// face the wind, and four lattice sails on a shaft that spins faster the harder
+// it blows. Wind = a slowly wandering breeze from the north-west ("the north and
+// northwest winds were the best for the mills", MHS) plus the storm wind while a
+// storm is on. Shown only within each mill's dates.
+let windmills=null;
+const _wmWind={speed:4,from:5.5};   // m/s, and the direction it comes FROM (radians, compass: 0 = north, clockwise)
+function windNow(tSec){
+  const W=CONFIG.windmills?.wind||{};
+  const base=(W.base??4.5)+(W.swing??2.5)*Math.sin(tSec/41)+1.4*Math.sin(tSec/13+1.3)+0.8*Math.sin(tSec/5.3+0.4);
+  const storm=Math.hypot(_stormWind.x,_stormWind.z);
+  _wmWind.speed=Math.max(0,base*(1-Math.min(1,_stormWind.k))+storm);
+  _wmWind.from=storm>0.5&&_stormWind.k>0.05?Math.atan2(-_stormWind.x,_stormWind.z)       // storm: from where it blows from
+    :(W.prevailingFromDeg??315)*Math.PI/180+0.6*Math.sin(tSec/97)+0.25*Math.sin(tSec/23+2);
+  return _wmWind;
+}
+function buildWindmill(M){
+  const T=CONFIG.windmills.tower, g=new THREE.Group(), mat=(c,o={})=>new THREE.MeshLambertMaterial({color:c,...o});
+  const add=(parent,geo,m,x,y,z)=>{const me=new THREE.Mesh(geo,m);me.position.set(x,y,z);me.castShadow=true;me.receiveShadow=true;parent.add(me);return me;};
+  add(g,new THREE.CylinderGeometry(T.topR,T.baseR,T.height,18),mat(T.color),0,T.height/2,0);
+  add(g,new THREE.BoxGeometry(1.1,2.1,0.5),mat(0x3A2E22),0,1.05,T.baseR-0.15).rotation.y=0;   // door
+  for(const y of[4.2,7.2]) add(g,new THREE.BoxGeometry(0.6,0.9,0.4),mat(0x2A2420),0,y,T.baseR-0.55-(y-4.2)*0.07);
+  const cap=new THREE.Group(); cap.position.y=T.height; g.add(cap);
+  add(cap,new THREE.ConeGeometry(T.topR+0.45,T.capH,18),mat(T.capColor),0,T.capH/2,0);
+  add(cap,new THREE.CylinderGeometry(0.28,0.28,2.4,8),mat(0x2A241E),0,T.capH*0.55,T.topR*0.5+0.6).rotation.x=Math.PI/2;   // windshaft
+  const hub=new THREE.Group(); hub.position.set(0,T.capH*0.55,T.topR*0.5+1.9); cap.add(hub);
+  const S=CONFIG.windmills.sail;
+  for(let k=0;k<4;k++){
+    const arm=new THREE.Group(); arm.rotation.z=k*Math.PI/2; hub.add(arm);
+    add(arm,new THREE.BoxGeometry(0.2,S.length,0.14),mat(0x4A3A28),0,S.length/2,0);                 // stock
+    const frame=add(arm,new THREE.BoxGeometry(S.width,S.cloth,0.06),mat(S.color,{transparent:true,opacity:0.92,side:THREE.DoubleSide}),S.width/2+0.12,S.length-S.cloth/2-0.3,0.02);
+    frame.rotation.y=0.28;                                                                           // each sail is twisted to catch the wind
+    for(let b=0;b<=3;b++) add(arm,new THREE.BoxGeometry(S.width,0.07,0.09),mat(0x5A4630),S.width/2+0.12,S.length-0.3-b*S.cloth/3,0.05).rotation.y=0.28;   // lattice bars
+  }
+  return{group:g,cap,hub};
+}
+function tickWindmills(dt){
+  const WL=CONFIG.windmills; if(!WL||!_demLoaded) return;
+  if(!windmills){
+    windmills=WL.list.map(M=>{const[sx,sy]=project(M.lon,M.lat), x=sx, z=-sy;
+      return{M,x,z,from:_isoYearFrac(M.from,NO_BORN),to:_isoYearFrac(M.to,NO_DIED),obj:null,spin:Math.random()*6.28,face:null};});
+  }
+  const yr=yearFrac(currentViewDate), w=windNow(performance.now()/1000);
+  for(const m of windmills){
+    const live=yr>=m.from&&yr<m.to;
+    if(live&&!m.obj){ m.obj=buildWindmill(m.M); m.obj.group.position.set(m.x,sampleTerrainY(m.x,m.z)-0.2,m.z); scene.add(m.obj.group); }
+    if(!m.obj) continue;
+    m.obj.group.visible=live; if(!live) continue;
+    const want=Math.PI-w.from, d=Math.atan2(Math.sin(want-(m.face??want)),Math.cos(want-(m.face??want)));   // the cap turns into the wind, slowly
+    m.face=(m.face??want)+d*Math.min(1,dt*0.35); m.obj.cap.rotation.y=m.face;
+    m.spin+=Math.min(WL.maxSpin,w.speed*WL.spinPerMs)*dt; m.obj.hub.rotation.z=-m.spin;
+  }
+}
+window._debugWind=()=>({speed:+_wmWind.speed.toFixed(2),fromDeg:+(((_wmWind.from*180/Math.PI)%360+360)%360).toFixed(0),mills:(windmills||[]).map(m=>m.M.name+(m.obj?.group.visible?' ✓':' –')+' y='+(m.obj?m.obj.group.position.y.toFixed(1):'?'))});
 
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
@@ -10332,6 +10428,19 @@ function toggleWinter(){
 // fires lightning + delayed thunder, and swells the ambient wind. Blizzards
 // also leave snow cover for a few days (stormSnowCover, read by seasonState).
 const DAY_MS=86400000;
+// ── Early vegetation & trails (data/early_vegetation.json, tools/early_vegetation.py) ──
+// Tree stands traced from early plans (the 1819 'Papers relating to the Red River
+// Settlement' plate: a large willow wood, the Assiniboine bank woods, the seven
+// oaks) and period trails. Stands become instanced trees in buildRiverTrees (hidden
+// before/after their dates, and under buildings like the riverbank trees); trails are
+// extra roads in buildRoads.
+let earlyVeg=null;
+async function loadEarlyVegetation(){
+  const f=CONFIG.earlyVegetation?.file; if(!f) return;
+  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; earlyVeg=await r.json();
+    console.log(`🌳 Early vegetation: ${earlyVeg.stands.length} stand(s), ${earlyVeg.trails.length} trail(s)`); }
+  catch(e){ console.warn('Early vegetation: failed to load',e); }
+}
 async function loadStorms(){
   const f=CONFIG.storms?.file; if(!f) return;
   try{
@@ -11164,6 +11273,7 @@ renderer.render(scene,camera);
   await loadWaterLevels();   // after the DEM: absolute datums need its refElev
   loadMoisture();
   loadStorms();
+  await loadEarlyVegetation();
   pcLoadFile();
 
   for(let i=0;i<found.length;i++){
