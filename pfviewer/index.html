@@ -605,8 +605,9 @@ uniform vec3 uGcGrassAlt,uGcGrassDry,uGcYardDirt,uGcCoreDirt;
 uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear,uGcGreen;
 uniform sampler2D uGcTex;
 uniform sampler2D uCreekTex;
-uniform vec4 uCreekBox;
-uniform float uCreekOn;
+uniform vec4 uCreekRect[${MAX_CREEKS}], uCreekAt[${MAX_CREEKS}];
+uniform float uCreekAlive[${MAX_CREEKS}];
+uniform int uCreekN;
 uniform vec2 uGcMin,uGcSize;
 varying vec3 vBankWorld;
 float gcHash(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
@@ -614,8 +615,12 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
   return mix(mix(gcHash(i),gcHash(i+vec2(1,0)),u.x),mix(gcHash(i+vec2(0,1)),gcHash(i+vec2(1,1)),u.x),u.y);}
 `+shader.fragmentShader
     .replace('#include <color_fragment>',`#include <color_fragment>
-  if(uCreekOn>0.5){ vec2 cuv=(vBankWorld.xz-uCreekBox.xy)/(uCreekBox.zw-uCreekBox.xy);   // Brown's Creek valley shows through
-    if(cuv.x>0.&&cuv.y>0.&&cuv.x<1.&&cuv.y<1.&&texture2D(uCreekTex,cuv).r>0.5) discard; }
+  for(int ci=0; ci<${MAX_CREEKS}; ci++){   // creek valleys show through while their creek exists
+    if(ci>=uCreekN) break;
+    if(uCreekAlive[ci]<0.5) continue;
+    vec4 cr=uCreekRect[ci]; vec2 cuv=(vBankWorld.xz-cr.xy)/(cr.zw-cr.xy);
+    if(cuv.x>0.&&cuv.y>0.&&cuv.x<1.&&cuv.y<1.){ vec4 ca=uCreekAt[ci]; if(texture2D(uCreekTex,ca.xy+cuv*ca.zw).r>0.5) discard; }
+  }
   {
     // ── Summer ground cover (see CONFIG.terrain.groundCover) ──
     vec2 wp=vBankWorld.xz;
@@ -799,7 +804,10 @@ function flattenDEM(h, S, cellM, protect=null){
 // of the corridor (mask texture) so the valley shows through. Both only
 // while the creek exists (born..died). The water ribbon and mosquito
 // anchors sit on the valley floor (creekFloorDrop).
-const creekUniforms={uCreekTex:{value:null},uCreekBox:{value:new THREE.Vector4(0,0,1,1)},uCreekOn:{value:0}};
+const MAX_CREEKS=16;
+const creekUniforms={uCreekTex:{value:null},uCreekN:{value:0},uCreekAlive:{value:new Float32Array(MAX_CREEKS)},
+  uCreekRect:{value:Array.from({length:MAX_CREEKS},()=>new THREE.Vector4(0,0,1,1))},    // world x0,z0,x1,z1 of each creek's cut mask
+  uCreekAt:{value:Array.from({length:MAX_CREEKS},()=>new THREE.Vector4(0,0,1,1))}};     // its place in the shared mask atlas (u0,v0,du,dv)
 let creekValley=null;   // {meshes:[], cuts:[[x,z,r]], born, died, seen:Set, lastCol}
 function creekFloorDrop(){ return creekValley?CONFIG.terrain.creek.depth:0; }
 // Called once per creek feature (the creek is stored as several pieces).
@@ -813,8 +821,8 @@ function creekFloorDrop(){ return creekValley?CONFIG.terrain.creek.depth:0; }
 // heading until the ground drops to the river's low-water edge
 // (water.startY + C.riverEdgeAbove), so the creek runs into the river. The
 // extended end isn't tapered (riverEnd) — it opens into the river bank.
-function extendCreekToRiver(line){
-  const C=CONFIG.terrain.creek; if(!C||!C.toRiver||!_demLoaded||line.length<3) return line;
+function extendCreekToRiver(line,name){
+  const C=CONFIG.terrain.creek; if(!C||!C.toRiver||!_demLoaded||line.length<3||!/brown/i.test(name||'')) return line;
   const last=line[line.length-1];
   if(last[0]<(C.eastOfLon??-97.1328)) return line;   // only the east end
   const [ex,sy]=project(last[0],last[1]), ez=-sy;
@@ -827,18 +835,21 @@ function extendCreekToRiver(line){
   console.log(`🏞 Brown's Creek extended ${n*step} m east to the river edge (ground ${sampleTerrainY(x,z).toFixed(2)} vs edge ${edgeY.toFixed(2)})`);
   return out;
 }
-function carveCreekTerrain(lines,born,died){
+function carveCreekTerrain(lines,born,died,name='creek'){
   const C=CONFIG.terrain.creek; if(!C||!_demLoaded) return;
-  creekValley??={meshes:[],pieces:[],born,died,seen:new Set(),lastCol:-1};
-  const V=creekValley; V.born=Math.min(V.born,born); V.died=Math.max(V.died,died);
+  creekValley??={meshes:[],pieces:[],creeks:[],seen:new Set(),lastCol:-1,dirty:false};
+  const V=creekValley;
+  let cid=V.creeks.findIndex(c=>c.name===name&&c.born===born&&c.died===died);
+  if(cid<0){ if(V.creeks.length>=MAX_CREEKS){ console.warn('too many creeks for the valley shader: '+name); return; } cid=V.creeks.length; V.creeks.push({name,born,died}); }
   for(const line of lines){
     const k0=line[0].join(',')+'|'+line[line.length-1].join(',');
     if(V.seen.has(k0)||line.length<2) continue; V.seen.add(k0);   // the 1880 layer repeats the same creek
-    const pts=line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];}); pts.riverEnd=!!line.riverEnd;
-    V.pieces.push(pts);
+    const pts=line.map(([lon,lat])=>{const[sx,sy]=project(lon,lat);return[sx,-sy];}); pts.riverEnd=!!line.riverEnd; pts.cid=cid;
+    V.pieces.push(pts); V.dirty=true;
   }
-  _rebuildCreekValley();
 }
+// Rebuild the valley once all creek features of a layer have been collected.
+function flushCreekValley(){ if(creekValley?.dirty){ creekValley.dirty=false; _rebuildCreekValley(); } }
 // Height of the terrain mesh's actual triangle surface at a world point —
 // sampleTerrainY is bilinear, but the GPU draws each grid cell as two flat
 // triangles (PlaneGeometry: a,b,d / b,c,d), which differ by tens of cm on
@@ -866,15 +877,17 @@ function _rebuildCreekValley(){
   // which ends are free (not touching another piece)?
   const pieces=V.pieces.map((P,pi)=>{
     const free=[P[0],P[P.length-1]].map(([x,z],e)=>!(e===1&&P.riverEnd)&&!V.pieces.some((Q,qi)=>qi!==pi&&segDist(x,z,Q).d<W*0.6));
-    return{P,free};
+    let x0=1e9,z0=1e9,x1=-1e9,z1=-1e9; for(const[x,z]of P){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+    return{P,free,bb:[x0-W,z0-W,x1+W,z1+W]};
   });
   const prof=o=>0.5*(1+Math.cos(Math.PI*Math.min(1,o/W)));
   const wCut=prof(W*(C.cutShare??0.9));   // profile value at the cut edge — the strip meets the ground there
-  const field=(x,z)=>{ let w=0; for(const{P,free}of pieces){ const r=segDist(x,z,P); if(r.d>=W) continue;
+  const field=(x,z)=>{ let w=0; for(const{P,free,bb}of pieces){ if(x<bb[0]||x>bb[2]||z<bb[1]||z>bb[3]) continue; const r=segDist(x,z,P); if(r.d>=W) continue;
       let e=1; if(free[0]) e=Math.min(e,r.at/taper); if(free[1]) e=Math.min(e,(r.len-r.at)/taper); e=Math.max(0,Math.min(1,e)); e=e*e*(3-2*e);
       w=Math.max(w,prof(r.d)*e); } return w; };
-  const cuts=[];
+  const cutsBy=new Map();
   for(const{P}of pieces){
+    const cr=V.creeks[P.cid]; if(!cutsBy.has(P.cid)) cutsBy.set(P.cid,[]); const cuts=cutsBy.get(P.cid);
     const R=[P[0]];
     for(let i=1;i<P.length;i++){ const[a,b]=P[i-1],[c,d]=P[i], n=Math.max(1,Math.ceil(Math.hypot(c-a,d-b)/step)); for(let k=1;k<=n;k++) R.push([a+(c-a)*k/n,b+(d-b)*k/n]); }
     const pos=[], col=[], dirtW=[], idx=[], life=[], build=[];
@@ -883,7 +896,7 @@ function _rebuildCreekValley(){
       for(let j=0;j<=NA;j++){
         const o=-W+2*W*j/NA, x=p[0]+nx*o, z=p[1]+nz*o, w=field(x,z);
         // on the exact triangle surface, 2 cm under it outside the cut (hidden), dropping inside
-        pos.push(x,terrainTriY(x,z)-0.02-D*Math.max(0,w-wCut),z); dirtW.push(w); col.push(1,1,1); life.push(V.born,V.died); build.push(0,0,0,0);
+        pos.push(x,terrainTriY(x,z)-0.02-D*Math.max(0,w-wCut),z); dirtW.push(w); col.push(1,1,1); life.push(cr.born,cr.died); build.push(0,0,0,0);
       }
       const wc=field(p[0],p[1]); if(wc>0.05) cuts.push([p[0],p[1],W*(C.cutShare??0.9)*Math.min(1,wc*1.2)]);
       if(i>0){ const r=(i-1)*(NA+1), c=i*(NA+1); for(let j=0;j<NA;j++) idx.push(r+j,c+j,r+j+1, r+j+1,c+j,c+j+1); }
@@ -898,17 +911,29 @@ function _rebuildCreekValley(){
     const mesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));
     mesh.receiveShadow=true; scene.add(mesh); V.meshes.push(mesh);
   }
-  // terrain cut mask
-  if(!cuts.length) return;
-  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z,r]of cuts){x0=Math.min(x0,x-r);x1=Math.max(x1,x+r);z0=Math.min(z0,z-r);z1=Math.max(z1,z+r);}
-  x0-=4;z0-=4;x1+=4;z1+=4;
-  const c=1.5, MW=Math.ceil((x1-x0)/c), MH=Math.ceil((z1-z0)/c), data=new Uint8Array(MW*MH);
-  for(const[x,z,r]of cuts){ const gx=Math.floor((x-x0)/c), gz=Math.floor((z-z0)/c), rr=Math.ceil(r/c);
-    for(let j=-rr;j<=rr;j++) for(let i=-rr;i<=rr;i++){ if(i*i+j*j>rr*rr) continue; const X=gx+i,Z=gz+j; if(X>=0&&Z>=0&&X<MW&&Z<MH) data[Z*MW+X]=255; } }
-  const tex=new THREE.DataTexture(data,MW,MH,THREE.RedFormat); tex.magFilter=tex.minFilter=THREE.LinearFilter; tex.needsUpdate=true;
-  creekUniforms.uCreekTex.value?.dispose?.(); creekUniforms.uCreekTex.value=tex; creekUniforms.uCreekBox.value.set(x0,z0,x1,z1);
+  // terrain cut masks: one small raster per creek, packed into one atlas texture
+  if(!cutsBy.size) return;
+  const AW=2048, ents=[]; let ax=0, ay=0, rowH=0;
+  for(const[cid,cuts]of cutsBy){
+    const c=/brown/i.test(V.creeks[cid].name)?1.5:3;   // metres per mask cell: fine near the bridge, coarse for the far creeks (atlas size)
+    let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z,r]of cuts){x0=Math.min(x0,x-r);x1=Math.max(x1,x+r);z0=Math.min(z0,z-r);z1=Math.max(z1,z+r);}
+    x0-=4;z0-=4;x1+=4;z1+=4;
+    const MW=Math.ceil((x1-x0)/c), MH=Math.ceil((z1-z0)/c);
+    if(ax+MW+2>AW){ ax=0; ay+=rowH+2; rowH=0; }
+    ents.push({cid,cuts,c,x0,z0,x1:x0+MW*c,z1:z0+MH*c,MW,MH,px:ax+1,py:ay+1}); ax+=MW+2; rowH=Math.max(rowH,MH);
+  }
+  const AH=ay+rowH+2, data=new Uint8Array(AW*AH);
+  for(const e of ents){
+    const c=e.c;
+    for(const[x,z,r]of e.cuts){ const gx=Math.floor((x-e.x0)/c), gz=Math.floor((z-e.z0)/c), rr=Math.ceil(r/c);
+      for(let j=-rr;j<=rr;j++) for(let i=-rr;i<=rr;i++){ if(i*i+j*j>rr*rr) continue; const X=gx+i,Z=gz+j; if(X>=0&&Z>=0&&X<e.MW&&Z<e.MH) data[(e.py+Z)*AW+e.px+X]=255; } }
+    creekUniforms.uCreekRect.value[e.cid].set(e.x0,e.z0,e.x1,e.z1);
+    creekUniforms.uCreekAt.value[e.cid].set(e.px/AW,e.py/AH,e.MW/AW,e.MH/AH);
+  }
+  const tex=new THREE.DataTexture(data,AW,AH,THREE.RedFormat); tex.magFilter=tex.minFilter=THREE.LinearFilter; tex.needsUpdate=true;
+  creekUniforms.uCreekTex.value?.dispose?.(); creekUniforms.uCreekTex.value=tex; creekUniforms.uCreekN.value=V.creeks.length;
   V.lastCol=-1;
-  console.log(`🏞 Brown's Creek valley: ${pieces.length} piece(s) (${pieces.map(p=>p.free.map(f=>f?'free':'joined').join('/')).join(', ')}), ≤ ${D} m deep`);
+  console.log(`🏞 Creek valleys: ${V.creeks.length} creek(s), ${pieces.length} piece(s), mask atlas ${AW}×${AH} (${pieces.map(p=>p.free.map(f=>f?'free':'joined').join('/')).join(', ')}), ≤ ${D} m deep`);
 }
 window._debugWalkways=(x0,z0,x1,z1)=>{ const out=[], all=[...layerGroups.map(l=>l.geojson),...deferredChunks.map(c=>c.gj)];
   const bankY=CONFIG.water.startY+1;
@@ -927,7 +952,7 @@ window._debugCam=(x,y,z,tx,ty,tz)=>{ camera.position.set(x,y,z); orbit.target.se
 window._debugLOD=(x,y,z)=>{ camera.position.set(x,y,z); for(let k=0;k<8;k++){ tickGlassLOD(); tickDetailLOD(); }
   const vis=glassTiles.filter(t=>t.mesh.visible);
   return {glassTiles:vis.length+'/'+glassTiles.length,panes:vis.reduce((a,t)=>a+t.n,0),paintedFrom:+windowPaintUniforms.uWinFade.value.x.toFixed(0),detail:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
-window._debugCreek=()=>creekValley?{on:creekUniforms.uCreekOn.value,pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
+window._debugCreek=()=>creekValley?{alive:Array.from(creekUniforms.uCreekAlive.value).slice(0,creekValley.creeks.length).join(''),creeks:creekValley.creeks.map(c=>c.name),pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
 // Per frame: valley on/off with the creek's dates; vertex colours = the
 // seasonal ground colour, blending to bank dirt toward the floor (summer;
 // snow covers it like the banks).
@@ -935,7 +960,7 @@ const _cvA=new THREE.Color(), _cvB=new THREE.Color();
 function tickCreekTerrain(){
   if(!creekValley) return;
   const yr=yearFrac(currentViewDate);
-  creekUniforms.uCreekOn.value=yr>=creekValley.born&&yr<creekValley.died?1:0;
+  creekValley.creeks.forEach((c,i)=>{ creekUniforms.uCreekAlive.value[i]=yr>=c.born&&yr<c.died?1:0; });
   if(!groundMatRef) return;
   const key=groundMatRef.color.getHex()*7+Math.round(season.snow*50);
   if(key===creekValley.lastCol) return; creekValley.lastCol=key;
@@ -3766,14 +3791,14 @@ async function buildCity(geojson){
     if(feat.geometry.type!=='LineString'&&feat.geometry.type!=='MultiLineString') continue;
     if(feat.properties.type!=='fence') continue;
     const fname=(feat.properties.name||'').toLowerCase();
-    const isBrownCreek=fname.includes("brown's creek")||fname.includes("browns creek");
+    const isBrownCreek=/\bcreek\b/.test(fname);   // Brown's Creek and the early creeks (data/early_creeks.geojson)
     if(isBrownCreek){
       // Render as a terrain-hugging ribbon tied to this layer group, not a fence wall.
       // Width and colour come from config so they're easy to tweak.
       const hw=CONFIG.water.widths.brownsCreek;  // half-width in metres
-      const lines2=(feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates]).map(extendCreekToRiver);
+      const lines2=(feat.geometry.type==='MultiLineString'?feat.geometry.coordinates:[feat.geometry.coordinates]).map(l=>extendCreekToRiver(l,fname));
       const _cb=_isoYearFrac(feat.properties.born,NO_BORN), _cd=_isoYearFrac(feat.properties.died,NO_DIED);
-      carveCreekTerrain(lines2,_cb,_cd);   // a shallow valley for it, while it exists (before the ribbon samples the ground)
+      carveCreekTerrain(lines2,_cb,_cd,fname);   // a shallow valley for it, while it exists (before the ribbon samples the ground)
       creekRibbonLife.push(_cb,_cd,creekRibbonVerts.length);   // span for the verts pushed below
       let _acc=20;
       for(const line of lines2){
@@ -3818,6 +3843,7 @@ async function buildCity(geojson){
       }
     }
   }
+  flushCreekValley();
   if(fenceGeos.length>0&&!OFF.has('fences')){
     setProgress(73,'Merging fences…');await tick();
     const nFence=fenceGeos.length;
@@ -4184,27 +4210,27 @@ let creekBridgeMesh=null, creekBridgeSites=[];
 function findCreekBridgeSites(roadFeats){
   const BR=CONFIG.terrain.creek?.bridge; creekBridgeSites=[];
   if(!BR||!creekValley) return;
-  const names=new Set(BR.roads), hits=[];
+  const names=new Set(BR.roads), hits=[], creekRe=new RegExp(BR.creeks||'.','i');
   for(const feat of roadFeats){
     if(!names.has(feat.properties.st_name)) continue;
     for(const line of feat.geometry.coordinates) for(let i=0;i<line.length-1;i++){
       const[ax,ay]=project(line[i][0],line[i][1]), [bx,by]=project(line[i+1][0],line[i+1][1]);
       const a=[ax,-ay], b=[bx,-by];
-      for(const P of creekValley.pieces) for(let j=0;j<P.length-1;j++){
+      for(const P of creekValley.pieces) if(creekRe.test(creekValley.creeks[P.cid].name)) for(let j=0;j<P.length-1;j++){
         const c=P[j], d=P[j+1], r1x=b[0]-a[0], r1z=b[1]-a[1], r2x=d[0]-c[0], r2z=d[1]-c[1], den=r1x*r2z-r1z*r2x;
         if(Math.abs(den)<1e-9) continue;
         const t=((c[0]-a[0])*r2z-(c[1]-a[1])*r2x)/den, u=((c[0]-a[0])*r1z-(c[1]-a[1])*r1x)/den;
         if(t<0||t>1||u<0||u>1) continue;
-        const L=Math.hypot(r1x,r1z); hits.push({x:a[0]+r1x*t,z:a[1]+r1z*t,ux:r1x/L,uz:r1z/L});
+        const L=Math.hypot(r1x,r1z); hits.push({x:a[0]+r1x*t,z:a[1]+r1z*t,ux:r1x/L,uz:r1z/L,cid:P.cid});
       }
     }
   }
   for(const h of hits){
     const site=creekBridgeSites.find(q=>Math.hypot(q.x-h.x,q.z-h.z)<(BR.clusterM??30));
     if(site){ site.n++; site.sx+=h.x; site.sz+=h.z; site.x=site.sx/site.n; site.z=site.sz/site.n; }
-    else creekBridgeSites.push({x:h.x,z:h.z,sx:h.x,sz:h.z,n:1,ux:h.ux,uz:h.uz});
+    else creekBridgeSites.push({x:h.x,z:h.z,sx:h.x,sz:h.z,n:1,ux:h.ux,uz:h.uz,cid:h.cid});
   }
-  for(const q of creekBridgeSites){ q.died=creekValley.died; q.halfL=(BR.length??26)/2; }
+  for(const q of creekBridgeSites){ q.died=creekValley.creeks[q.cid].died; q.halfL=(BR.length??26)/2; }
 }
 // The bridge site whose span covers (x,z) (road is replaced by the deck there), or null.
 function roadCutAt(x,z){
@@ -4253,14 +4279,67 @@ function installRoadBend(shader){
   { float bf = 1.0 - smoothstep(uBend.y, uBend.z, buildingYear);
     vec2 q = transformed.xz;
     transformed.xz += bf * uBend.x * 0.625 * vec2(
-      sin(q.x*0.021 + q.y*0.013 + 1.3) + 0.6*sin(q.y*0.043 - q.x*0.017 + 4.1),
-      sin(q.x*0.016 - q.y*0.024 + 2.2) + 0.6*sin(q.x*0.039 + q.y*0.031 + 0.7)); }`);
+      sin(q.x*0.021 + q.y*0.013 + 1.3) + 0.6*sin(q.y*0.043 - q.x*0.017 + 4.1) + 0.35*sin(q.y*0.088 + q.x*0.051 + 0.4),
+      sin(q.x*0.016 - q.y*0.024 + 2.2) + 0.6*sin(q.x*0.039 + q.y*0.031 + 0.7) + 0.35*sin(q.x*0.079 - q.y*0.066 + 5.2)); }`);
 }
 function withRoadBend(mat,key){
   const base=mat.onBeforeCompile, k0=mat.customProgramCacheKey;
   mat.onBeforeCompile=sh=>{ base&&base.call(mat,sh); installRoadBend(sh); };
   mat.customProgramCacheKey=()=>(k0?k0.call(mat):'')+key;
   return mat;
+}
+// Early-street corner cutting: where roads meet, travellers cut the corner, so
+// the inside of each corner between two adjacent arms is filled with a curved
+// patch (a quadratic curve tangent to both road edges, `corner` m back from
+// the sharp inner corner). The patches vanish with the bend (died = toYear) as
+// the corners are squared off. Arms come from segment endpoints; a segment
+// ending on another's side (a T) splits that one into two arms there.
+function addCornerFills(segs,pos,col,life,latF){
+  const B=CONFIG.roadHistory?.bend; if(!B||!(B.corner>0)||!segs.length) return;
+  const key=(x,z)=>Math.round(x/1.5)+','+Math.round(z/1.5);
+  const nodes=new Map();   // key → {x,z,arms:[{dx,dz,w,span,len}]}
+  const addArm=(x,z,dx,dz,sg)=>{ const k=key(x,z); let n=nodes.get(k); if(!n) nodes.set(k,n={x,z,arms:[]}); n.arms.push({dx,dz,w:sg.w,span:sg.span,len:sg.len}); };
+  const grid=new Map(), CELL=40;
+  segs.forEach((sg,i)=>{ for(let gx=Math.floor(Math.min(sg.x1,sg.x2)/CELL);gx<=Math.floor(Math.max(sg.x1,sg.x2)/CELL);gx++) for(let gz=Math.floor(Math.min(sg.z1,sg.z2)/CELL);gz<=Math.floor(Math.max(sg.z1,sg.z2)/CELL);gz++){ const k=gx+','+gz; (grid.get(k)||grid.set(k,[]).get(k)).push(i); } });
+  for(const sg of segs){
+    const dx=(sg.x2-sg.x1)/sg.len, dz=(sg.z2-sg.z1)/sg.len;
+    addArm(sg.x1,sg.z1,dx,dz,sg); addArm(sg.x2,sg.z2,-dx,-dz,sg);
+    for(const[ex,ez]of[[sg.x1,sg.z1],[sg.x2,sg.z2]]){   // T: my end on another segment's side
+      for(const j of grid.get(Math.floor(ex/CELL)+','+Math.floor(ez/CELL))||[]){ const o=segs[j]; if(o===sg) continue;
+        const ox=(o.x2-o.x1)/o.len, oz=(o.z2-o.z1)/o.len, t=(ex-o.x1)*ox+(ez-o.z1)*oz;
+        if(t<1.5||t>o.len-1.5||Math.hypot(ex-o.x1-ox*t,ez-o.z1-oz*t)>1.2) continue;
+        addArm(ex,ez,ox,oz,o); addArm(ex,ez,-ox,-oz,o); }
+    }
+  }
+  const lift=0.18, R=B.corner; let nFill=0;
+  for(const n of nodes.values()){
+    const arms=n.arms.map(a=>({...a,ang:Math.atan2(a.dz,a.dx)})).sort((a,b)=>a.ang-b.ang);
+    // drop duplicates (same direction from the T split)
+    const A=arms.filter((a,i)=>i===0||Math.abs(a.ang-arms[i-1].ang)>0.05);
+    if(A.length<2) continue;
+    for(let i=0;i<A.length;i++){
+      const a=A[i], b=A[(i+1)%A.length]; let phi=b.ang-a.ang; if(phi<=0) phi+=Math.PI*2; if(A.length===2&&i===1) continue;
+      if(phi<0.45||phi>2.6) continue;                      // too sharp, or already nearly straight
+      const na=[-a.dz,a.dx], nb=[b.dz,-b.dx], ha=a.w/2, hb=b.w/2;   // normals toward the gap between a and b
+      // inner corner C: n + a.d*s = n' + b.d*t
+      const rx=nb[0]*hb-na[0]*ha, rz=nb[1]*hb-na[1]*ha, den=a.dx*(-b.dz)-a.dz*(-b.dx);
+      if(Math.abs(den)<1e-6) continue;
+      const s=(rx*(-b.dz)-rz*(-b.dx))/den, t=(a.dx*rz-a.dz*rx)/den;
+      if(s<0||t<0) continue;
+      const Cx=n.x+na[0]*ha+a.dx*s, Cz=n.z+na[1]*ha+a.dz*s, Ta=Math.min(R,Math.max(1,a.len*0.45)), Tb=Math.min(R,Math.max(1,b.len*0.45));
+      const Ax=Cx+a.dx*Ta, Az=Cz+a.dz*Ta, Bx=Cx+b.dx*Tb, Bz=Cz+b.dz*Tb;
+      const born=Math.max(a.span[0],b.span[0]), died=Math.min(a.span[1],b.span[1],B.toYear);
+      if(died<=born) continue;
+      const N=6, pts=[]; for(let k=0;k<=N;k++){ const u=k/N, m=1-u; pts.push([m*m*Ax+2*m*u*Cx+u*u*Bx, m*m*Az+2*m*u*Cz+u*u*Bz]); }
+      for(let k=0;k<N;k++){
+        const tri=[[Cx,Cz],pts[k],pts[k+1]], ys=tri.map(([x,z])=>sampleTerrainY(x,z)+lift);
+        const cr=(tri[1][0]-tri[0][0])*(tri[2][1]-tri[0][1])-(tri[1][1]-tri[0][1])*(tri[2][0]-tri[0][0]);
+        for(const v of(cr<0?[0,1,2]:[0,2,1])){ pos.push(tri[v][0],ys[v],tri[v][1]); life.push(born,died); latF.push(0); col.push(0.03,0.026,0.022); }
+      }
+      nFill++;
+    }
+  }
+  console.log(`🛣 corner fills: ${nFill} corners at ${nodes.size} junction nodes`);
 }
 async function buildRoads(geojson){
   buildGroundCover();
@@ -4361,6 +4440,7 @@ async function buildRoads(geojson){
     return[Math.max(span[0],o[0]),Math.min(span[1],o[1])];
   }
 
+  const cornerSegs=[];   // every drawn segment, for the early-street corner fills below
   for(const feat of roadFeats){
     const baseW=ROAD_W[feat.properties.st_type]??9;
     const stName=feat.properties.st_name||'';
@@ -4384,6 +4464,7 @@ async function buildRoads(geojson){
         const span=featSpan(feat,stName,mx,mz);
         if(!span)continue;
         _addRoadSeg(x1,z1,x2,z2,w,span,stName);
+        cornerSegs.push({x1,z1,x2,z2,w,span,len});
         const pxu=(-dz/len),pzu=(dx/len);
         // Lift road slightly above terrain; use each chunk's own mean so the
         // quad sits flush rather than twisting on sloped ground.
@@ -4432,6 +4513,7 @@ async function buildRoads(geojson){
       }
     }
   }
+  addCornerFills(cornerSegs,pos,col,life,latF);
   if(pos.length===0)return;
   console.log(`buildRoads: pos=${pos.length/3} verts, col=${col.length/3} colours, ratio=${col.length/pos.length}`);
   const geom=new THREE.BufferGeometry();

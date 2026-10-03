@@ -29,6 +29,7 @@ export const CONFIG = {
       './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
       './data/pastforward_2026_legislature_osm.geojson',   // Legislative Building + dome, Government House, outbuildings, drives/paths — OSM (ODbL)
       // './data/pastforward_2026.geojson',  // dated growth master without assessment data (no OSM) — swap back by un-commenting
+      './data/early_creeks.geojson',                 // creeks of 1874 traced from Graham (1984) Fig. 1 — tools/early_creeks.py
       './data/wpg_rivers.geojson',
       './data/wpg_roads_streetcar.geojson',
       './data/wpg_rails_1906.geojson',
@@ -460,7 +461,7 @@ export const CONFIG = {
                  minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
     // Brown's Creek: a shallow valley carved along its line while it exists
     // (filled in since — the LiDAR is flat there); cosine profile, metres
-    creek: { bridge: { roads: ['Main'], length: 26, width: 12, clusterM: 30, color: 0x5d4a36 },   // timber bridge where these streets cross the creek
+    creek: { bridge: { roads: ['Main'], creeks: 'brown', length: 31, width: 12, clusterM: 30, color: 0x5d4a36 },   // timber bridge where these streets cross the creek
            toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400, depth: 2.5, halfWidth: 14, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 25, dirt: 1 },   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
     // The cut-off oxbow east of the Forks (St Boniface/Norwood): found in the
     // LiDAR (relBelowM under a contextM-wide average, inside bbox lon/lat
@@ -704,7 +705,7 @@ export const CONFIG = {
   roadHistory: {
     // Early streets wander: a smooth displacement field (amp metres) that fades out
     // between fromYear and toYear as the town straightens its streets. amp 0 = off.
-    bend: { amp: 4, fromYear: 1880, toYear: 1905 },
+    bend: { amp: 7, fromYear: 1880, toYear: 1905, corner: 12 },   // corner = how far back (m) the inside of junction corners is filled
     segments: {
       12728: ['1881-01-01', null],   // Main St, bridge head → through the SE wall
       12729: ['1881-01-01', null],   // Main St, through the NE bastion → north
