@@ -75,6 +75,8 @@ CREEKS = {
   # waterfront, past a small pond, into the marsh at the north end of the bow (Parr's 1874 plan: a bridge mark
   # at its mouth, marsh stipple along Lots 8-10). Gone when the oxbow was filled (our oxbow's `until`, spring 1910).
   "Oxbow outlet creek": ("1910-04-15", [[]]),
+  # A second small creek and bridge a little south of it (Parr 1874: bridge mark on the bank, three arms); same dates.
+  "Oxbow south outlet creek": ("1910-04-15", [[]]),
   "Omand's Creek": (None, [[(1293,1237),(1290,1220),(1283,1209),(1277,1197),(1267,1178),(1260,1168),(1257,1160)]]),
 }
 
@@ -101,6 +103,9 @@ CREEKS_1874 = {
   "Logan's Creek": [[(700,503),(694,489),(689,475),(683,461),(672,444),(661,433),(650,423),(645,418)]],
   "Oxbow outlet creek": [[(1028,808),(1040,803),(1052,797),(1060,788),(1063,775),(1070,768),(1085,763),(1105,753),(1125,748),(1145,745),(1160,750)],
                          [(1075,771),(1095,785),(1115,795),(1127,801)]],
+  "Oxbow south outlet creek": [[(1028,943),(1027,936),(1024,922),(1022,907),(1020,898)],
+                               [(1028,943),(1022,950),(1018,955)],
+                               [(1028,943),(1035,940),(1043,937)]],
   "Pritchard's Creek": [[(577,109),(574,111),(566,116),(559,122),(556,131),(553,142),(548,152),(530,159),(514,162),(497,161),(488,159),(478,153)]],
 }
 
@@ -116,6 +121,8 @@ def px36_to_ll(px, py):
     ux, uy = c * x - s * y, s * x + c * y
     return C_LON + ux * MPP36 / M_LON, C_LAT - uy * MPP36 / M_LAT
 CREEKS_1836 = {}   # (the plan's meandering east-bank 'Creek' is the Seine itself, already in the OSM river data)
+
+BRIDGE1 = (-97.12418148, 49.88681943)   # lon, lat
 
 def rings(path):
     g = json.load(open(path)); out = []
@@ -149,7 +156,14 @@ def main():
         mouth = ll[0][0]
         d, q = nearest_on(rv, *mouth)
         shift = (0, 0)
-        if q and d < 360:        # river polygons only cover part of the map; only snap small corrections
+        if name in ('Oxbow outlet creek', 'Oxbow south outlet creek'):
+            # Mike located the first creek's bridge at the 'Bridges of Caring: Grey Nuns Tribute Monument'
+            # (49.88681943, -97.12418148, south of the convent/orphanage, north of the hospital). Both creeks
+            # share one plan offset, so the second keeps its place relative to the first.
+            om = [px74_to_ll(*CREEKS_1874['Oxbow outlet creek'][0][0])]
+            shift = (BRIDGE1[0] - om[0][0], BRIDGE1[1] - om[0][1])
+            print(f'{name}: placed by the Grey Nuns monument (shift {shift[0]*M_LON:+.0f} E, {shift[1]*M_LAT:+.0f} N m)')
+        elif q and d < 360:        # river polygons only cover part of the map; only snap small corrections
             shift = (q[0] - mouth[0], q[1] - mouth[1])
         print(f'{name}: mouth snapped {d:.0f} m' if q and d < 360 else f'{name}: no OSM river within 360 m ({d:.0f}) — left as traced')
         for line in ll:

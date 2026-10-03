@@ -462,7 +462,8 @@ export const CONFIG = {
     // Brown's Creek: a shallow valley carved along its line while it exists
     // (filled in since — the LiDAR is flat there); cosine profile, metres
     creek: { bridge: { roads: null, creeks: '.', length: 31, width: 12, minWidth: 5, clusterM: 30, color: 0x5d4a36,
-               extra: [ { name: 'Oxbow outlet bridge', creek: 'oxbow outlet', alongM: 25, width: 5, from: '1870-01-01', to: null } ] },   // bridge mark at the creek's mouth on Parr's 1874 plan (date approximate)   // timber bridge wherever a street crosses a creek while both exist (roads: a list of street names limits it; width = widest deck)
+               extra: [ { name: 'Oxbow outlet bridge', creek: 'oxbow outlet', alongM: 6, width: 5, from: '1870-01-01', to: null },   // bridge mark at the creek's mouth on Parr's 1874 plan, at the Grey Nuns 'Bridges of Caring' monument (date approximate)
+                        { name: 'Oxbow south outlet bridge', creek: 'oxbow south', alongM: 6, width: 5, from: '1870-01-01', to: null } ] },   // timber bridge wherever a street crosses a creek while both exist (roads: a list of street names limits it; width = widest deck)
            toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400, depth: 2.5, halfWidth: 14, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 25, dirt: 1 },   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
     // The cut-off oxbow east of the Forks (St Boniface/Norwood): found in the
     // LiDAR (relBelowM under a contextM-wide average, inside bbox lon/lat
