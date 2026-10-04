@@ -483,9 +483,11 @@ export const CONFIG = {
       { name: 'Seine at Marion (south)', a: [-97.10443, 49.88245], b: [-97.10450, 49.88209], halfWidthM: 12, bedY: -7.0 },
       { name: 'Seine, south reach',      a: [-97.10394, 49.87967], b: [-97.10394, 49.87949], halfWidthM: 10, bedY: -7.0 },
     ],
-    creek: { bridge: { roads: null, creeks: '.', length: 31, width: 12, minWidth: 5, clusterM: 30, color: 0x5d4a36,
+    creek: { bridge: { roads: null, creeks: '.', length: 22, width: 12, minWidth: 5, clusterM: 30, color: 0x5d4a36,
                file: './data/early_bridges.json' },   // bridges listed in data (centre, span axis, length, width) — Mike's, from satellite imagery; extra: [] would hand-list more by creek + metres from its mouth   // timber bridge wherever a street crosses a creek while both exist (roads: a list of street names limits it; width = widest deck)
-           toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400, depth: 2.5, halfWidth: 14, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 25, dirt: 1 },   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
+           toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400,
+           seekRiver: ['fort rouge'], seekMaxM: 250,   // creeks whose end is carried down the low ground to the river's edge
+           depth: 1.3, halfWidth: 8, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 15, dirt: 1 },   // shallower and narrower (was 2.5 m deep, 28 m wide)   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
     // The cut-off oxbow east of the Forks (St Boniface/Norwood): found in the
     // LiDAR (relBelowM under a contextM-wide average, inside bbox lon/lat
     // [W, S, E, N], clear of the river banks), kept out of the flattening,
