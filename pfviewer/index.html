@@ -113,13 +113,30 @@ body.fps-touch #legend{display:none !important;}   /* would cover the walk/sprin
   #date-display{min-width:0 !important;font-size:0.8rem !important;flex:1;}
   #date-picker{font-size:0.65rem !important;padding:2px 3px !important;max-width:110px;}
   #layer-bar{top:150px !important;}
+  #compass{top:116px;left:10px;width:46px;height:46px;}
+  #cam-readout{top:168px;bottom:auto;left:10px;}
 }
 /* Advanced/debug controls: hidden unless Ctrl+A toggles body.advanced.
    !important beats the inline display the loaders set when they show them. */
 body:not(.advanced) #layer-bar,
 body:not(.advanced) #winter-btn,
 body:not(.advanced) #flood-control,
-body:not(.advanced) #haze-btn{display:none !important;}
+body:not(.advanced) #haze-btn,
+body:not(.advanced) #cam-readout{display:none !important;}
+/* Compass: the dial turns so N points at true north; the fixed notch at the top is where you're looking. */
+#compass{position:fixed;top:170px;left:18px;width:58px;height:58px;z-index:22;pointer-events:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));}
+#compass svg{width:100%;height:100%;display:block;}
+#cam-readout{position:fixed;left:12px;bottom:12px;z-index:22;pointer-events:none;background:rgba(9,8,10,.72);border:1px solid #2a1e0e;border-radius:6px;padding:6px 9px;font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#C8A05A;white-space:pre;}
+/* Phones in landscape: the date panel was eating the short screen — same compact look as portrait. */
+@media (max-height:520px) and (orientation:landscape) and (pointer:coarse){
+  #date-control{top:6px !important;width:min(520px,62vw) !important;padding:5px 10px 6px !important;gap:4px !important;}
+  #date-control > div:first-child{gap:6px !important;}
+  #date-display{min-width:0 !important;font-size:0.8rem !important;flex:1;}
+  #date-picker{font-size:0.65rem !important;padding:2px 3px !important;max-width:110px;}
+  #layer-bar{top:84px !important;}
+  #compass{top:64px;left:10px;width:46px;height:46px;}
+  #cam-readout{top:116px;bottom:auto;left:10px;}
+}
 </style>
 </head>
 <body>
@@ -210,6 +227,12 @@ body:not(.advanced) #haze-btn{display:none !important;}
   </div>
 </div>
 <div id="layer-bar" style="display:none;position:fixed;top:100px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
+<div id="compass"><svg viewBox="0 0 64 64"><g id="compass-dial"><circle cx="32" cy="32" r="29" fill="rgba(9,8,10,.72)" stroke="#C8A05A" stroke-width="1.5"/>
+  <g stroke="#7a6040" stroke-width="1"><path d="M32 4v4M32 56v4M4 32h4M56 32h4"/></g>
+  <path d="M32 9 L37 32 L32 28 L27 32 Z" fill="#c0392b"/><path d="M32 55 L37 32 L32 36 L27 32 Z" fill="#8a7050"/>
+  <text x="32" y="22" text-anchor="middle" font-family="Georgia,serif" font-size="9" font-weight="bold" fill="#fff" transform="rotate(0 32 32)">N</text></g>
+  <path d="M32 1 L28.5 -4 H35.5 Z" transform="translate(0 6)" fill="#C8A05A"/></svg></div>
+<div id="cam-readout"></div>
 <button id="haze-btn" onclick="toggleHaze()" style="position:fixed;top:54px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">☁ Haze: on</button>
 <button id="winter-btn" onclick="toggleWinter()" style="display:none;position:fixed;top:18px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">❄ Winter</button>
 
@@ -949,6 +972,7 @@ window._debugRails=()=>{ const yf=yearFrac(currentViewDate), by={};
   const feats=(railGeojson?.features||[]); const dated=feats.filter(f=>f.properties.born);
   return {date:currentViewDate.toISOString().slice(0,10),trainsAlive:by,trainsTotal:trainConsists.length,stretchesBuilt:dated.filter(f=>_isoYearFrac(f.properties.born,0)<=yf).length+'/'+feats.length}; };
 window._debugWx=()=>({mode:timelineMode,date:currentViewDate.toISOString().slice(0,16),k:+_wxK.toFixed(3),active:_weatherActive,fog:+scene.fog.density.toFixed(5),stormNow:!!stormAt(currentViewDate),hold:!!_hold});
+window._cam=camera;   // test/debug handle (window._orbit is set where the controls are created)
 window._debugCam=(x,y,z,tx,ty,tz)=>{ camera.position.set(x,y,z); orbit.target.set(tx,ty,tz); orbit.update(); tickGlassLOD(); tickDetailLOD(); renderer.render(scene,camera); renderer.render(scene,camera); const i=renderer.info.render;
   return {tris:i.triangles,calls:i.calls,glassTilesVisible:glassTiles.filter(t=>t.mesh.visible).length+'/'+glassTiles.length,glassPanesVisible:glassTiles.filter(t=>t.mesh.visible).reduce((a,t)=>a+(t.mesh.geometry.index?.count||t.mesh.geometry.userData.n||0)/6,0),detailTilesVisible:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
 window._debugLOD=(x,y,z)=>{ camera.position.set(x,y,z); for(let k=0;k<8;k++){ tickGlassLOD(); tickDetailLOD(); }
@@ -1270,10 +1294,17 @@ const ROAD_SAMPLE_STEP = 10;
 // ── Orbit controls ─────────────────────────────────────────────────
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.enableDamping=true;orbit.dampingFactor=CONFIG.orbitControls.dampingFactor;
-orbit.enableZoom=false;
+window._orbit=orbit; orbit.enableZoom=false;
 orbit.maxPolarAngle=Math.PI*CONFIG.orbitControls.maxPolarAngle;orbit.minDistance=CONFIG.orbitControls.minDistance;orbit.maxDistance=CONFIG.orbitControls.maxDistance;
 orbit.target.set(CONFIG.start.cameraLookAt.x,CONFIG.start.cameraLookAt.y,CONFIG.start.cameraLookAt.z);orbit.update();
 
+// The orbit's distance limit alone left a high ceiling only for straight-down views (an oblique view hit the distance cap at
+// about half the height). So the distance cap is generous and the CEILING is on altitude (CONFIG.altitude.maxM).
+function clampOrbitAltitude(){
+  const mx=maxAltitudeM(); if(camera.position.y<=mx) return;
+  const off=camera.position.clone().sub(orbit.target), t=off.y>1?(mx-orbit.target.y)/off.y:0;
+  if(t>0&&t<1) camera.position.copy(orbit.target).addScaledVector(off,t); else camera.position.y=mx;
+}
 renderer.domElement.addEventListener('wheel',e=>{
   e.preventDefault();if(!orbit.enabled)return;
   let d=e.deltaY;
@@ -1293,6 +1324,7 @@ renderer.domElement.addEventListener('wheel',e=>{
     camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
   }
   camera.position.y=Math.max(CONFIG.fpsControls.minCameraY, camera.position.y);  // never go underground
+  clampOrbitAltitude();
   orbit.update();
 },{passive:false});
 
@@ -6304,6 +6336,7 @@ function orbitDolly(scale){
   const off=camera.position.clone().sub(orbit.target);
   const d=THREE.MathUtils.clamp(off.length()*scale,orbit.minDistance,orbit.maxDistance);
   camera.position.copy(orbit.target).add(off.setLength(d));
+  clampOrbitAltitude();
   orbit.update();
 }
 document.getElementById('btn-zoom-in').addEventListener('touchstart',e=>{
@@ -8147,6 +8180,24 @@ function hazeAltK(){
 window.toggleHaze=()=>{ hazeOff=!hazeOff; try{localStorage.setItem('pfviewer.hazeOff',hazeOff?'1':'0');}catch(e){}
   const b=document.getElementById('haze-btn'); if(b) b.textContent='☁ Haze: '+(hazeOff?'off':'on'); };
 { const b=document.getElementById('haze-btn'); if(b) b.textContent='☁ Haze: '+(hazeOff?'off':'on'); }
+// Compass + (advanced) camera readout, ~7×/s
+let _hudT=0;
+const _hudF=new THREE.Vector3(), _hudU=new THREE.Vector3();
+function updateHud(now){
+  if(now-_hudT<140) return; _hudT=now;
+  camera.getWorldDirection(_hudF); _hudU.set(0,1,0).applyQuaternion(camera.quaternion);
+  const horiz=Math.hypot(_hudF.x,_hudF.z), src=horiz>0.25?_hudF:_hudU;     // looking (nearly) straight down: use the screen's up direction
+  const az=((Math.atan2(src.x,-src.z)*180/Math.PI)%360+360)%360;           // 0 = north (−Z), clockwise
+  const dial=document.getElementById('compass-dial'); if(dial) dial.setAttribute('transform',`rotate(${(-az).toFixed(1)} 32 32)`);
+  if(!document.body.classList.contains('advanced')) return;
+  const el=document.getElementById('cam-readout'); if(!el) return;
+  const p=camera.position, [lon,lat]=unproject(p.x,p.z), pitchD=Math.asin(Math.max(-1,Math.min(1,_hudF.y)))*180/Math.PI;
+  const card=['N','NE','E','SE','S','SW','W','NW'][Math.round(az/45)%8], agl=p.y-sampleTerrainY(p.x,p.z);
+  el.textContent=`${fpsMode?'walk':'overview'}  fov ${camera.fov.toFixed(0)}°\n`+
+    `lat ${lat.toFixed(5)}  lon ${lon.toFixed(5)}\n`+
+    `x ${p.x.toFixed(0)}  y ${p.y.toFixed(1)}  z ${p.z.toFixed(0)}  (${agl.toFixed(0)} m above ground)\n`+
+    `heading ${az.toFixed(0)}° ${card}  pitch ${pitchD.toFixed(0)}°`+(fpsMode?'':`  orbit ${p.distanceTo(orbit.target).toFixed(0)} m`);
+}
 function tickChimneySmoke(dt){
   // City haze layers: always on (they fade near the camera themselves)
   if(cityHazeGroup){
@@ -10235,7 +10286,7 @@ function startLoop(){
         // Re-ground when Q brings camera back to surface
         if((keys['KeyQ']||udDown) && camera.position.y <= _groundFloor + 0.1) fpsGrounded = true;
       }
-    }else{orbit.update();updateHover();}
+    }else{orbit.update();clampOrbitAltitude();updateHover();}
     tickStreetcars(dt);
     tickCarts(dt);
     tickAutos(dt);
@@ -10278,6 +10329,7 @@ function startLoop(){
         if(fd!==undefined) scene.fog.density=fd;
       }
       drawMinimap();
+      updateHud(now);
     }catch(e){ _loopError(e); }
   }
   lastTime=performance.now();requestAnimationFrame(loop);

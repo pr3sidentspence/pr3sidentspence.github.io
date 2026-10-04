@@ -247,7 +247,7 @@ export const CONFIG = {
     dampingFactor: 0.07,
     maxPolarAngle: 0.98,   // × Math.PI — 1.0 would let you flip under the ground
     minDistance: 2,
-    maxDistance: 3000,
+    maxDistance: 6000,     // generous: the ceiling is on ALTITUDE (CONFIG.altitude.maxM = 3000) — a distance cap alone stopped oblique views at ~half that height
     dollyIn: 0.94,         // zoom-in factor per scroll/tap
   },
 
@@ -1362,7 +1362,7 @@ export const CONFIG = {
       windNoise: {
         lowpassFrequencyHz: 280,
         lowpassQ: 0.6,
-        gain: 0.09,
+        gain: 0,          // general ambience MUTED for now (was 0.09) — to return once it's better and has better assets; storms still swell it (weather.windGain)
       },
       // churchBell: {
       //   toneFrequenciesHz: [220, 330, 440, 550],
