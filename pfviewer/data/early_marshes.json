@@ -1,7 +1,7 @@
 {
- "ponds": [
+ "marshes": [
   {
-   "name": "Pond 18",
+   "name": "Marsh 18",
    "ring": [
     [
      -97.1074686,
@@ -205,7 +205,7 @@
    "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
   },
   {
-   "name": "Pond 21",
+   "name": "Marsh 21",
    "ring": [
     [
      -97.1103998,

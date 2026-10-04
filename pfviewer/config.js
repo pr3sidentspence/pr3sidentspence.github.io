@@ -312,7 +312,7 @@ export const CONFIG = {
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
-                'roof_height','roof_color','bridge_style','bridge_fit'],
+                'roof_height','roof_color','bridge_style','bridge_fit','fence_height','fence_gap','fence_width','fence_thickness','fence_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
     // ridge height = pitch × half the wing's short side, capped at maxRidgeM
@@ -473,8 +473,11 @@ export const CONFIG = {
                  minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
     // Brown's Creek: a shallow valley carved along its line while it exists
     // (filled in since — the LiDAR is flat there); cosine profile, metres
-    // Short segments a→b [lon,lat] along the Seine through the spots where bridge decks cut the LiDAR channel (carved to bedY, see carveRiverGaps)
+    // Short segments a→b [lon,lat] along the Seine through the spots where bridge decks cut the LiDAR channel (carved to bedY — deliberately below the
+    // neighbouring channel bed so the gap holds water whenever the reaches either side do — see carveRiverGaps)
     riverGaps: [
+      // the viewer-mesh check above had left Provencher out of its window; the real break is ~45 m south-east of the first cut:
+      { name: 'Seine at Provencher (lower)', a: [-97.10941, 49.89561], b: [-97.10913, 49.89534], halfWidthM: 14, bedY: -9.0 },
       { name: 'Seine at Provencher',   a: [-97.10986, 49.89598], b: [-97.10972, 49.89562], halfWidthM: 12, bedY: -7.0 },
       { name: 'Seine at the railway',  a: [-97.10404, 49.89040], b: [-97.10424, 49.89000], halfWidthM: 12, bedY: -7.0 },
       { name: 'Seine at Marion',       a: [-97.10442, 49.88295], b: [-97.10442, 49.88251], halfWidthM: 12, bedY: -7.0 },
@@ -483,7 +486,7 @@ export const CONFIG = {
       { name: 'Seine at Marion (south)', a: [-97.10443, 49.88245], b: [-97.10450, 49.88209], halfWidthM: 12, bedY: -7.0 },
       { name: 'Seine, south reach',      a: [-97.10394, 49.87967], b: [-97.10394, 49.87949], halfWidthM: 10, bedY: -7.0 },
     ],
-    creek: { pondsFile: './data/early_ponds.json',
+    creek: { marshFile: './data/early_marshes.json',
            bridge: { roads: null, creeks: '.', length: 22, width: 12, minWidth: 5, clusterM: 30, color: 0x5d4a36,
                file: './data/early_bridges.json' },   // bridges listed in data (centre, span axis, length, width) — Mike's, from satellite imagery; extra: [] would hand-list more by creek + metres from its mouth   // timber bridge wherever a street crosses a creek while both exist (roads: a list of street names limits it; width = widest deck)
            toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400,
@@ -818,6 +821,7 @@ export const CONFIG = {
     perAnchor: 40, maxAnchors: 2400,   // (was 400 — the early creeks pushed the oxbow's anchors past the cap, so its clouds never drew)
     color: 0x121212, opacity: 0.8,
     fade: [30, 160],          // metres from the camera: fully drawn inside the first, gone by the second
+    cloud: { puffs: 4, size: 4.5, opacity: 0.2, maxPx: 140, fade: [40, 260], color: 0x1A1816 },   // the smoky band over standing water, ~1–3 m up: puffs per anchor, metres across, peak opacity, px cap, fade distances, colour
     sizeK: 60, size: [1.6, 3.6],   // point size in px = sizeK/distance, clamped (× pixel ratio) — was 26/d clamped to 1–2.2 px: easy to miss
     seasonDays: [140, 161, 222, 248],
     wetBoost: 0.8,            // × (1 + wet) in wet summers (seasons.moisture)
@@ -1081,6 +1085,9 @@ export const CONFIG = {
     crownColors: [0x2E4A1C, 0x365421, 0x2A4418, 0x3D5A26, 0x33501F],
     barkColor: 0x4A4036,
   },
+
+  // ── Marshes (the ellipses on the 1881 map) ───────────────────────────
+  marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
 
   // ── Tipis at the Forks ──────────────────────────────────────────────
   // Camps on the point at the Forks until about 1870. Each tipi goes up within appearDays after the snow is gone, comes down
@@ -1408,7 +1415,7 @@ export const CONFIG = {
   // Deep-merged over this config on touch devices (or ?profile=mobile);
   // ?profile=desktop skips it. Same shape as the settings it overrides.
   mobile: {
-    mosquitoes: { perAnchor: 24, maxAnchors: 1200 },
+    mosquitoes: { perAnchor: 24, maxAnchors: 1200, cloud: { puffs: 3, size: 4.5, opacity: 0.2, maxPx: 100, fade: [40, 200], color: 0x1A1816 } },
     earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
     terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
     // Only buildings within 3 km. Small details and real window glass only near the camera:

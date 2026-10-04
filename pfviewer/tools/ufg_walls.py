@@ -7,7 +7,7 @@ ufg_walls.py — two pieces Upper Fort Garry was missing, as data/pastforward_20
     the addition wall is finished 1853-06-01 — and goes just after, 1853-08-01 (the same date the original north wall now ends).
  2. The "angled fence" that replaced it, 1853-08-01 to the fort's demolition (1881-01-01). Two pieces of it were already
     in the data (7ec45547, 267d371b — only dated 1880-81, with no height, so they barely showed); the link between them is
-    this file's LineString, and building_history.json gives all three the same dates and a fence height.
+    this file's LineString, and building_history.json gives all three the same dates and the fence look: 6 ft (1.83 m) boards almost touching, grey-brown (picket fence overrides, no new fence type).
 Coordinates are metres east/north of lon -97.134, lat 49.8870, as measured from the existing UFG polygons.
 """
 import json, math, os, uuid
@@ -32,7 +32,7 @@ def main():
       feat("Upper Fort Garry Original NE Wall", {"material": "stone", "floors": 2, "born": "1837-06-01", "construction_months": 24, "died": "1853-08-01",
            "died_basis": "removed once the northern addition was complete (addition wall finished 1853-06-01)", "born_basis": "with the original stone walls",
            "notes": "Restored where the earlier data had a gap on the north-east wall."}, {"type": "Polygon", "coordinates": [ring]}),
-      feat("Upper Fort Garry angled fence", {"type": "fence", "material": "wood", "floors": 0.45, "born": "1853-08-01", "died": "1881-01-01",
+      feat("Upper Fort Garry angled fence", {"type": "fence", "material": "wood", "fence_height": 1.83, "fence_gap": 0.04, "fence_width": 0.13, "fence_thickness": 0.04, "fence_color": "#7B7266", "born": "1853-08-01", "died": "1881-01-01",
            "notes": "Joins the two fence pieces already in the data (7ec45547 and 267d371b)."},
            {"type": "LineString", "coordinates": [ll(42, -9), ll(21, 15)]}),
     ]

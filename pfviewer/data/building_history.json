@@ -1224,7 +1224,11 @@
    "set": {
     "born": "1853-08-01",
     "died": "1881-01-01",
-    "floors": 0.45
+    "fence_height": 1.83,
+    "fence_gap": 0.04,
+    "fence_width": 0.13,
+    "fence_thickness": 0.04,
+    "fence_color": "#7B7266"
    }
   },
   "267d371b-28bc-40c5-a4c7-3247395e4a58": {
@@ -1233,7 +1237,11 @@
    "set": {
     "born": "1853-08-01",
     "died": "1881-01-01",
-    "floors": 0.45
+    "fence_height": 1.83,
+    "fence_gap": 0.04,
+    "fence_width": 0.13,
+    "fence_thickness": 0.04,
+    "fence_color": "#7B7266"
    }
   }
  }

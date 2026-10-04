@@ -1011,6 +1011,13 @@ window._debugLOD=(x,y,z)=>{ camera.position.set(x,y,z); for(let k=0;k<8;k++){ ti
   const vis=glassTiles.filter(t=>t.mesh.visible);
   return {glassTiles:vis.length+'/'+glassTiles.length,panes:vis.reduce((a,t)=>a+t.n,0),paintedFrom:+windowPaintUniforms.uWinFade.value.x.toFixed(0),detail:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
 window._sampleLL=(lon,lat)=>{ const[sx,sy]=project(lon,lat); return +sampleTerrainY(sx,-sy).toFixed(2); };   // terrain height (world Y) at lon/lat
+window._mosqCloudTest=()=>{ const V=creekValley, M=_mosq; if(!V||!M) return null; const r=window._renderer, c=window._cam, gl=r.getContext(), size=new THREE.Vector2(); r.getSize(size); const pr=r.getPixelRatio();
+  const P=V.pieces[0], m=P[Math.floor(P.length/2)], snap=()=>{ r.render(scene,c); const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight, px=new Uint8Array(w*h*4); gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,px); return px; };
+  r.setPixelRatio(1); r.setSize(240,160,false); c.aspect=1.5; c.updateProjectionMatrix();
+  c.position.set(m[0]+14,sampleTerrainY(m[0],m[1])+2.2,m[1]+14); c.lookAt(m[0],sampleTerrainY(m[0],m[1])+1.5,m[1]);
+  const dens=M.cu.uDensity.value, d0=mosquitoDensity; M.cu.uDensity.value=1; M.cu.uYear.value=1885; M.cloud.visible=true; M.pts.visible=false; const on=snap(); M.cloud.visible=false; const off=snap();
+  let diff=0; for(let i=0;i<on.length;i+=4) if(Math.abs(on[i]-off[i])+Math.abs(on[i+1]-off[i+1])+Math.abs(on[i+2]-off[i+2])>12) diff++;
+  r.setPixelRatio(pr); r.setSize(size.x,size.y,false); c.aspect=size.x/size.y; c.updateProjectionMatrix(); M.cloud.visible=true; M.pts.visible=true; return {diffPixels:diff,of:240*160}; };
 window._creekMaskTest=(wx,wz,pi=0)=>{ const V=creekValley; if(!V) return null; if(wx===undefined){ const P=V.pieces[pi], m=P[Math.floor(P.length/2)]; wx=m[0]; wz=m[1]; } const r=window._renderer, c=window._cam, gl=r.getContext(), size=new THREE.Vector2(); r.getSize(size); const pr=r.getPixelRatio();
   const snap=()=>{ r.render(scene,c); const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight, px=new Uint8Array(w*h*4); gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,px); return px; };
   r.setPixelRatio(1); r.setSize(200,200,false); c.aspect=1; c.updateProjectionMatrix();
@@ -1137,7 +1144,7 @@ function buildOxbowLake(){
     const i=oxbow.cells[k]; v.set((i%S)*cellM-half,oxbow.floor+O.lake.maxDepthM*0.6,Math.floor(i/S)*cellM-half); terrainMesh.localToWorld(v);
     mosquitoAnchors.push({x:v.x,y:v.y,z:v.z,born:-1e9,died:_isoYearFrac(O.lake.until,1e9),group:{visible:true}});
   }
-  if(_mosq){ scene.remove(_mosq.pts); _mosq=null; }   // rebuilt with the new anchors
+  _dropMosq();   // rebuilt with the new anchors
 }
 let _oxKeys=null;   // lake fill keyframes, parsed on first use
 window._debugLate=()=>windowPaintUniforms.uWinLate.value;
@@ -3789,7 +3796,7 @@ async function buildCity(geojson){
     return geom;
   }
 
-  function buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol){
+  function buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol,fo=null){
     const geos=[];
     const dx=x2-x1,dz=z2-z1,segLen=Math.sqrt(dx*dx+dz*dz);
     if(segLen<0.05) return geos;
@@ -3816,7 +3823,7 @@ async function buildCity(geojson){
     const isIronFence=fMatRaw==='iron'||fMatRaw==='wood_industrial';
 
     if(isWoodFence){
-      const P=CONFIG.fences.picket;
+      const P=fo?{...CONFIG.fences.picket,...fo}:CONFIG.fences.picket;
       const col=fCol;   // picket white with per-fence jitter (see caller)
       const baseY=sampleTerrainY(cx,cz);
       // Posts at the ends and every postSpacing, rails on the back face
@@ -3921,7 +3928,13 @@ async function buildCity(geojson){
     const fFloors=feat.properties.floors??1;
     const fHeight=Math.max(fFloors*FLOOR_H, 0.3); // no MIN_H clamp — fences can be short
     const isPicket=fMatRaw==='wood'||fMatRaw==='wood_residential'||fMat==='unknown';
-    const fCol=isPicket?picketColour(feat.properties.uid??feat.properties.id)
+    // Per-feature overrides of the picket fence (same fence type, just different numbers): fence_height (m), fence_gap (gap ÷ board width),
+    // fence_width / fence_thickness (board, m), fence_color (css colour, with the usual per-fence jitter).
+    const fp=feat.properties, fo=isPicket&&(fp.fence_height!=null||fp.fence_gap!=null||fp.fence_color!=null)?
+      {...(fp.fence_height!=null?{height:fp.fence_height,postSize:Math.max(0.1,fp.fence_height*0.08),railHeights:[0.18,0.5,0.82],railSize:[0.05,0.1],postSpacing:3.0}:{}),
+       ...(fp.fence_gap!=null?{gapRatio:fp.fence_gap}:{}),...(fp.fence_width!=null?{width:fp.fence_width}:{}),...(fp.fence_thickness!=null?{thickness:fp.fence_thickness}:{})}:null;
+    const fCol=isPicket?(fp.fence_color!=null?new THREE.Color(fp.fence_color).multiplyScalar(1-((simpleHash(String(fp.uid??fp.id??''))%1000)/1000)*CONFIG.fences.picket.whitenessJitter).getHex()
+                                              :picketColour(fp.uid??fp.id))
                        :buildingColour(fMat,feat.properties.uid,fFloors,feat.properties.area_m2);
     // Lifespan so fences appear/disappear on the timeline like buildings.
     const _fBorn=parseYearOrSentinel(feat.properties.born,NO_BORN), _fDied=parseYearOrSentinel(feat.properties.died,NO_DIED);
@@ -3932,7 +3945,7 @@ async function buildCity(geojson){
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
         const _fk=tileKeyOf((x1+x2)/2,(z1+z2)/2);
-        for(const g of buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol)){
+        for(const g of buildFenceSegmentGeos(x1,z1,x2,z2,fMat,fMatRaw,fHeight,fCol,fo)){
           tagLifespan(g,_fBorn,_fDied);
           fenceGeos.push(g); fenceKeys.push(_fk);
         }
@@ -9320,6 +9333,7 @@ function tickParades(dt){
 // is in the vertex shader. Sound hook: mosquitoes (loop, inverse-cube).
 const mosquitoAnchors=[];   // {x,y,z,born,died,group}
 let _mosq=null;
+function _dropMosq(){ if(!_mosq) return; for(const o of [_mosq.pts,_mosq.cloud]) if(o){ scene.remove(o); o.geometry.dispose(); o.material.dispose(); } _mosq=null; }
 function _buildMosquitoes(){
   const M=CONFIG.mosquitoes, n=M.perAnchor, A=mosquitoAnchors.slice(0,M.maxAnchors);
   const anc=new Float32Array(A.length*n*3), seed=new Float32Array(A.length*n*4), life=new Float32Array(A.length*n*2);
@@ -9345,7 +9359,29 @@ function _buildMosquitoes(){
     fragmentShader:`uniform vec3 uColor; uniform float uOpacity; varying float vA;
     void main(){ if(vA<0.01) discard; gl_FragColor=vec4(uColor,uOpacity*vA); }`});
   const pts=new THREE.Points(g,mat); pts.frustumCulled=false; pts.renderOrder=4; scene.add(pts);
-  _mosq={pts,u,count:A.length};
+  // The cloud: over standing water a bad mosquito year looks like a faint black smoke, ~1–3 m up. Soft round puffs, a few metres
+  // across, several per anchor (anchors are ~20 m apart along a creek, so they run together into a drifting band).
+  const CL=M.cloud||{puffs:4,size:4.5,opacity:0.2,maxPx:140,fade:[40,260],color:0x1A1816}, cn=CL.puffs;
+  const canc=new Float32Array(A.length*cn*3), cseed=new Float32Array(A.length*cn*4), clife=new Float32Array(A.length*cn*2);
+  A.forEach((a,i)=>{ for(let k=0;k<cn;k++){ const o=i*cn+k; canc.set([a.x,a.y,a.z],o*3); cseed.set([Math.random(),Math.random(),Math.random(),Math.random()],o*4); clife.set([a.born,a.died],o*2); }});
+  const cg=new THREE.BufferGeometry(); cg.setAttribute('position',new THREE.BufferAttribute(canc,3)); cg.setAttribute('aSeed',new THREE.BufferAttribute(cseed,4)); cg.setAttribute('aLife',new THREE.BufferAttribute(clife,2)); cg.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1e9);
+  const cu={uTime:{value:0},uYear:{value:0},uDensity:{value:0},uScale:{value:600},uPixelRatio:{value:renderer.getPixelRatio()},uWorld:{value:CL.size},uMaxPx:{value:CL.maxPx},
+    uFade:{value:new THREE.Vector2(CL.fade[0],CL.fade[1])},uColor:{value:new THREE.Color(CL.color)},uOpacity:{value:CL.opacity}};
+  const cmat=new THREE.ShaderMaterial({uniforms:cu,transparent:true,depthWrite:false,fog:false,
+    vertexShader:`uniform float uTime,uYear,uDensity,uScale,uPixelRatio,uWorld,uMaxPx; uniform vec2 uFade; attribute vec4 aSeed; attribute vec2 aLife; varying float vA;
+    void main(){
+      vec4 s=aSeed; float t=uTime;
+      vec3 p=position+vec3(sin(t*(0.16+0.1*s.x)+s.y*6.28)*(1.0+2.4*s.z), 0.9+2.1*s.w+sin(t*0.35+s.x*9.0)*0.3, cos(t*(0.14+0.1*s.y)+s.z*6.28)*(1.0+2.4*s.x));
+      vec4 mv=modelViewMatrix*vec4(p,1.0); gl_Position=projectionMatrix*mv;
+      float d=-mv.z, key=fract(s.z*7.13+s.y*3.7);
+      vA=step(aLife.x,uYear)*step(uYear,aLife.y)*step(key,uDensity)*(1.0-smoothstep(uFade.x,uFade.y,d))*smoothstep(2.0,9.0,d)*(0.4+0.6*uDensity);
+      float px=uWorld*(0.7+0.7*s.z)*uScale/max(d,0.5);
+      gl_PointSize=vA>0.0?min(max(px,2.0),uMaxPx)*uPixelRatio:0.0;
+    }`,
+    fragmentShader:`uniform vec3 uColor; uniform float uOpacity; varying float vA;
+    void main(){ float r=length(gl_PointCoord*2.0-1.0); float a=pow(clamp(1.0-r,0.0,1.0),1.7); if(a*vA<0.003) discard; gl_FragColor=vec4(uColor,uOpacity*vA*a); }`});
+  const cloud=new THREE.Points(cg,cmat); cloud.frustumCulled=false; cloud.renderOrder=3; scene.add(cloud);
+  _mosq={pts,u,cloud,cu,count:A.length};
 }
 window._debugMosq=()=>({max:CONFIG.mosquitoes.maxAnchors,built:_mosq?.count,anchors:mosquitoAnchors.length,dens:+mosquitoDensity().toFixed(2),visible:!!_mosq?.pts.visible});
 function mosquitoDensity(){
@@ -9364,6 +9400,7 @@ function tickMosquitoes(dt){
   const dens=mosquitoDensity(), yr=yearFrac(currentViewDate);
   _mosq.pts.visible=dens>0.01;
   _mosq.u.uTime.value+=dt; _mosq.u.uYear.value=yr; _mosq.u.uDensity.value=dens;
+  _mosq.cloud.visible=dens>0.01; { const cu=_mosq.cu; cu.uTime.value+=dt; cu.uYear.value=yr; cu.uDensity.value=dens; cu.uScale.value=innerHeight/(2*Math.tan(camera.fov*Math.PI/360)); cu.uPixelRatio.value=renderer.getPixelRatio(); }
   if(dens>0.01&&audioCtx){
     const cam=camera.position, near=[];
     for(const a of mosquitoAnchors) if(yr>=a.born&&yr<a.died&&(a.x-cam.x)**2+(a.z-cam.z)**2<1600) near.push({id:a,x:a.x,y:a.y+1,z:a.z,gain:dens});
@@ -10245,33 +10282,39 @@ function tickTipis(dt){
 }
 window._debugTipis=()=>tipis?{n:tipis.list.length,visible:tipis.list.filter(t=>{const yr=yearFrac(currentViewDate),d=season.doy;return yr<t.endYr&&(t.yearRound||(d>t.tin+2&&d<t.tout-2));}).length}:null;
 
-// ── Ponds (data/early_ponds.json: polygons Mike drew from the 1881 map) ─────────────────────────────
-// A flat water surface at the lower part of the polygon's ground (so the polygon is mostly under water), dated like a
-// creek, coloured like the oxbow lake (ice / snow follow the season). A few mosquito anchors each.
-let pondMeshes=null;
-function tickPonds(){
-  if(!earlyPonds.length||!_demLoaded) return;
-  if(!pondMeshes){
-    pondMeshes=[]; const O=CONFIG.terrain.oxbow?.lake, anchors=[];
-    for(const P of earlyPonds){
+// ── Marshes (data/early_marshes.json: the ellipses Mike drew from the 1881 map) ──────────────────────
+// Wet ground draped over the terrain (4 m cells inside the outline, a hand above the ground), olive-green in summer, drab and
+// snow-tinted in winter, dated like a creek, with mosquito anchors — the cloud thickens over wet ground in wet summers.
+let marshMeshes=null;
+function tickMarshes(){
+  if(!earlyMarshes.length||!_demLoaded) return;
+  const C=CONFIG.marsh||{};
+  if(!marshMeshes){
+    marshMeshes=[]; const rnd=mulberry('marsh');
+    for(const P of earlyMarshes){
       const wz=P.ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
-      const shape=new THREE.Shape(wz.map(q=>new THREE.Vector2(q.x,-q.z)));
       let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
-      const hs=[], inside=[]; for(let x=ax;x<=bx;x+=4) for(let z=az;z<=bz;z+=4) if(pointInPolygon(x,z,wz)){ hs.push(sampleTerrainY(x,z)); inside.push([x,z]); }
-      if(hs.length<4) continue; hs.sort((a,b)=>a-b); const level=hs[Math.floor(hs.length*0.3)]+0.12;
-      const g=new THREE.ShapeGeometry(shape); g.rotateX(-Math.PI/2); g.translate(0,level,0);
+      const st=4, pos=[], col=[], centres=[], lift=C.lift??0.07;
+      for(let x=ax;x<bx;x+=st) for(let z=az;z<bz;z+=st){
+        if(!pointInPolygon(x+st/2,z+st/2,wz)) continue;
+        const y=(px,pz)=>sampleTerrainY(px,pz)+lift, a=y(x,z), b=y(x+st,z), c=y(x+st,z+st), d=y(x,z+st), j=0.82+rnd()*0.18;
+        pos.push(x,a,z, x,d,z+st, x+st,b,z,  x+st,b,z, x,d,z+st, x+st,c,z+st); for(let v=0;v<6;v++) col.push(j,j,j);
+        centres.push([x+st/2,y(x+st/2,z+st/2)]);
+        centres[centres.length-1].push(z+st/2);
+      }
+      if(!pos.length) continue;
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.computeVertexNormals();
       tagLifespan(g,_isoYearFrac(P.born,NO_BORN),_isoYearFrac(P.died,NO_DIED));
-      const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:O?.color??0x4A5236,transparent:true,opacity:O?.opacity??0.88,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,side:THREE.DoubleSide}));
-      const m=new THREE.Mesh(g,mat); m.renderOrder=1; scene.add(m); pondMeshes.push(m);
-      for(let k=0;k<Math.min(14,inside.length);k++){ const[x,z]=inside[Math.floor(k*inside.length/Math.min(14,inside.length))];
-        mosquitoAnchors.push({x,y:level+0.8,z,born:_isoYearFrac(P.born,-1e9),died:_isoYearFrac(P.died,1e9),group:{visible:true}}); }
+      const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:C.color??0x5A6A38,vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+      const m=new THREE.Mesh(g,mat); m.renderOrder=0; m.receiveShadow=true; scene.add(m); marshMeshes.push(m);
+      const nA=Math.min(C.mosquitoAnchors??30,centres.length);   // ditch-style clouds over wet ground
+      for(let k=0;k<nA;k++){ const q=centres[Math.floor(k*centres.length/nA)]; mosquitoAnchors.push({x:q[0],y:q[1]-0.2,z:q[2],born:_isoYearFrac(P.born,-1e9),died:_isoYearFrac(P.died,1e9),group:{visible:true}}); }
     }
-    if(_mosq){ scene.remove(_mosq.pts); _mosq=null; }
-    console.log(`💧 Ponds built: ${pondMeshes.length}`);
+    _dropMosq();
+    console.log(`🌾 Marshes built: ${marshMeshes.length}`);
   }
-  const O=CONFIG.terrain.oxbow?.lake; if(!O) return;
-  const ice=season.ice, snow=season.snow;
-  for(const m of pondMeshes) m.material.color.set(O.color).lerp(_wc.b.set(O.iceColor),ice).lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.85);
+  const snow=season.snow, dry=1-Math.max(0,Math.min(1,season.green??1));
+  for(const m of marshMeshes) m.material.color.set(C.color??0x5A6A38).lerp(_wc.b.set(C.dormantColor??0x7A6A44),dry*0.7).lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.9);
 }
 
 function tickTrains(dt){
@@ -10472,7 +10515,7 @@ function startLoop(){
     _t(()=>{ if(!shantiesBuilt) initShanties(); });
     _t(tickOxbow);
     _t(tickTipis,dt);
-    _t(tickPonds);
+    _t(tickMarshes);
     _t(tickCreekTerrain);
     _t(tickSoundHooks,dt);
     _t(applySeason);
@@ -10722,13 +10765,13 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
-let earlyBridges=[], earlyPonds=[];
+let earlyBridges=[], earlyMarshes=[];
 async function loadEarlyBridges(){
-  const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.pondsFile;
+  const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.marshFile;
   if(f) try{ const r=await fetch(f+'?v='+Date.now()); if(r.ok){ earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }
   catch(e){ console.warn('Creek bridges: failed to load',e); }
-  if(pf) try{ const r=await fetch(pf+'?v='+Date.now()); if(r.ok){ earlyPonds=(await r.json()).ponds||[]; console.log(`💧 Ponds: ${earlyPonds.length}`); } }
-  catch(e){ console.warn('Ponds: failed to load',e); }
+  if(pf) try{ const r=await fetch(pf+'?v='+Date.now()); if(r.ok){ earlyMarshes=(await r.json()).marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }
+  catch(e){ console.warn('Marshes: failed to load',e); }
 }
 async function loadEarlyVegetation(){
   await loadEarlyBridges();

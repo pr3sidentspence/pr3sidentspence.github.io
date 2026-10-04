@@ -171,8 +171,8 @@ def mike_features_and_bridges():
             bridges.append({"name": f"Bridge {pid}", "lon": round(lon0, 7), "lat": round(lat0, 7),
                             "axisE": round(ex / n, 4), "axisN": round(ey / n, 4), "length": round(L, 1), "width": round(W, 1),
                             "from": MIKE_BRIDGE_FROM, "source": SRC_MIKE})
-        elif geom['type'] == 'Polygon':      # a polygon with no type: a pond / marsh outline (1881 map)
-            ponds.append({"name": f"Pond {pid}", "ring": [[round(x, 7), round(y, 7)] for x, y in geom['coordinates'][0]],
+        elif geom['type'] == 'Polygon':      # a polygon with no type: a marsh (the ellipses on the 1881 map)
+            ponds.append({"name": f"Marsh {pid}", "ring": [[round(x, 7), round(y, 7)] for x, y in geom['coordinates'][0]],
                           "born": "1700-08-01", "died": pr.get('died') or MIKE_DEFAULT_DIED, "source": SRC_MIKE})
     return feats, bridges, ponds
 
@@ -200,8 +200,8 @@ def main():
                 "geometry": {"type": "LineString", "coordinates": coords}})
     mf, mb, mp = mike_features_and_bridges(); feats += mf
     json.dump({"bridges": mb}, open(os.path.join(HERE, '..', 'data', 'early_bridges.json'), 'w'), indent=1)
-    json.dump({"ponds": mp}, open(os.path.join(HERE, '..', 'data', 'early_ponds.json'), 'w'), indent=1)
-    print(f'Mike: {len(mf)} creek line(s), {len(mb)} bridge(s), {len(mp)} pond(s)')
+    json.dump({"marshes": mp}, open(os.path.join(HERE, '..', 'data', 'early_marshes.json'), 'w'), indent=1)
+    print(f'Mike: {len(mf)} creek line(s), {len(mb)} bridge(s), {len(mp)} marsh(es)')
     out = os.path.join(HERE, '..', 'data', 'early_creeks.geojson')
     json.dump({"type": "FeatureCollection", "features": feats}, open(out, 'w'))
     print('wrote', out, len(feats), 'lines')
