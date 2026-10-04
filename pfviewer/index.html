@@ -1133,6 +1133,26 @@ function tickOxbow(){
 // Fetches dem.json + dem.bin (produced by pfviewer/tools/dem_from_las.py).
 // Replaces Perlin noise Y values with LiDAR-derived ground elevations.
 // Silently falls back to noise if files are absent.
+// The LiDAR channel of the Seine is interrupted where bridges cross it (the deck is ground in the DEM), so the
+// river water plane breaks into pieces. CONFIG.terrain.riverGaps lists short segments a→b (lon/lat) along the
+// channel through each gap; cells within halfWidthM of it are cut down to bedY (blended out over 6 m), the bridges
+// (data/pastforward_2026_seine_bridges.geojson) then carry the roads/rails over.
+function carveRiverGaps(h,S,cellM){
+  const G=CONFIG.terrain?.riverGaps; if(!G||!G.length||!terrainMesh) return;
+  const v=new THREE.Vector3(), half=(S-1)*cellM/2, toIdx=(lon,lat)=>{ const[sx,sy]=project(lon,lat); v.set(sx,0,-sy); terrainMesh.worldToLocal(v); return[(v.x+half)/cellM,(v.z+half)/cellM]; };
+  for(const g of G){
+    const[ax,az]=toIdx(g.a[0],g.a[1]), [bx,bz]=toIdx(g.b[0],g.b[1]), W=g.halfWidthM/cellM, B=6/cellM, bed=g.bedY??CONFIG.water.startY-1.2;
+    const x0=Math.max(0,Math.floor(Math.min(ax,bx)-W-B-1)), x1=Math.min(S-1,Math.ceil(Math.max(ax,bx)+W+B+1)), z0=Math.max(0,Math.floor(Math.min(az,bz)-W-B-1)), z1=Math.min(S-1,Math.ceil(Math.max(az,bz)+W+B+1));
+    const dx=bx-ax, dz=bz-az, L2=dx*dx+dz*dz||1; let n=0;
+    for(let z=z0;z<=z1;z++) for(let x=x0;x<=x1;x++){
+      const t=Math.max(0,Math.min(1,((x-ax)*dx+(z-az)*dz)/L2)), d=Math.hypot(x-ax-dx*t,z-az-dz*t);
+      if(d>W+B) continue;
+      const w=d<=W?1:1-((d-W)/B)**2*(3-2*(d-W)/B);   // smooth edge
+      const i=z*S+x, target=Math.min(h[i],bed); if(target<h[i]){ h[i]=h[i]*(1-w)+target*w; n++; }
+    }
+    console.log(`🌊 River gap "${g.name}": ${n} DEM cells cut to ${bed.toFixed(1)}`);
+  }
+}
 async function applyDEM(){
   // Ensure terrainMesh world matrix is current before any sampleTerrainY calls.
   if(terrainMesh) terrainMesh.updateWorldMatrix(true, false);
@@ -1153,6 +1173,7 @@ async function applyDEM(){
       return;
     }
     smoothDEM(heights, S, meta.size/(S-1));
+    carveRiverGaps(heights, S, meta.size/(S-1));   // reconnect the Seine where bridge decks interrupt the LiDAR channel
     detectOxbow(heights, S, meta.size/(S-1));   // before flattening, which leaves it alone
     flattenDEM(heights, S, meta.size/(S-1), oxbow?.mask);
     const hToday=oxbow?heights.slice():null;   // today's (filled-in) oxbow, restored from its `until` date

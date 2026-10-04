@@ -27,6 +27,7 @@ export const CONFIG = {
       './data/pastforward_2026_assessment.geojson',  // growth master + assessment/heritage dates (matching/merge_assessment.py) — no OSM data
       './data/pastforward_2026_osm.geojson',         // new pre-1907 buildings with OSM footprints — ODbL, kept as a separate database
       './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
+      './data/pastforward_2026_seine_bridges.geojson',    // timber bridges over the Seine at Provencher, the railway and Marion (tools/seine_bridges.py)
       './data/pastforward_2026_legislature_osm.geojson',   // Legislative Building + dome, Government House, outbuildings, drives/paths — OSM (ODbL)
       // './data/pastforward_2026.geojson',  // dated growth master without assessment data (no OSM) — swap back by un-commenting
       './data/early_creeks.geojson',                 // creeks of 1874 traced from Graham (1984) Fig. 1 — tools/early_creeks.py
@@ -461,6 +462,12 @@ export const CONFIG = {
                  minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
     // Brown's Creek: a shallow valley carved along its line while it exists
     // (filled in since — the LiDAR is flat there); cosine profile, metres
+    // Short segments a→b [lon,lat] along the Seine through the spots where bridge decks cut the LiDAR channel (carved to bedY, see carveRiverGaps)
+    riverGaps: [
+      { name: 'Seine at Provencher',   a: [-97.10986, 49.89598], b: [-97.10972, 49.89562], halfWidthM: 12, bedY: -7.0 },
+      { name: 'Seine at the railway',  a: [-97.10404, 49.89040], b: [-97.10424, 49.89000], halfWidthM: 12, bedY: -7.0 },
+      { name: 'Seine at Marion',       a: [-97.10442, 49.88295], b: [-97.10442, 49.88251], halfWidthM: 12, bedY: -7.0 },
+    ],
     creek: { bridge: { roads: null, creeks: '.', length: 31, width: 12, minWidth: 5, clusterM: 30, color: 0x5d4a36,
                file: './data/early_bridges.json' },   // bridges listed in data (centre, span axis, length, width) — Mike's, from satellite imagery; extra: [] would hand-list more by creek + metres from its mouth   // timber bridge wherever a street crosses a creek while both exist (roads: a list of street names limits it; width = widest deck)
            toRiver: true, eastOfLon: -97.1328, riverEdgeAbove: 0.3, extendStepM: 6, extendMaxM: 400, depth: 2.5, halfWidth: 14, stepM: 3, across: 10, cutShare: 0.9, endTaperM: 25, dirt: 1 },   // one valley field over all pieces; terrain cut over the inner 90%; free ends ease out over endTaperM; bank-dirt floor (0 = grass)
