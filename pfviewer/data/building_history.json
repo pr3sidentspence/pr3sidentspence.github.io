@@ -1,1221 +1,1240 @@
 {
-  "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON. wall_stripes adds stone/brick bands over the wall colour: a colour alone (one band per storey on the floor lines), or {color, every, height, offset, base} in metres (base = solid course at the bottom). roof_type 'dome', 'bell' (ogee) or 'conical' gives a curved tower roof; roof_height (m) and roof_color (named colour incl. slate/copper/newCopper, or hex) are optional. remove: true drops the feature entirely (duplicate or bad model).",
-  "buildings": {
-    "76e52ce7-2b91-4411-ad15-e526e36f7087": {
-      "name": "Leland Hotel",
-      "address": "218 William Avenue",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/lelandhotel.shtml",
-        "https://www.archiseek.com/1883-leland-hotel-winnipeg/"
-      ],
-      "notes": "Built 1883–1884 (Barber & Barber): 3 storeys (tall ground floor + 2; 1889 sketch). 1892: three storeys + a mansard with dormers added (to 6.5; 1903 photo, Goad 1906). 1913 fire gutted the additions; the lowest added storey survived, leaving 4 (1990s photo). The rest destroyed by arson January 1999. Light brick (photos). Phases revised from photos supplied by Mike.",
-      "phases": [
-        {
-          "phase": "original building (storeys 1–3)",
-          "floors": 3,
-          "born": "1884-06-01",
-          "construction_months": 12,
-          "died": "1999-01-15",
-          "died_by": "fire",
-          "parapet": false,
-          "wall_color": "cream",
-          "date_precision": {
-            "born": "year",
-            "died": "month"
-          }
-        },
-        {
-          "phase": "1892 addition, storey 4 (survived 1913)",
-          "base_floors": 3,
-          "floors": 4,
-          "born": "1892-10-01",
-          "construction_months": 8,
-          "died": "1999-01-15",
-          "died_by": "fire",
-          "wall_color": "cream",
-          "date_precision": {
-            "born": "year",
-            "died": "month"
-          }
-        },
-        {
-          "phase": "1892 addition, storeys 5–6.5 with mansard (burned 1913)",
-          "base_floors": 4,
-          "floors": 6.5,
-          "roof_type": "mansard",
-          "born": "1892-10-01",
-          "construction_months": 8,
-          "died": "1913-07-01",
-          "died_by": "fire",
-          "wall_color": "cream",
-          "date_precision": {
-            "born": "year",
-            "died": "year"
-          }
-        }
-      ]
-    },
-    "cd99f622-2cd3-4d84-9127-164afa7786ba": {
-      "name": "R.A. Rogers Co. ltd.: Cold Storage Warehouse AND Crescent Creamery AND Offices",
-      "notes": "Built 1901, not 1865 (the pipeline's 1880-match date). Corrected by hand 2026-09-28.",
-      "set": {
-        "born": "1901-01-01",
-        "born_basis": "manual_correction"
-      },
-      "date_precision": {
-        "born": "year"
-      }
-    },
-    "e5959936-7299-45d4-ab37-07a96bc9a0c0": {
-      "name": "R.A. Rogers Co. ltd.: Cold Storage Warehouse AND Crescent Creamery AND Offices",
-      "notes": "Built 1901, not 1865 (the pipeline's 1880-match date). Corrected by hand 2026-09-28.",
-      "set": {
-        "born": "1901-01-01",
-        "born_basis": "manual_correction"
-      },
-      "date_precision": {
-        "born": "year"
-      }
-    },
-    "254e63ba-d3c7-513a-9071-1cb5a8646959": {
-      "name": "Canada Permanent Building",
-      "address": "298 Garry Street",
-      "set": {
-        "wall_color": "sandstone"
-      }
-    },
-    "de6e0ff3-7cb8-4be4-9c90-40a86a33b032": {
-      "name": "City Hall",
-      "set": {
-        "wall_color": "red",
-        "wall_stripes": {
-          "color": "tyndall",
-          "height": 0.5,
-          "base": 1.2
-        }
-      }
-    },
-    "e5129cb0-5482-41c9-9bb5-33071a64a461": {
-      "name": "City Hall",
-      "notes": "part of City Hall (Goad material: stone)",
-      "set": {
-        "wall_color": "red",
-        "wall_stripes": {
-          "color": "tyndall",
-          "height": 0.5,
-          "base": 1.2
-        }
-      }
-    },
-    "06e2ef08-ceff-4974-bee1-0171feca8a0e": {
-      "name": "City Hall",
-      "notes": "centre tower (5 storeys): red brick with stone bands, ogee dome",
-      "set": {
-        "wall_color": "red",
-        "wall_stripes": {
-          "color": "tyndall",
-          "height": 0.5,
-          "base": 1.2
-        },
-        "roof_type": "bell"
-      }
-    },
-    "6c27ad24-51fc-4ec2-8f1a-d25c860f8eeb": {
-      "name": "Fort Garry Gate (Governor's Gate)",
-      "notes": "The better of two models of the gate (Mike, 2026-09-29). Built 1853 with the fort's northern extension; still standing.",
-      "set": {
-        "born": "1853-08-01",
-        "died": null,
-        "died_basis": "still_standing",
-        "date_precision": {
-          "born": "year"
-        }
-      }
-    },
-    "802ae591-76d8-4586-92e3-a2980b09a4bc": {
-      "name": "Fort Garry Gate (duplicate)",
-      "notes": "Second, worse model of the gate from Goad 1906 sheet 1 — misplaced, dates suspect (Mike, 2026-09-29). The 6c27ad24 model is kept.",
-      "remove": true
-    },
-    "fe1217df-844b-45f6-89f3-cc6ee49fbe67": {
-      "name": "Upper Fort Garry — Fur Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "c633940f-18b0-43be-9ff7-ec44b2b80713": {
-      "name": "Upper Fort Garry — Fur Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "ad2b37f8-a94d-4ff0-83dc-ea207d399d92": {
-      "name": "Upper Fort Garry — Men's House",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "825b138b-a718-49e4-8a1c-1297676a9777": {
-      "name": "Upper Fort Garry — Clerk's Residence",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Removed for the straightening of Main Street after the 1882 sale (1881–1884).",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "bed80a47-4371-41ef-9de2-ed3fc7b09a94": {
-      "name": "Upper Fort Garry — Pemmican Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "28d2a1cd-7887-49ed-90bd-c234f7f6b8ae": {
-      "name": "Upper Fort Garry — Flour Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "6bf3748b-ca64-44a3-ab2b-0590537fed6f": {
-      "name": "Upper Fort Garry — Governor's Residence",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Lieutenant Governor's residence 1871–1883; stood until the HBC tore it down in 1888. Build year: original-fort placeholder. Peaked roof forced (roof_type) — the outline has too many points for the automatic peaked-roof rule. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1888-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        },
-        "roof_type": "gabled"
-      }
-    },
-    "e2616f20-00b6-46ae-a957-873939b205d5": {
-      "name": "Upper Fort Garry — Office Buillding [Former Governor's Residence?]",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "51067c1d-11b5-48f0-8f5b-c8945350d51c": {
-      "name": "Upper Fort Garry — Fire Engine",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "90e68d9b-57dc-48dd-8679-976290802d47": {
-      "name": "Upper Fort Garry — Well House",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "5205dd9f-2565-4fc2-af31-b9bbe337914e": {
-      "name": "Upper Fort Garry — Power Magazine",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "4f7533a1-5e40-4e06-b1f5-381c0cb01076": {
-      "name": "Upper Fort Garry — General Depot",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Built 1860. Fort sold/auctioned 1882 (four buildings moved to the HBC mill; some stood to 1888 — which is unrecorded).",
-      "set": {
-        "born": "1860-06-01",
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "5616f7c6-e2ac-490c-987f-e953eb2aeba6": {
-      "name": "Upper Fort Garry — HBC Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Removed for the straightening of Main Street after the 1882 sale (1881–1884).",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "fb3929de-53b3-419f-885f-c9ab5bcebe31": {
-      "name": "Upper Fort Garry — Upper Fort Gaarry Addition Wall",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Wooden (oak) wall of the northern extension, early 1850s (gate 1853). Walls demolished 1881, stone reused for the new HBC store (opened Oct 1881).",
-      "set": {
-        "born": "1853-06-01",
-        "construction_months": 24,
-        "died": "1881-06-01",
-        "died_basis": "demolished",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "5d3e0f53-8bcf-4368-b0d0-2d8d5aa5810d": {
-      "name": "Upper Fort Garry — Upper Fort Gaarry Original North Wall",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original stone north wall, 1835–1851; replaced by the northern extension.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1851-08-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "5da328da-2f42-42bc-b391-0d07a5afb407": {
-      "name": "Upper Fort Garry — Bastion",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1881-06-01",
-        "died_basis": "demolished",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "90a5b6ba-e7d9-40f2-81c9-419cf3e82eef": {
-      "name": "Upper Fort Garry — Bastion",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1881-06-01",
-        "died_basis": "demolished",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "ec0da9be-a369-42ff-aa59-989d3c27e96c": {
-      "name": "Upper Fort Garry — Upper Fort Garry Original SEW Wall",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1881-06-01",
-        "died_basis": "demolished",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "2b57cd50-01ec-4e94-8b90-59928c255e61": {
-      "name": "Upper Fort Garry — Bastion",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1881-06-01",
-        "died_basis": "demolished",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "6698d4bb-636c-45b0-ad58-4469ed60ae3a": {
-      "name": "Upper Fort Garry — Bastion",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1881-06-01",
-        "died_basis": "demolished",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "5ac2827b-e071-4db1-a30f-04ef2a6388c6": {
-      "name": "Upper Fort Garry — Summer Kitchen",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "257deb71-906d-451e-86e2-8d5b5f198f94": {
-      "name": "Upper Fort Garry — Kitchen Garden",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "af0cf838-0642-4a2d-86e0-102505f87690": {
-      "name": "Upper Fort Garry — Yellow Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "8623f64d-093c-4f6c-aed0-3e18385d6e4e": {
-      "name": "Upper Fort Garry — Fur Store",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
-      "set": {
-        "born": "1837-06-01",
-        "construction_months": 24,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "c268bebe-7d33-4f7f-8631-9c8cb8a2fad1": {
-      "name": "Upper Fort Garry — Governor's Garden",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
-        "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
-        "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
-        "https://en.wikipedia.org/wiki/Fort_Garry"
-      ],
-      "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
-      "set": {
-        "born": "1854-06-01",
-        "construction_months": 12,
-        "died": "1882-06-01",
-        "date_precision": {
-          "born": "year",
-          "died": "year"
-        }
-      }
-    },
-    "4f634818-55c4-450b-9d23-1b6a24daad0e": {
-      "name": "McIntyre Block",
-      "address": "416 Main St",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/mcintyreblock.shtml",
-        "wpgfiremuseum.ca 1873-1899",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "First McIntyre Block (1884, enlarged 1886/1890) destroyed by fire 2 Feb 1898 (MHS; Fire Museum says 11 Feb). New 5-storey block built 1898. Storeys of the 1884 block unknown — 3 assumed.",
-      "phases": [
-        {
-          "phase": "first McIntyre Block (1884)",
-          "floors": 3,
-          "born": "1884-06-01",
-          "died": "1898-02-02",
-          "died_by": "fire",
-          "date_precision": {
-            "born": "year",
-            "died": "day"
-          }
-        },
-        {
-          "phase": "new block (1898)",
-          "born": "1898-11-01",
-          "construction_months": 8,
-          "date_precision": {
-            "born": "year"
-          }
-        }
-      ]
-    },
-    "099bfcec-9262-4b77-a777-1ef6a3b9c667": {
-      "name": "McIntyre Block",
-      "address": "416 Main St",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/mcintyreblock.shtml",
-        "wpgfiremuseum.ca 1873-1899",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "First McIntyre Block (1884, enlarged 1886/1890) destroyed by fire 2 Feb 1898 (MHS; Fire Museum says 11 Feb). New 5-storey block built 1898. Storeys of the 1884 block unknown — 3 assumed.",
-      "phases": [
-        {
-          "phase": "first McIntyre Block (1884)",
-          "floors": 3,
-          "born": "1884-06-01",
-          "died": "1898-02-02",
-          "died_by": "fire",
-          "date_precision": {
-            "born": "year",
-            "died": "day"
-          }
-        },
-        {
-          "phase": "new block (1898)",
-          "born": "1898-11-01",
-          "construction_months": 8,
-          "date_precision": {
-            "born": "year"
-          }
-        }
-      ]
-    },
-    "2faed2c4-da33-4b96-9b09-f3f96a39055f": {
-      "name": "J.H. Ashdown Hardware store",
-      "address": "Albert St at Bannatyne Ave",
-      "sources": [
-        "heritagewinnipeg.com/?p=17875",
-        "wpgfiremuseum.ca 1900-1914",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed in the Bulman Block fire, night of 11 Oct 1904. Rebuilt: first two floors open by Christmas 1904, four more storeys in 1905 — two storeys taller than before (so 4 before).",
-      "phases": [
-        {
-          "phase": "store before the 1904 fire",
-          "floors": 4,
-          "died": "1904-10-11",
-          "died_by": "fire",
-          "date_precision": {
-            "died": "day"
-          }
-        },
-        {
-          "phase": "rebuilt, storeys 1–2",
-          "floors": 2,
-          "born": "1904-12-20",
-          "construction_months": 2,
-          "date_precision": {
-            "born": "month"
-          }
-        },
-        {
-          "phase": "1905: four more storeys",
-          "base_floors": 2,
-          "floors": 6,
-          "born": "1905-10-01",
-          "construction_months": 6,
-          "date_precision": {
-            "born": "year"
-          }
-        }
-      ]
-    },
-    "02d3e8a5-0e5e-4d04-a547-331b6a4bc17b": {
-      "name": "J.H. Ashdown Hardware store",
-      "address": "Albert St at Bannatyne Ave",
-      "sources": [
-        "heritagewinnipeg.com/?p=17875",
-        "wpgfiremuseum.ca 1900-1914",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed in the Bulman Block fire, night of 11 Oct 1904. Rebuilt: first two floors open by Christmas 1904, four more storeys in 1905 — two storeys taller than before (so 4 before).",
-      "phases": [
-        {
-          "phase": "store before the 1904 fire",
-          "floors": 4,
-          "died": "1904-10-11",
-          "died_by": "fire",
-          "date_precision": {
-            "died": "day"
-          }
-        },
-        {
-          "phase": "rebuilt, storeys 1–2",
-          "floors": 2,
-          "born": "1904-12-20",
-          "construction_months": 2,
-          "date_precision": {
-            "born": "month"
-          }
-        },
-        {
-          "phase": "1905: four more storeys",
-          "base_floors": 2,
-          "floors": 6,
-          "born": "1905-10-01",
-          "construction_months": 6,
-          "date_precision": {
-            "born": "year"
-          }
-        }
-      ]
-    },
-    "daaa712b-ec5f-4bfb-9143-1984bf26f60e": {
-      "name": "St. Boniface Cathedral",
-      "sources": [
-        "mhs.mb.ca/docs/MB_history/63/historicalchurches.shtml",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "The 1832 cathedral (third church) and bishop's quarters burned in December 1860 (tallow for Christmas candles boiled over); day not found. Modelled on the footprint of the 1862 stone cathedral that replaced it.",
-      "phases": [
-        {
-          "phase": "1832 cathedral",
-          "born": "1832-06-01",
-          "construction_months": 12,
-          "died": "1860-12-15",
-          "died_by": "fire",
-          "date_precision": {
-            "born": "year",
-            "died": "month"
-          }
-        },
-        {
-          "phase": "1862 stone cathedral"
-        }
-      ]
-    },
-    "855f3cd7-20ec-4a84-b49d-5319f8cc43a7": {
-      "name": "St. Boniface Cathedral",
-      "sources": [
-        "mhs.mb.ca/docs/MB_history/63/historicalchurches.shtml",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "The 1832 cathedral (third church) and bishop's quarters burned in December 1860 (tallow for Christmas candles boiled over); day not found. Modelled on the footprint of the 1862 stone cathedral that replaced it.",
-      "phases": [
-        {
-          "phase": "1832 cathedral",
-          "born": "1832-06-01",
-          "construction_months": 12,
-          "died": "1860-12-15",
-          "died_by": "fire",
-          "date_precision": {
-            "born": "year",
-            "died": "month"
-          }
-        },
-        {
-          "phase": "1862 stone cathedral"
-        }
-      ]
-    },
-    "d7ca9f59-a769-44bb-887c-2302ab1f9f71": {
-      "name": "Canadian Moline Plow Building",
-      "address": "669 Logan Ave (NE corner Chambers St)",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/molineplowbuilding.shtml",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Fire 28 Sep 1918 (C.S. Judson Co.) destroyed the building and contents; the upper three storeys were removed and it carried on as one storey.",
-      "phases": [
-        {
-          "phase": "ground floor (survived)",
-          "floors": 1
-        },
-        {
-          "phase": "upper storeys (burned 1918)",
-          "base_floors": 1,
-          "floors": 4,
-          "died": "1918-09-28",
-          "died_by": "fire",
-          "date_precision": {
-            "died": "day"
-          }
-        }
-      ]
-    },
-    "c45166a0-fbe7-4bee-96df-aa4ab4236180": {
-      "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
-      "address": "Notre Dame Ave at Adelaide St",
-      "sources": [
-        "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
-        "wpgfiremuseum.ca/winnipeg-theatre-fire/",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
-      "set": {
-        "died": "1926-12-23",
-        "died_by": "fire",
-        "date_precision": {
-          "died": "day"
-        }
-      }
-    },
-    "563b25e5-b0f2-40c0-8ffe-9c462c39e55c": {
-      "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
-      "address": "Notre Dame Ave at Adelaide St",
-      "sources": [
-        "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
-        "wpgfiremuseum.ca/winnipeg-theatre-fire/",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
-      "set": {
-        "died": "1926-12-23",
-        "died_by": "fire",
-        "date_precision": {
-          "died": "day"
-        }
-      }
-    },
-    "0e406fcb-06f1-414e-811e-14737efaed44": {
-      "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
-      "address": "Notre Dame Ave at Adelaide St",
-      "sources": [
-        "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
-        "wpgfiremuseum.ca/winnipeg-theatre-fire/",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
-      "set": {
-        "died": "1926-12-23",
-        "died_by": "fire",
-        "date_precision": {
-          "died": "day"
-        }
-      }
-    },
-    "47cd9609-ad77-4984-b780-2fd65941f5eb": {
-      "name": "Old Tribune Building (Grand Theatre / Tribune Block)",
-      "address": "211 McDermot Ave",
-      "sources": [
-        "winnipegarchitecture.ca/places/257-smith-street/",
-        "wpgfiremuseum.ca 1915-1940",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed by fire 16 May 1930; site left empty. (The Tribune had moved to Smith St in 1914.)",
-      "set": {
-        "died": "1930-05-16",
-        "died_by": "fire",
-        "date_precision": {
-          "died": "day"
-        }
-      }
-    },
-    "753ae38d-8f4b-4813-8349-f55592f9d3df": {
-      "name": "Old Tribune Building (Grand Theatre / Tribune Block)",
-      "address": "211 McDermot Ave",
-      "sources": [
-        "winnipegarchitecture.ca/places/257-smith-street/",
-        "wpgfiremuseum.ca 1915-1940",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Destroyed by fire 16 May 1930; site left empty. (The Tribune had moved to Smith St in 1914.)",
-      "set": {
-        "died": "1930-05-16",
-        "died_by": "fire",
-        "date_precision": {
-          "died": "day"
-        }
-      }
-    },
-    "ac90b2b3-8d7b-44d2-9887-52aa0eb8d89c": {
-      "name": "Scott Block",
-      "sources": [
-        "wpgfiremuseum.ca 1900-1914",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived).",
-      "set": {
-        "fires": [
-          {
-            "date": "1914-03-23",
-            "days": 3,
-            "severity": 0.8,
-            "note": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived)."
-          }
-        ]
-      }
-    },
-    "eac81f97-7612-47fc-8e38-dd4c96d1a111": {
-      "name": "Scott Block",
-      "sources": [
-        "wpgfiremuseum.ca 1900-1914",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived).",
-      "set": {
-        "fires": [
-          {
-            "date": "1914-03-23",
-            "days": 3,
-            "severity": 0.8,
-            "note": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived)."
-          }
-        ]
-      }
-    },
-    "5343a28b-b8b3-5289-bea5-58c3995c4928": {
-      "name": "Scott-Bathgate Building",
-      "sources": [
-        "wpgfiremuseum.ca 1915-1940",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Fire 15 Feb 1917 (Fire Museum listing only; extent unknown — shown as survived; building still stands).",
-      "set": {
-        "fires": [
-          {
-            "date": "1917-02-15",
-            "days": 3,
-            "severity": 0.8,
-            "note": "Fire 15 Feb 1917 (Fire Museum listing only; extent unknown — shown as survived; building still stands)."
-          }
-        ]
-      }
-    },
-    "b8d34dd2-d689-5ae2-bea0-49cf9ba9965d": {
-      "name": "Dingwall Building",
-      "sources": [
-        "wpgfiremuseum.ca 1915-1940",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Fire Feb 1921, day unknown (ice load snapped Station No. 7's aerial ladder). Shown as survived.",
-      "set": {
-        "fires": [
-          {
-            "date": "1921-02-15",
-            "days": 2,
-            "severity": 0.8,
-            "note": "Fire Feb 1921, day unknown (ice load snapped Station No. 7's aerial ladder). Shown as survived."
-          }
-        ]
-      }
-    },
-    "884ccb3e-0d5f-4d05-b2b6-c571eae2f739": {
-      "name": "Leckie Building",
-      "sources": [
-        "mhs.mb.ca/docs/sites/leckiebuilding.shtml",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "Interior gutted 21 Sep 1924; restored (designated 2017).",
-      "set": {
-        "fires": [
-          {
-            "date": "1924-09-21",
-            "days": 2,
-            "severity": 1.0,
-            "note": "Interior gutted 21 Sep 1924; restored (designated 2017)."
-          }
-        ]
-      }
-    },
-    "0c321282-de8e-4c1b-9e23-183717549ad0": {
-      "name": "Tees & Persse building",
-      "sources": [
-        "ipernity.com/doc/567275/album/900188 (collector postcard notes)",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "New Year's Day 1924: burned all night, out by ~10 a.m.; building repaired and still in use.",
-      "set": {
-        "fires": [
-          {
-            "date": "1924-01-01",
-            "days": 2,
-            "severity": 1.0,
-            "note": "New Year's Day 1924: burned all night, out by ~10 a.m.; building repaired and still in use."
-          }
-        ]
-      }
-    },
-    "a51c9536-e9fb-4126-8cf9-67c562e06359": {
-      "name": "James Robertson & Co. (older building)",
-      "sources": [
-        "ipernity.com/tag/567275/keyword/17753",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "6 Apr 1907: older of two buildings damaged, contents lost; newer one saved by fireproof wall. Match to this footprint is a best guess among the Robertson buildings.",
-      "set": {
-        "fires": [
-          {
-            "date": "1907-04-06",
-            "days": 2,
-            "severity": 0.8,
-            "note": "6 Apr 1907: older of two buildings damaged, contents lost; newer one saved by fireproof wall. Match to this footprint is a best guess among the Robertson buildings."
-          }
-        ]
-      }
-    },
-    "b80f2e62-8612-478c-a340-c8927f9f1b8d": {
-      "name": "Radford-Wright Building (door and sash)",
-      "sources": [
-        "mhs.mb.ca/docs/mb_history/67/plate53.shtml",
-        "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
-      ],
-      "notes": "9 Mar 1912 arson + naphtha explosion: rear blown out, roof off, walls collapsed; block saved from total loss. 7 dead incl. firemen McPherson and Molyneux. MATCH UNCERTAIN: 3-storey brick next to Stuart Machinery at ~776 Main.",
-      "set": {
-        "fires": [
-          {
-            "date": "1912-03-09",
-            "days": 2,
-            "severity": 1.0,
-            "note": "9 Mar 1912 arson + naphtha explosion: rear blown out, roof off, walls collapsed; block saved from total loss. 7 dead incl. firemen McPherson and Molyneux. MATCH UNCERTAIN: 3-storey brick next to Stuart Machinery at ~776 Main."
-          }
-        ]
-      }
-    },
-    "38d2a8eb-3040-4720-a0c6-b8bbd3430a4f": {
-      "name": "Manitoba Club",
-      "address": "194 Broadway",
-      "notes": "Red brick with sandstone base and trim (per Mike).",
-      "set": {
-        "wall_color": "red",
-        "wall_stripes": {
-          "color": "sandstone",
-          "every": 4.2,
-          "height": 0.35,
-          "offset": 0,
-          "base": 1.2
-        }
-      }
-    },
-    "ccd37dd8-9eb4-475f-9d64-cae6381417ae": {
-      "name": "Union Bank Building (Union Bank Tower)",
-      "notes": "Light (cream) brick / terra cotta — per Mike. Built 1903–1904 (Darling & Pearson; MHS: ten storeys); Winnipeg's first skyscraper. The 1880 date this footprint carried was a placeholder. Completion mid-1904 assumed, 12 months' construction (starts June 1903).",
-      "set": {
-        "wall_color": "cream",
-        "born": "1904-06-01",
-        "construction_months": 12,
-        "date_precision": {
-          "born": "year"
-        }
-      },
-      "address": "504 Main Street",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/unionbankbuilding.shtml"
-      ]
-    },
-    "5c92d894-6309-4ae8-b6f2-dd64f180ca52": {
-      "name": "Union Bank Tower",
-      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
-      "set": {
-        "wall_color": "cream"
-      }
-    },
-    "27fa45a5-6320-4963-ae0c-0d82c40e8eee": {
-      "name": "Union Bank Tower",
-      "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
-      "set": {
-        "wall_color": "cream"
-      }
-    },
-    "3ffeb9e9-bff5-4544-9055-2510edd2b7db": {
-      "name": "Union Bank Building (Union Bank Tower)",
-      "notes": "Light (cream) brick / terra cotta — per Mike. Built 1903–1904 (Darling & Pearson; MHS: ten storeys); Winnipeg's first skyscraper. The 1880 date this footprint carried was a placeholder. Completion mid-1904 assumed, 12 months' construction (starts June 1903).",
-      "set": {
-        "wall_color": "cream",
-        "born": "1904-06-01",
-        "construction_months": 12,
-        "date_precision": {
-          "born": "year"
-        }
-      },
-      "address": "504 Main Street",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/unionbankbuilding.shtml"
-      ]
-    },
-    "a868d0de-ced3-43e5-afd8-d362b40a94ae": {
-      "name": "Steamboat Landing (building)",
-      "notes": "Removed per Mike.",
-      "remove": true
-    },
-    "e1714c01-c3c8-5eb1-89ee-ae5b190bbfff": {
-      "name": "Fort Garry Hotel",
-      "address": "222 Broadway",
-      "notes": "Château-style railway hotel (1913): tall steep copper roof with many dormers. Walls 11.5 storeys + ~10 m mansard in weathered (verdigris) copper — per Mike.",
-      "set": {
-        "floors": 11.5,
-        "roof_type": "mansard",
-        "roof_height": 10,
-        "roof_color": "copper",
-        "parapet": false
-      }
-    },
-    "85346c6d-e4a6-535e-b66b-47adc821ffce": {
-      "name": "Université de Saint-Boniface (St. Boniface College)",
-      "notes": "Sprawling complex: roof built per wing (roof_type wings) — per Mike.",
-      "set": {
-        "roof_type": "wings"
-      }
-    },
-    "7d155cf6-128d-5f4d-a2f3-44bde4a6cd72": {
-      "name": "St. Boniface Hospital",
-      "notes": "Sprawling complex: roof built per wing (roof_type wings) — per Mike.",
-      "set": {
-        "roof_type": "wings"
-      }
-    },
-    "e6dd4257-3a82-4937-9ced-f0fd11c6036e": {
-      "name": "Louise Bridge (Goad)",
-      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
-      "remove": true
-    },
-    "9eea30c8-cb0b-4c29-8be6-80b7cb8dfe8c": {
-      "name": "Salter Street overpass (Goad)",
-      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
-      "remove": true
-    },
-    "bf035551-b5d4-48cd-9275-b46f5c3d819e": {
-      "name": "Salter Street overpass (Goad, duplicate)",
-      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
-      "remove": true
-    },
-    "c9f4f0e4-cfa2-4bc4-9b08-d34dc9dacf50": {
-      "name": "Main Street subway (duplicate)",
-      "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
-      "remove": true
-    },
-    "f5b78f17-5e40-4439-bb61-66176fc9ae4b": {
-      "name": "CPR Main Street Subway",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/mainstreetsubway.shtml"
-      ],
-      "notes": "Multi-span concrete bridge for eight CPR tracks, opened November 1904 (MHS).",
-      "set": {
-        "born": "1904-11-01"
-      }
-    },
-    "2206430b-0c9c-4b83-b689-e16cb3886da0": {
-      "name": "Point Douglas rail bridge (Goad footprint)",
-      "notes": "Replaced by the generated bridge (9 m wide; the Goad/Planimetro footprint was 43.5 m) — per Mike.",
-      "remove": true
-    },
-    "9846382b-7f5b-4b4b-be8a-13e67064159d": {
-      "name": "Fire Hall No. 2 — main building",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/firehall2.shtml"
-      ],
-      "notes": "Fire Hall No. 2 (South Fire Hall), Smith St at York Ave: built 1882, major additions 1907–08 (Bruce & Smith), closed 1941 and demolished (date not given — left standing). The Goad-derived main-building date (1903) was too late; hose tower was the 1880 placeholder.",
-      "set": {
-        "born": "1882-06-01",
-        "construction_months": 8,
-        "date_precision": {
-          "born": "year"
-        }
-      }
-    },
-    "3424d95e-6bc3-43f7-bf6d-2a3de9b59d19": {
-      "name": "Fire Hall No. 2 — hose tower",
-      "sources": [
-        "https://www.mhs.mb.ca/docs/sites/firehall2.shtml"
-      ],
-      "notes": "Fire Hall No. 2 (South Fire Hall), Smith St at York Ave: built 1882, major additions 1907–08 (Bruce & Smith), closed 1941 and demolished (date not given — left standing). The Goad-derived main-building date (1903) was too late; hose tower was the 1880 placeholder.",
-      "set": {
-        "born": "1882-06-01",
-        "construction_months": 8,
-        "date_precision": {
-          "born": "year"
-        }
-      }
+ "_format": "buildings: { <feature uid (or pf_uid / id — the UID the info panel shows)>: { name, sources[], notes, set: {props merged onto the feature}, phases: [ {props merged over the original feature} ] } }. `set` is for plain corrections (e.g. a born date). Each phase becomes its own feature with the same footprint. base_floors = the storey the phase's volume starts at. born/died are completion/removal dates; construction_months overrides the size-based build time; died_by: 'fire' shows it burning. date_precision records how exact the dates are ('year' = mid-year placeholder). wall_color (in set or a phase) fixes the wall colour: a name from CONFIG.palettes.named (darkRed, red, orangeRed, buff, cream, tyndall, sandstone, grey) or a hex string like '#A0452E'. Survives merge_assessment.py regenerating the GeoJSON. wall_stripes adds stone/brick bands over the wall colour: a colour alone (one band per storey on the floor lines), or {color, every, height, offset, base} in metres (base = solid course at the bottom). roof_type 'dome', 'bell' (ogee) or 'conical' gives a curved tower roof; roof_height (m) and roof_color (named colour incl. slate/copper/newCopper, or hex) are optional. remove: true drops the feature entirely (duplicate or bad model).",
+ "buildings": {
+  "76e52ce7-2b91-4411-ad15-e526e36f7087": {
+   "name": "Leland Hotel",
+   "address": "218 William Avenue",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/lelandhotel.shtml",
+    "https://www.archiseek.com/1883-leland-hotel-winnipeg/"
+   ],
+   "notes": "Built 1883–1884 (Barber & Barber): 3 storeys (tall ground floor + 2; 1889 sketch). 1892: three storeys + a mansard with dormers added (to 6.5; 1903 photo, Goad 1906). 1913 fire gutted the additions; the lowest added storey survived, leaving 4 (1990s photo). The rest destroyed by arson January 1999. Light brick (photos). Phases revised from photos supplied by Mike.",
+   "phases": [
+    {
+     "phase": "original building (storeys 1–3)",
+     "floors": 3,
+     "born": "1884-06-01",
+     "construction_months": 12,
+     "died": "1999-01-15",
+     "died_by": "fire",
+     "parapet": false,
+     "wall_color": "cream",
+     "date_precision": {
+      "born": "year",
+      "died": "month"
+     }
+    },
+    {
+     "phase": "1892 addition, storey 4 (survived 1913)",
+     "base_floors": 3,
+     "floors": 4,
+     "born": "1892-10-01",
+     "construction_months": 8,
+     "died": "1999-01-15",
+     "died_by": "fire",
+     "wall_color": "cream",
+     "date_precision": {
+      "born": "year",
+      "died": "month"
+     }
+    },
+    {
+     "phase": "1892 addition, storeys 5–6.5 with mansard (burned 1913)",
+     "base_floors": 4,
+     "floors": 6.5,
+     "roof_type": "mansard",
+     "born": "1892-10-01",
+     "construction_months": 8,
+     "died": "1913-07-01",
+     "died_by": "fire",
+     "wall_color": "cream",
+     "date_precision": {
+      "born": "year",
+      "died": "year"
+     }
     }
+   ]
+  },
+  "cd99f622-2cd3-4d84-9127-164afa7786ba": {
+   "name": "R.A. Rogers Co. ltd.: Cold Storage Warehouse AND Crescent Creamery AND Offices",
+   "notes": "Built 1901, not 1865 (the pipeline's 1880-match date). Corrected by hand 2026-09-28.",
+   "set": {
+    "born": "1901-01-01",
+    "born_basis": "manual_correction"
+   },
+   "date_precision": {
+    "born": "year"
+   }
+  },
+  "e5959936-7299-45d4-ab37-07a96bc9a0c0": {
+   "name": "R.A. Rogers Co. ltd.: Cold Storage Warehouse AND Crescent Creamery AND Offices",
+   "notes": "Built 1901, not 1865 (the pipeline's 1880-match date). Corrected by hand 2026-09-28.",
+   "set": {
+    "born": "1901-01-01",
+    "born_basis": "manual_correction"
+   },
+   "date_precision": {
+    "born": "year"
+   }
+  },
+  "254e63ba-d3c7-513a-9071-1cb5a8646959": {
+   "name": "Canada Permanent Building",
+   "address": "298 Garry Street",
+   "set": {
+    "wall_color": "sandstone"
+   }
+  },
+  "de6e0ff3-7cb8-4be4-9c90-40a86a33b032": {
+   "name": "City Hall",
+   "set": {
+    "wall_color": "red",
+    "wall_stripes": {
+     "color": "tyndall",
+     "height": 0.5,
+     "base": 1.2
+    }
+   }
+  },
+  "e5129cb0-5482-41c9-9bb5-33071a64a461": {
+   "name": "City Hall",
+   "notes": "part of City Hall (Goad material: stone)",
+   "set": {
+    "wall_color": "red",
+    "wall_stripes": {
+     "color": "tyndall",
+     "height": 0.5,
+     "base": 1.2
+    }
+   }
+  },
+  "06e2ef08-ceff-4974-bee1-0171feca8a0e": {
+   "name": "City Hall",
+   "notes": "centre tower (5 storeys): red brick with stone bands, ogee dome",
+   "set": {
+    "wall_color": "red",
+    "wall_stripes": {
+     "color": "tyndall",
+     "height": 0.5,
+     "base": 1.2
+    },
+    "roof_type": "bell"
+   }
+  },
+  "6c27ad24-51fc-4ec2-8f1a-d25c860f8eeb": {
+   "name": "Fort Garry Gate (Governor's Gate)",
+   "notes": "The better of two models of the gate (Mike, 2026-09-29). Built 1853 with the fort's northern extension; still standing.",
+   "set": {
+    "born": "1853-08-01",
+    "died": null,
+    "died_basis": "still_standing",
+    "date_precision": {
+     "born": "year"
+    }
+   }
+  },
+  "802ae591-76d8-4586-92e3-a2980b09a4bc": {
+   "name": "Fort Garry Gate (duplicate)",
+   "notes": "Second, worse model of the gate from Goad 1906 sheet 1 — misplaced, dates suspect (Mike, 2026-09-29). The 6c27ad24 model is kept.",
+   "remove": true
+  },
+  "fe1217df-844b-45f6-89f3-cc6ee49fbe67": {
+   "name": "Upper Fort Garry — Fur Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "c633940f-18b0-43be-9ff7-ec44b2b80713": {
+   "name": "Upper Fort Garry — Fur Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "ad2b37f8-a94d-4ff0-83dc-ea207d399d92": {
+   "name": "Upper Fort Garry — Men's House",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "825b138b-a718-49e4-8a1c-1297676a9777": {
+   "name": "Upper Fort Garry — Clerk's Residence",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Removed for the straightening of Main Street after the 1882 sale (1881–1884).",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "bed80a47-4371-41ef-9de2-ed3fc7b09a94": {
+   "name": "Upper Fort Garry — Pemmican Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "28d2a1cd-7887-49ed-90bd-c234f7f6b8ae": {
+   "name": "Upper Fort Garry — Flour Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "6bf3748b-ca64-44a3-ab2b-0590537fed6f": {
+   "name": "Upper Fort Garry — Governor's Residence",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Lieutenant Governor's residence 1871–1883; stood until the HBC tore it down in 1888. Build year: original-fort placeholder. Peaked roof forced (roof_type) — the outline has too many points for the automatic peaked-roof rule. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1888-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    },
+    "roof_type": "gabled"
+   }
+  },
+  "e2616f20-00b6-46ae-a957-873939b205d5": {
+   "name": "Upper Fort Garry — Office Buillding [Former Governor's Residence?]",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "51067c1d-11b5-48f0-8f5b-c8945350d51c": {
+   "name": "Upper Fort Garry — Fire Engine",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "90e68d9b-57dc-48dd-8679-976290802d47": {
+   "name": "Upper Fort Garry — Well House",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "5205dd9f-2565-4fc2-af31-b9bbe337914e": {
+   "name": "Upper Fort Garry — Power Magazine",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "4f7533a1-5e40-4e06-b1f5-381c0cb01076": {
+   "name": "Upper Fort Garry — General Depot",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Built 1860. Fort sold/auctioned 1882 (four buildings moved to the HBC mill; some stood to 1888 — which is unrecorded).",
+   "set": {
+    "born": "1860-06-01",
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "5616f7c6-e2ac-490c-987f-e953eb2aeba6": {
+   "name": "Upper Fort Garry — HBC Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Removed for the straightening of Main Street after the 1882 sale (1881–1884).",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "fb3929de-53b3-419f-885f-c9ab5bcebe31": {
+   "name": "Upper Fort Garry — Upper Fort Gaarry Addition Wall",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Wooden (oak) wall of the northern extension, early 1850s (gate 1853). Walls demolished 1881, stone reused for the new HBC store (opened Oct 1881).",
+   "set": {
+    "born": "1853-06-01",
+    "construction_months": 24,
+    "died": "1881-06-01",
+    "died_basis": "demolished",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "5d3e0f53-8bcf-4368-b0d0-2d8d5aa5810d": {
+   "name": "Upper Fort Garry — Upper Fort Gaarry Original North Wall",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original stone north wall, 1837–1853; removed just after the northern addition (walls complete 1853-06-01) replaced it.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1853-08-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    },
+    "died_basis": "removed just after the northern addition was complete (addition wall finished 1853-06-01)"
+   }
+  },
+  "5da328da-2f42-42bc-b391-0d07a5afb407": {
+   "name": "Upper Fort Garry — Bastion",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1881-06-01",
+    "died_basis": "demolished",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "90a5b6ba-e7d9-40f2-81c9-419cf3e82eef": {
+   "name": "Upper Fort Garry — Bastion",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1881-06-01",
+    "died_basis": "demolished",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "ec0da9be-a369-42ff-aa59-989d3c27e96c": {
+   "name": "Upper Fort Garry — Upper Fort Garry Original SEW Wall",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1881-06-01",
+    "died_basis": "demolished",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "2b57cd50-01ec-4e94-8b90-59928c255e61": {
+   "name": "Upper Fort Garry — Bastion",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1881-06-01",
+    "died_basis": "demolished",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "6698d4bb-636c-45b0-ad58-4469ed60ae3a": {
+   "name": "Upper Fort Garry — Bastion",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original stone walls/corner bastions, 1835–1837. Demolished 1881; stone reused for the new HBC store.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1881-06-01",
+    "died_basis": "demolished",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "5ac2827b-e071-4db1-a30f-04ef2a6388c6": {
+   "name": "Upper Fort Garry — Summer Kitchen",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "257deb71-906d-451e-86e2-8d5b5f198f94": {
+   "name": "Upper Fort Garry — Kitchen Garden",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "af0cf838-0642-4a2d-86e0-102505f87690": {
+   "name": "Upper Fort Garry — Yellow Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "8623f64d-093c-4f6c-aed0-3e18385d6e4e": {
+   "name": "Upper Fort Garry — Fur Store",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882.",
+   "set": {
+    "born": "1837-06-01",
+    "construction_months": 24,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "c268bebe-7d33-4f7f-8631-9c8cb8a2fad1": {
+   "name": "Upper Fort Garry — Governor's Garden",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/upperfortgarry.shtml",
+    "http://www.mhs.mb.ca/docs/mb_history/04/fortgarrygate.shtml",
+    "https://www.upperfortgarry.com/information/discovering-ufg/historic-structures/",
+    "https://en.wikipedia.org/wiki/Fort_Garry"
+   ],
+   "notes": "Original fort building (1835–1837 placeholder). Fort sold/auctioned 1882; four buildings moved to the HBC mill, some stood until 1888 — which is unrecorded, so 1882. Inside the north addition (walls 1853): dated after the addition wall (was the 1837 original-fort placeholder) — per Mike.",
+   "set": {
+    "born": "1854-06-01",
+    "construction_months": 12,
+    "died": "1882-06-01",
+    "date_precision": {
+     "born": "year",
+     "died": "year"
+    }
+   }
+  },
+  "4f634818-55c4-450b-9d23-1b6a24daad0e": {
+   "name": "McIntyre Block",
+   "address": "416 Main St",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/mcintyreblock.shtml",
+    "wpgfiremuseum.ca 1873-1899",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "First McIntyre Block (1884, enlarged 1886/1890) destroyed by fire 2 Feb 1898 (MHS; Fire Museum says 11 Feb). New 5-storey block built 1898. Storeys of the 1884 block unknown — 3 assumed.",
+   "phases": [
+    {
+     "phase": "first McIntyre Block (1884)",
+     "floors": 3,
+     "born": "1884-06-01",
+     "died": "1898-02-02",
+     "died_by": "fire",
+     "date_precision": {
+      "born": "year",
+      "died": "day"
+     }
+    },
+    {
+     "phase": "new block (1898)",
+     "born": "1898-11-01",
+     "construction_months": 8,
+     "date_precision": {
+      "born": "year"
+     }
+    }
+   ]
+  },
+  "099bfcec-9262-4b77-a777-1ef6a3b9c667": {
+   "name": "McIntyre Block",
+   "address": "416 Main St",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/mcintyreblock.shtml",
+    "wpgfiremuseum.ca 1873-1899",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "First McIntyre Block (1884, enlarged 1886/1890) destroyed by fire 2 Feb 1898 (MHS; Fire Museum says 11 Feb). New 5-storey block built 1898. Storeys of the 1884 block unknown — 3 assumed.",
+   "phases": [
+    {
+     "phase": "first McIntyre Block (1884)",
+     "floors": 3,
+     "born": "1884-06-01",
+     "died": "1898-02-02",
+     "died_by": "fire",
+     "date_precision": {
+      "born": "year",
+      "died": "day"
+     }
+    },
+    {
+     "phase": "new block (1898)",
+     "born": "1898-11-01",
+     "construction_months": 8,
+     "date_precision": {
+      "born": "year"
+     }
+    }
+   ]
+  },
+  "2faed2c4-da33-4b96-9b09-f3f96a39055f": {
+   "name": "J.H. Ashdown Hardware store",
+   "address": "Albert St at Bannatyne Ave",
+   "sources": [
+    "heritagewinnipeg.com/?p=17875",
+    "wpgfiremuseum.ca 1900-1914",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed in the Bulman Block fire, night of 11 Oct 1904. Rebuilt: first two floors open by Christmas 1904, four more storeys in 1905 — two storeys taller than before (so 4 before).",
+   "phases": [
+    {
+     "phase": "store before the 1904 fire",
+     "floors": 4,
+     "died": "1904-10-11",
+     "died_by": "fire",
+     "date_precision": {
+      "died": "day"
+     }
+    },
+    {
+     "phase": "rebuilt, storeys 1–2",
+     "floors": 2,
+     "born": "1904-12-20",
+     "construction_months": 2,
+     "date_precision": {
+      "born": "month"
+     }
+    },
+    {
+     "phase": "1905: four more storeys",
+     "base_floors": 2,
+     "floors": 6,
+     "born": "1905-10-01",
+     "construction_months": 6,
+     "date_precision": {
+      "born": "year"
+     }
+    }
+   ]
+  },
+  "02d3e8a5-0e5e-4d04-a547-331b6a4bc17b": {
+   "name": "J.H. Ashdown Hardware store",
+   "address": "Albert St at Bannatyne Ave",
+   "sources": [
+    "heritagewinnipeg.com/?p=17875",
+    "wpgfiremuseum.ca 1900-1914",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed in the Bulman Block fire, night of 11 Oct 1904. Rebuilt: first two floors open by Christmas 1904, four more storeys in 1905 — two storeys taller than before (so 4 before).",
+   "phases": [
+    {
+     "phase": "store before the 1904 fire",
+     "floors": 4,
+     "died": "1904-10-11",
+     "died_by": "fire",
+     "date_precision": {
+      "died": "day"
+     }
+    },
+    {
+     "phase": "rebuilt, storeys 1–2",
+     "floors": 2,
+     "born": "1904-12-20",
+     "construction_months": 2,
+     "date_precision": {
+      "born": "month"
+     }
+    },
+    {
+     "phase": "1905: four more storeys",
+     "base_floors": 2,
+     "floors": 6,
+     "born": "1905-10-01",
+     "construction_months": 6,
+     "date_precision": {
+      "born": "year"
+     }
+    }
+   ]
+  },
+  "daaa712b-ec5f-4bfb-9143-1984bf26f60e": {
+   "name": "St. Boniface Cathedral",
+   "sources": [
+    "mhs.mb.ca/docs/MB_history/63/historicalchurches.shtml",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "The 1832 cathedral (third church) and bishop's quarters burned in December 1860 (tallow for Christmas candles boiled over); day not found. Modelled on the footprint of the 1862 stone cathedral that replaced it.",
+   "phases": [
+    {
+     "phase": "1832 cathedral",
+     "born": "1832-06-01",
+     "construction_months": 12,
+     "died": "1860-12-15",
+     "died_by": "fire",
+     "date_precision": {
+      "born": "year",
+      "died": "month"
+     }
+    },
+    {
+     "phase": "1862 stone cathedral"
+    }
+   ]
+  },
+  "855f3cd7-20ec-4a84-b49d-5319f8cc43a7": {
+   "name": "St. Boniface Cathedral",
+   "sources": [
+    "mhs.mb.ca/docs/MB_history/63/historicalchurches.shtml",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "The 1832 cathedral (third church) and bishop's quarters burned in December 1860 (tallow for Christmas candles boiled over); day not found. Modelled on the footprint of the 1862 stone cathedral that replaced it.",
+   "phases": [
+    {
+     "phase": "1832 cathedral",
+     "born": "1832-06-01",
+     "construction_months": 12,
+     "died": "1860-12-15",
+     "died_by": "fire",
+     "date_precision": {
+      "born": "year",
+      "died": "month"
+     }
+    },
+    {
+     "phase": "1862 stone cathedral"
+    }
+   ]
+  },
+  "d7ca9f59-a769-44bb-887c-2302ab1f9f71": {
+   "name": "Canadian Moline Plow Building",
+   "address": "669 Logan Ave (NE corner Chambers St)",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/molineplowbuilding.shtml",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Fire 28 Sep 1918 (C.S. Judson Co.) destroyed the building and contents; the upper three storeys were removed and it carried on as one storey.",
+   "phases": [
+    {
+     "phase": "ground floor (survived)",
+     "floors": 1
+    },
+    {
+     "phase": "upper storeys (burned 1918)",
+     "base_floors": 1,
+     "floors": 4,
+     "died": "1918-09-28",
+     "died_by": "fire",
+     "date_precision": {
+      "died": "day"
+     }
+    }
+   ]
+  },
+  "c45166a0-fbe7-4bee-96df-aa4ab4236180": {
+   "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
+   "address": "Notre Dame Ave at Adelaide St",
+   "sources": [
+    "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
+    "wpgfiremuseum.ca/winnipeg-theatre-fire/",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
+   "set": {
+    "died": "1926-12-23",
+    "died_by": "fire",
+    "date_precision": {
+     "died": "day"
+    }
+   }
+  },
+  "563b25e5-b0f2-40c0-8ffe-9c462c39e55c": {
+   "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
+   "address": "Notre Dame Ave at Adelaide St",
+   "sources": [
+    "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
+    "wpgfiremuseum.ca/winnipeg-theatre-fire/",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
+   "set": {
+    "died": "1926-12-23",
+    "died_by": "fire",
+    "date_precision": {
+     "died": "day"
+    }
+   }
+  },
+  "0e406fcb-06f1-414e-811e-14737efaed44": {
+   "name": "Winnipeg Theatre (Victoria Hall / Bijou / Winnipeg Opera House)",
+   "address": "Notre Dame Ave at Adelaide St",
+   "sources": [
+    "mhs.mb.ca/docs/events/winnipegtheatrefire.shtml",
+    "wpgfiremuseum.ca/winnipeg-theatre-fire/",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed by fire 23 Dec 1926; four firefighters killed. Not rebuilt.",
+   "set": {
+    "died": "1926-12-23",
+    "died_by": "fire",
+    "date_precision": {
+     "died": "day"
+    }
+   }
+  },
+  "47cd9609-ad77-4984-b780-2fd65941f5eb": {
+   "name": "Old Tribune Building (Grand Theatre / Tribune Block)",
+   "address": "211 McDermot Ave",
+   "sources": [
+    "winnipegarchitecture.ca/places/257-smith-street/",
+    "wpgfiremuseum.ca 1915-1940",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed by fire 16 May 1930; site left empty. (The Tribune had moved to Smith St in 1914.)",
+   "set": {
+    "died": "1930-05-16",
+    "died_by": "fire",
+    "date_precision": {
+     "died": "day"
+    }
+   }
+  },
+  "753ae38d-8f4b-4813-8349-f55592f9d3df": {
+   "name": "Old Tribune Building (Grand Theatre / Tribune Block)",
+   "address": "211 McDermot Ave",
+   "sources": [
+    "winnipegarchitecture.ca/places/257-smith-street/",
+    "wpgfiremuseum.ca 1915-1940",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Destroyed by fire 16 May 1930; site left empty. (The Tribune had moved to Smith St in 1914.)",
+   "set": {
+    "died": "1930-05-16",
+    "died_by": "fire",
+    "date_precision": {
+     "died": "day"
+    }
+   }
+  },
+  "ac90b2b3-8d7b-44d2-9887-52aa0eb8d89c": {
+   "name": "Scott Block",
+   "sources": [
+    "wpgfiremuseum.ca 1900-1914",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived).",
+   "set": {
+    "fires": [
+     {
+      "date": "1914-03-23",
+      "days": 3,
+      "severity": 0.8,
+      "note": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived)."
+     }
+    ]
+   }
+  },
+  "eac81f97-7612-47fc-8e38-dd4c96d1a111": {
+   "name": "Scott Block",
+   "sources": [
+    "wpgfiremuseum.ca 1900-1914",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived).",
+   "set": {
+    "fires": [
+     {
+      "date": "1914-03-23",
+      "days": 3,
+      "severity": 0.8,
+      "note": "Fire 23 Mar 1914 (Fire Museum listing only; extent unknown — shown as survived)."
+     }
+    ]
+   }
+  },
+  "5343a28b-b8b3-5289-bea5-58c3995c4928": {
+   "name": "Scott-Bathgate Building",
+   "sources": [
+    "wpgfiremuseum.ca 1915-1940",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Fire 15 Feb 1917 (Fire Museum listing only; extent unknown — shown as survived; building still stands).",
+   "set": {
+    "fires": [
+     {
+      "date": "1917-02-15",
+      "days": 3,
+      "severity": 0.8,
+      "note": "Fire 15 Feb 1917 (Fire Museum listing only; extent unknown — shown as survived; building still stands)."
+     }
+    ]
+   }
+  },
+  "b8d34dd2-d689-5ae2-bea0-49cf9ba9965d": {
+   "name": "Dingwall Building",
+   "sources": [
+    "wpgfiremuseum.ca 1915-1940",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Fire Feb 1921, day unknown (ice load snapped Station No. 7's aerial ladder). Shown as survived.",
+   "set": {
+    "fires": [
+     {
+      "date": "1921-02-15",
+      "days": 2,
+      "severity": 0.8,
+      "note": "Fire Feb 1921, day unknown (ice load snapped Station No. 7's aerial ladder). Shown as survived."
+     }
+    ]
+   }
+  },
+  "884ccb3e-0d5f-4d05-b2b6-c571eae2f739": {
+   "name": "Leckie Building",
+   "sources": [
+    "mhs.mb.ca/docs/sites/leckiebuilding.shtml",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "Interior gutted 21 Sep 1924; restored (designated 2017).",
+   "set": {
+    "fires": [
+     {
+      "date": "1924-09-21",
+      "days": 2,
+      "severity": 1.0,
+      "note": "Interior gutted 21 Sep 1924; restored (designated 2017)."
+     }
+    ]
+   }
+  },
+  "0c321282-de8e-4c1b-9e23-183717549ad0": {
+   "name": "Tees & Persse building",
+   "sources": [
+    "ipernity.com/doc/567275/album/900188 (collector postcard notes)",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "New Year's Day 1924: burned all night, out by ~10 a.m.; building repaired and still in use.",
+   "set": {
+    "fires": [
+     {
+      "date": "1924-01-01",
+      "days": 2,
+      "severity": 1.0,
+      "note": "New Year's Day 1924: burned all night, out by ~10 a.m.; building repaired and still in use."
+     }
+    ]
+   }
+  },
+  "a51c9536-e9fb-4126-8cf9-67c562e06359": {
+   "name": "James Robertson & Co. (older building)",
+   "sources": [
+    "ipernity.com/tag/567275/keyword/17753",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "6 Apr 1907: older of two buildings damaged, contents lost; newer one saved by fireproof wall. Match to this footprint is a best guess among the Robertson buildings.",
+   "set": {
+    "fires": [
+     {
+      "date": "1907-04-06",
+      "days": 2,
+      "severity": 0.8,
+      "note": "6 Apr 1907: older of two buildings damaged, contents lost; newer one saved by fireproof wall. Match to this footprint is a best guess among the Robertson buildings."
+     }
+    ]
+   }
+  },
+  "b80f2e62-8612-478c-a340-c8927f9f1b8d": {
+   "name": "Radford-Wright Building (door and sash)",
+   "sources": [
+    "mhs.mb.ca/docs/mb_history/67/plate53.shtml",
+    "fire list compiled 2026-09 (winnipeg_stboniface_fires_1850-1940.csv)"
+   ],
+   "notes": "9 Mar 1912 arson + naphtha explosion: rear blown out, roof off, walls collapsed; block saved from total loss. 7 dead incl. firemen McPherson and Molyneux. MATCH UNCERTAIN: 3-storey brick next to Stuart Machinery at ~776 Main.",
+   "set": {
+    "fires": [
+     {
+      "date": "1912-03-09",
+      "days": 2,
+      "severity": 1.0,
+      "note": "9 Mar 1912 arson + naphtha explosion: rear blown out, roof off, walls collapsed; block saved from total loss. 7 dead incl. firemen McPherson and Molyneux. MATCH UNCERTAIN: 3-storey brick next to Stuart Machinery at ~776 Main."
+     }
+    ]
+   }
+  },
+  "38d2a8eb-3040-4720-a0c6-b8bbd3430a4f": {
+   "name": "Manitoba Club",
+   "address": "194 Broadway",
+   "notes": "Red brick with sandstone base and trim (per Mike).",
+   "set": {
+    "wall_color": "red",
+    "wall_stripes": {
+     "color": "sandstone",
+     "every": 4.2,
+     "height": 0.35,
+     "offset": 0,
+     "base": 1.2
+    }
+   }
+  },
+  "ccd37dd8-9eb4-475f-9d64-cae6381417ae": {
+   "name": "Union Bank Building (Union Bank Tower)",
+   "notes": "Light (cream) brick / terra cotta — per Mike. Built 1903–1904 (Darling & Pearson; MHS: ten storeys); Winnipeg's first skyscraper. The 1880 date this footprint carried was a placeholder. Completion mid-1904 assumed, 12 months' construction (starts June 1903).",
+   "set": {
+    "wall_color": "cream",
+    "born": "1904-06-01",
+    "construction_months": 12,
+    "date_precision": {
+     "born": "year"
+    }
+   },
+   "address": "504 Main Street",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/unionbankbuilding.shtml"
+   ]
+  },
+  "5c92d894-6309-4ae8-b6f2-dd64f180ca52": {
+   "name": "Union Bank Tower",
+   "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+   "set": {
+    "wall_color": "cream"
+   }
+  },
+  "27fa45a5-6320-4963-ae0c-0d82c40e8eee": {
+   "name": "Union Bank Tower",
+   "notes": "Light (cream) brick / terra cotta — per Mike, the whiter side of the material.",
+   "set": {
+    "wall_color": "cream"
+   }
+  },
+  "3ffeb9e9-bff5-4544-9055-2510edd2b7db": {
+   "name": "Union Bank Building (Union Bank Tower)",
+   "notes": "Light (cream) brick / terra cotta — per Mike. Built 1903–1904 (Darling & Pearson; MHS: ten storeys); Winnipeg's first skyscraper. The 1880 date this footprint carried was a placeholder. Completion mid-1904 assumed, 12 months' construction (starts June 1903).",
+   "set": {
+    "wall_color": "cream",
+    "born": "1904-06-01",
+    "construction_months": 12,
+    "date_precision": {
+     "born": "year"
+    }
+   },
+   "address": "504 Main Street",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/unionbankbuilding.shtml"
+   ]
+  },
+  "a868d0de-ced3-43e5-afd8-d362b40a94ae": {
+   "name": "Steamboat Landing (building)",
+   "notes": "Removed per Mike.",
+   "remove": true
+  },
+  "e1714c01-c3c8-5eb1-89ee-ae5b190bbfff": {
+   "name": "Fort Garry Hotel",
+   "address": "222 Broadway",
+   "notes": "Château-style railway hotel (1913): tall steep copper roof with many dormers. Walls 11.5 storeys + ~10 m mansard in weathered (verdigris) copper — per Mike.",
+   "set": {
+    "floors": 11.5,
+    "roof_type": "mansard",
+    "roof_height": 10,
+    "roof_color": "copper",
+    "parapet": false
+   }
+  },
+  "85346c6d-e4a6-535e-b66b-47adc821ffce": {
+   "name": "Université de Saint-Boniface (St. Boniface College)",
+   "notes": "Sprawling complex: roof built per wing (roof_type wings) — per Mike.",
+   "set": {
+    "roof_type": "wings"
+   }
+  },
+  "7d155cf6-128d-5f4d-a2f3-44bde4a6cd72": {
+   "name": "St. Boniface Hospital",
+   "notes": "Sprawling complex: roof built per wing (roof_type wings) — per Mike.",
+   "set": {
+    "roof_type": "wings"
+   }
+  },
+  "e6dd4257-3a82-4937-9ced-f0fd11c6036e": {
+   "name": "Louise Bridge (Goad)",
+   "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+   "remove": true
+  },
+  "9eea30c8-cb0b-4c29-8be6-80b7cb8dfe8c": {
+   "name": "Salter Street overpass (Goad)",
+   "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+   "remove": true
+  },
+  "bf035551-b5d4-48cd-9275-b46f5c3d819e": {
+   "name": "Salter Street overpass (Goad, duplicate)",
+   "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+   "remove": true
+  },
+  "c9f4f0e4-cfa2-4bc4-9b08-d34dc9dacf50": {
+   "name": "Main Street subway (duplicate)",
+   "notes": "Replaced by the generated bridge succession (data/pastforward_2026_bridges.geojson) / duplicate — per Mike.",
+   "remove": true
+  },
+  "f5b78f17-5e40-4439-bb61-66176fc9ae4b": {
+   "name": "CPR Main Street Subway",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/mainstreetsubway.shtml"
+   ],
+   "notes": "Multi-span concrete bridge for eight CPR tracks, opened November 1904 (MHS).",
+   "set": {
+    "born": "1904-11-01"
+   }
+  },
+  "2206430b-0c9c-4b83-b689-e16cb3886da0": {
+   "name": "Point Douglas rail bridge (Goad footprint)",
+   "notes": "Replaced by the generated bridge (9 m wide; the Goad/Planimetro footprint was 43.5 m) — per Mike.",
+   "remove": true
+  },
+  "9846382b-7f5b-4b4b-be8a-13e67064159d": {
+   "name": "Fire Hall No. 2 — main building",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/firehall2.shtml"
+   ],
+   "notes": "Fire Hall No. 2 (South Fire Hall), Smith St at York Ave: built 1882, major additions 1907–08 (Bruce & Smith), closed 1941 and demolished (date not given — left standing). The Goad-derived main-building date (1903) was too late; hose tower was the 1880 placeholder.",
+   "set": {
+    "born": "1882-06-01",
+    "construction_months": 8,
+    "date_precision": {
+     "born": "year"
+    }
+   }
+  },
+  "3424d95e-6bc3-43f7-bf6d-2a3de9b59d19": {
+   "name": "Fire Hall No. 2 — hose tower",
+   "sources": [
+    "https://www.mhs.mb.ca/docs/sites/firehall2.shtml"
+   ],
+   "notes": "Fire Hall No. 2 (South Fire Hall), Smith St at York Ave: built 1882, major additions 1907–08 (Bruce & Smith), closed 1941 and demolished (date not given — left standing). The Goad-derived main-building date (1903) was too late; hose tower was the 1880 placeholder.",
+   "set": {
+    "born": "1882-06-01",
+    "construction_months": 8,
+    "date_precision": {
+     "born": "year"
+    }
+   }
+  },
+  "7ec45547-5375-41cb-aff2-9e6879748e60": {
+   "name": "Upper Fort Garry angled fence (piece)",
+   "notes": "With the new link in pastforward_2026_ufg_walls.geojson: stands where the original NE wall was removed, 1853-08 to the fort's demolition. Was dated 1880-81 only, with no height.",
+   "set": {
+    "born": "1853-08-01",
+    "died": "1881-01-01",
+    "floors": 0.45
+   }
+  },
+  "267d371b-28bc-40c5-a4c7-3247395e4a58": {
+   "name": "Upper Fort Garry angled fence (piece)",
+   "notes": "With the new link in pastforward_2026_ufg_walls.geojson: stands where the original NE wall was removed, 1853-08 to the fort's demolition. Was dated 1880-81 only, with no height.",
+   "set": {
+    "born": "1853-08-01",
+    "died": "1881-01-01",
+    "floors": 0.45
+   }
   }
+ }
 }

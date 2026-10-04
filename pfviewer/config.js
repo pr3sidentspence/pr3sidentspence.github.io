@@ -26,6 +26,7 @@ export const CONFIG = {
     autoload: [
       './data/pastforward_2026_assessment.geojson',  // growth master + assessment/heritage dates (matching/merge_assessment.py) — no OSM data
       './data/pastforward_2026_osm.geojson',         // new pre-1907 buildings with OSM footprints — ODbL, kept as a separate database
+      './data/pastforward_2026_ufg_walls.geojson',        // Upper Fort Garry: the NE-wall gap + the angled fence that replaced it (tools/ufg_walls.py)
       './data/pastforward_2026_stb1880.geojson',          // St Boniface buildings from the 1880 bird's-eye view (tools/stb1880_ingest.py; deduped against the master)
       './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
       './data/pastforward_2026_seine_bridges.geojson',    // timber bridges over the Seine at Provencher, the railway and Marion (tools/seine_bridges.py)
