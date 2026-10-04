@@ -1,0 +1,48 @@
+{
+ "bridges": [
+  {
+   "name": "Bridge 11",
+   "lon": -97.1239349,
+   "lat": 49.886791,
+   "axisE": -0.2521,
+   "axisN": -0.9677,
+   "length": 28.7,
+   "width": 14.7,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  },
+  {
+   "name": "Bridge 12",
+   "lon": -97.1270101,
+   "lat": 49.8829365,
+   "axisE": -0.5225,
+   "axisN": -0.8526,
+   "length": 28.7,
+   "width": 14.7,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  },
+  {
+   "name": "Bridge 13",
+   "lon": -97.1285451,
+   "lat": 49.8815555,
+   "axisE": 0.3324,
+   "axisN": -0.9432,
+   "length": 16.2,
+   "width": 7.1,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  },
+  {
+   "name": "Bridge 15",
+   "lon": -97.1339939,
+   "lat": 49.8835739,
+   "axisE": -0.9098,
+   "axisN": -0.415,
+   "length": 24.8,
+   "width": 14.7,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  }
+ ]
+}

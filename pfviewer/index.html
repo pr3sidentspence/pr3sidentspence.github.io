@@ -4244,6 +4244,18 @@ function findCreekBridgeSites(roadFeats,roadInfo){
     const c=creekValley.creeks[cid], f=_isoYearFrac(ex.from,NO_BORN), t=_isoYearFrac(ex.to,NO_DIED);
     creekBridgeSites.push({x,z,ux:-tz,uz:tx,cid,road:null,w:ex.width*2,deckW:ex.width,halfL:(BR.length??26)/2,born:Math.max(f,c.born),died:Math.min(t,c.died),span:[f,t]});
   }
+  // Bridges listed in data (data/early_bridges.json: centre, span axis, length, width): each belongs to the creek nearest it.
+  for(const b of earlyBridges){
+    const[sx,sy]=project(b.lon,b.lat), x=sx, z=-sy; let best=1e9, cid=-1;
+    for(const P of creekValley.pieces) for(let i=0;i<P.length-1;i++){
+      const[a0,a1]=P[i],[b0,b1]=P[i+1],dx=b0-a0,dz=b1-a1,L2=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-a0)*dx+(z-a1)*dz)/L2)), d=Math.hypot(x-a0-dx*t,z-a1-dz*t);
+      if(d<best){best=d;cid=P.cid;} }
+    if(cid<0||best>40) continue;                       // no creek there (yet)
+    const c=creekValley.creeks[cid], f=_isoYearFrac(b.from,NO_BORN), t=_isoYearFrac(b.to,NO_DIED);
+    creekBridgeSites.push({x,z,ux:b.axisE,uz:-b.axisN,cid,road:null,w:b.width*2,deckW:b.width,halfL:b.length/2,born:Math.max(f,c.born),died:Math.min(t,c.died),span:[f,t]});
+  }
+  { const listed=creekBridgeSites.filter(q=>q.road===null);   // an automatic crossing next to a listed bridge is the same bridge
+    creekBridgeSites=creekBridgeSites.filter(q=>q.road===null||!listed.some(l=>Math.hypot(l.x-q.x,l.z-q.z)<45)); }
   creekBridgeSites=creekBridgeSites.filter(q=>q.died>q.born);
 }
 // The bridge site whose span covers (x,z) (road is replaced by the deck there), or null.
@@ -4255,9 +4267,9 @@ window._debugBridges=()=>creekBridgeSites.map(q=>{const[lo,la]=unproject(q.x,q.z
 function buildCreekBridges(){
   if(creekBridgeMesh){ scene.remove(creekBridgeMesh); creekBridgeMesh.geometry.dispose(); creekBridgeMesh=null; }
   const BR=CONFIG.terrain.creek?.bridge; if(!BR||!creekBridgeSites.length) return;
-  const geos=[], L=BR.length??26, D=CONFIG.terrain.creek.depth;
+  const geos=[], D=CONFIG.terrain.creek.depth;
   for(const q of creekBridgeSites){
-    const{x,z,ux,uz}=q, theta=Math.atan2(-uz,ux), W=q.deckW;
+    const{x,z,ux,uz}=q, theta=Math.atan2(-uz,ux), W=q.deckW, L=q.halfL*2;
     const yTop=Math.max(sampleTerrainY(x+ux*L/2,z+uz*L/2),sampleTerrainY(x-ux*L/2,z-uz*L/2),sampleTerrainY(x,z))+0.17;
     // box along × height × across, centred at (a along, yc, c across) from the site
     const box=(la,h,lc,a,yc,c)=>{ const g=new THREE.BoxGeometry(la,h,lc); g.rotateY(theta); g.translate(x+ux*a-uz*c,yc,z+uz*a+ux*c); tagLifespan(g,q.born,q.died); geos.push(g); };
@@ -10452,7 +10464,14 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
+let earlyBridges=[];
+async function loadEarlyBridges(){
+  const f=CONFIG.terrain?.creek?.bridge?.file; if(!f) return;
+  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); }
+  catch(e){ console.warn('Creek bridges: failed to load',e); }
+}
 async function loadEarlyVegetation(){
+  await loadEarlyBridges();
   const f=CONFIG.earlyVegetation?.file; if(!f) return;
   try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; earlyVeg=await r.json();
     console.log(`🌳 Early vegetation: ${earlyVeg.stands.length} stand(s), ${earlyVeg.trails.length} trail(s)`); }

@@ -71,15 +71,6 @@ CREEKS = {
       [(1818,657),(1813,667),(1812,687),(1813,708),(1807,720),(1801,733),(1802,747),(1793,755),(1792,772),(1800,783),(1808,795)],
       [(1808,795),(1820,785),(1828,792),(1843,803),(1852,817),(1863,837),(1872,853),(1880,870),(1883,886),(1877,907),(1877,925),(1886,942),(1889,960),(1902,966),(1907,984),(1916,985),(1919,995),(1924,1013)],
       [(1808,795),(1810,803),(1808,813),(1802,833)]]),
-  # The creek that drained the oxbow (the swamp of the 1836 plan): from the Red's east bank at the St Boniface
-  # waterfront, past a small pond, into the marsh at the north end of the bow (Parr's 1874 plan: a bridge mark
-  # at its mouth, marsh stipple along Lots 8-10). Gone when the oxbow was filled (our oxbow's `until`, spring 1910).
-  "Oxbow outlet creek": ("1910-04-15", [[]]),
-  # A second small creek and bridge a little south of it (Parr 1874: bridge mark on the bank, three arms); same dates.
-  "Oxbow south outlet creek": ("1910-04-15", [[]]),
-  # South of the Assiniboine, west bank of the Red (Fort Rouge; Parr 1874, among Lot 41's street lines). Date: a guess —
-  # it went as the streets were laid out.
-  "Fort Rouge creek": ("1900-01-01", [[]]),
   "Omand's Creek": (None, [[(1293,1237),(1290,1220),(1283,1209),(1277,1197),(1267,1178),(1260,1168),(1257,1160)]]),
 }
 
@@ -104,13 +95,6 @@ def px74_to_ll(px, py):
 CREEKS_1874 = {
   "Colony Creek": [[(591,1191),(587,1187),(573,1178),(578,1161),(569,1143),(576,1126),(567,1113),(571,1098),(565,1087),(547,1083),(543,1065),(534,1048),(526,1030),(530,1013),(521,994),(504,974),(480,948),(443,930),(424,915),(419,902),(417,878)]],
   "Logan's Creek": [[(700,503),(694,489),(689,475),(683,461),(672,444),(661,433),(650,423),(645,418)]],
-  "Oxbow outlet creek": [[(1028,808),(1040,803),(1052,797),(1060,788),(1063,775),(1070,768),(1085,763),(1105,753),(1125,748),(1145,745),(1160,750)],
-                         [(1075,771),(1095,785),(1115,795),(1127,801)]],
-  "Oxbow south outlet creek": [[(1028,943),(1027,936),(1024,922),(1022,907),(1020,898)],
-                               [(1028,943),(1022,950),(1018,955)],
-                               [(1028,943),(1035,940),(1043,937)]],
-  "Fort Rouge creek": [[(round(812+(X-400)/3.76,1), round(890+(Y-95)/3.76,1)) for X,Y in
-                        [(865,573),(840,562),(822,545),(818,520),(805,495),(775,478),(745,468),(712,463),(690,463),(670,455),(650,447),(630,443)]]],
   "Pritchard's Creek": [[(577,109),(574,111),(566,116),(559,122),(556,131),(553,142),(548,152),(530,159),(514,162),(497,161),(488,159),(478,153)]],
 }
 
@@ -126,8 +110,6 @@ def px36_to_ll(px, py):
     ux, uy = c * x - s * y, s * x + c * y
     return C_LON + ux * MPP36 / M_LON, C_LAT - uy * MPP36 / M_LAT
 CREEKS_1836 = {}   # (the plan's meandering east-bank 'Creek' is the Seine itself, already in the OSM river data)
-
-BRIDGE1 = (-97.12418148, 49.88681943)   # lon, lat
 
 def rings(path):
     g = json.load(open(path)); out = []
@@ -148,6 +130,46 @@ def nearest_on(rings_, lon, lat):
             if d < best[0]: best = (d, (lon + qx / M_LON, lat + qy / M_LAT))
     return math.sqrt(best[0]), best[1]
 
+
+# ── Mike's St Boniface / Fort Rouge routes (tools/sources/StB_creeks_bridges.geojson): old creek paths he made out
+# in satellite imagery, drawn as 'railway' lines, plus bridges drawn as polygons (long edge = span, short = deck width).
+# These replace my own tracings of the oxbow outlet / Fort Rouge creeks. Dates are guesses (see MIKE_CREEKS).
+SRC_MIKE = "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+MIKE_CREEKS = {   # feature id -> (creek name, died)
+  4:  ("South St Boniface creek", "1910-04-15"),
+  5:  ("Oxbow outlet creek", "1910-04-15"),          # from the north end of the bow west to the Red (mouth at the Grey Nuns monument bridge)
+  6:  ("Oxbow outlet creek", "1910-04-15"),          # its short branch (the Y)
+  7:  ("Oxbow south outlet creek", "1910-04-15"),    # along the bank south of the hospital
+  9:  ("Oxbow south outlet creek", "1910-04-15"),
+  10: ("St Boniface bank creek", "1910-04-15"),      # the long one from the south-west
+  14: ("Fort Rouge creek", "1900-01-01"),
+  16: ("St Boniface north creek", "1910-04-15"),
+  17: ("St Boniface north creek", "1910-04-15"),
+}
+MIKE_BRIDGE_FROM = "1870-01-01"   # guess
+def mike_features_and_bridges():
+    g = json.load(open(os.path.join(HERE, 'sources', 'StB_creeks_bridges.geojson')))
+    feats, bridges = [], []
+    for f in g['features']:
+        pid, geom = f['properties']['id'], f['geometry']
+        if geom['type'] == 'LineString' and pid in MIKE_CREEKS:
+            name, died = MIKE_CREEKS[pid]
+            feats.append({"type": "Feature", "properties": {"name": name, "type": "fence", "material": "unknown",
+                "born": "1700-08-01", "died": died, "source": SRC_MIKE}, "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in geom['coordinates']]}})
+        elif geom['type'] == 'Polygon':
+            ring = geom['coordinates'][0][:4]
+            lat0 = sum(q[1] for q in ring) / 4; lon0 = sum(q[0] for q in ring) / 4
+            xy = [((q[0] - lon0) * M_LON, (q[1] - lat0) * M_LAT) for q in ring]
+            edges = [(xy[(i + 1) % 4][0] - xy[i][0], xy[(i + 1) % 4][1] - xy[i][1]) for i in range(4)]
+            lens = [math.hypot(*e) for e in edges]
+            i = 0 if (lens[0] + lens[2]) >= (lens[1] + lens[3]) else 1          # the longer pair of edges = the span
+            ex, ey = edges[i]; L = (lens[i] + lens[i + 2]) / 2; W = (lens[i + 1] + lens[(i + 3) % 4]) / 2
+            n = math.hypot(ex, ey) or 1
+            bridges.append({"name": f"Bridge {pid}", "lon": round(lon0, 7), "lat": round(lat0, 7),
+                            "axisE": round(ex / n, 4), "axisN": round(ey / n, 4), "length": round(L, 1), "width": round(W, 1),
+                            "from": MIKE_BRIDGE_FROM, "source": SRC_MIKE})
+    return feats, bridges
+
 def main():
     rv = rings(os.path.join(HERE, '..', 'data', 'wpg_rivers.geojson'))
     feats = []
@@ -161,18 +183,7 @@ def main():
         mouth = ll[0][0]
         d, q = nearest_on(rv, *mouth)
         shift = (0, 0)
-        if name in ('Oxbow outlet creek', 'Oxbow south outlet creek'):
-            # Mike located the first creek's bridge at the 'Bridges of Caring: Grey Nuns Tribute Monument'
-            # (49.88681943, -97.12418148, south of the convent/orphanage, north of the hospital). Both creeks
-            # share one plan offset, so the second keeps its place relative to the first.
-            om = [px74_to_ll(*CREEKS_1874['Oxbow outlet creek'][0][0])]
-            shift = (BRIDGE1[0] - om[0][0], BRIDGE1[1] - om[0][1])
-            print(f'{name}: placed by the Grey Nuns monument (shift {shift[0]*M_LON:+.0f} E, {shift[1]*M_LAT:+.0f} N m)')
-        elif name == 'Fort Rouge creek':
-            # place by Upper Fort Garry: the plan draws it at plan pixel (812,890); it stood at ~(-97.1340, 49.8870)
-            f = px74_to_ll(812, 890); shift = (-97.1340 - f[0], 49.8870 - f[1])
-            print(f'{name}: placed by Upper Fort Garry (shift {shift[0]*M_LON:+.0f} E, {shift[1]*M_LAT:+.0f} N m); mouth {d:.0f} m from the OSM river after the shift is applied below')
-        elif q and d < 360:        # river polygons only cover part of the map; only snap small corrections
+        if q and d < 360:        # river polygons only cover part of the map; only snap small corrections
             shift = (q[0] - mouth[0], q[1] - mouth[1])
         print(f'{name}: mouth snapped {d:.0f} m' if q and d < 360 else f'{name}: no OSM river within 360 m ({d:.0f}) — left as traced')
         for line in ll:
@@ -181,6 +192,9 @@ def main():
                 "name": name, "type": "fence", "material": "unknown", "born": "1700-08-01", "died": died,
                 "source": ("1874 plan of the City of Winnipeg (Parr)" if name in CREEKS_1874 else "1836 Plan Red River and Assiniboine" if name in CREEKS_1836 else "Graham 1984, Fig. 1")+" — traced by eye; ±100–300 m"},
                 "geometry": {"type": "LineString", "coordinates": coords}})
+    mf, mb = mike_features_and_bridges(); feats += mf
+    json.dump({"bridges": mb}, open(os.path.join(HERE, '..', 'data', 'early_bridges.json'), 'w'), indent=1)
+    print(f'Mike: {len(mf)} creek line(s), {len(mb)} bridge(s)')
     out = os.path.join(HERE, '..', 'data', 'early_creeks.geojson')
     json.dump({"type": "FeatureCollection", "features": feats}, open(out, 'w'))
     print('wrote', out, len(feats), 'lines')
