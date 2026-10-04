@@ -241,7 +241,7 @@ export const CONFIG = {
   // ── Altitude ────────────────────────────────────────────────────────
   // maxM: the ceiling (default = the orbit's maxDistance). Haze (city smoke haze + distance fog) is full below
   // hazeFadeFromM and gone at hazeGoneFrac × maxM. Flying (walk mode, E/Q) speeds up with height: ×flySpeedAtMax at maxM.
-  altitude: { maxM: 3000, hazeFadeFromM: 150, hazeGoneFrac: 0.8, fadePower: 2, fogToo: true, flySpeedAtMax: 5 },   // fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
+  altitude: { maxM: 3000, hazeFadeFromM: 150, hazeGoneFrac: 0.8, fadePower: 2, fogToo: true, flySpeedAtMax: 5, flySpeedCurve: 0.6 },   // fly speed ×(1+4·(alt/max)^curve): ×2 at 300 m, ×3 at 1 km, ×5 at the ceiling (curve 1 would be linear: only ×1.4 at 300 m)   // fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
 
   orbitControls: {
     dampingFactor: 0.07,
@@ -411,6 +411,10 @@ export const CONFIG = {
       [20, 0.40],  // late evening: fires banked
       [22, 0.25],  // night
     ],
+    // Electrification / gas: residential & commercial stacks stop smoking in summer, each at its own year between yearFrom
+    // and yearTo; afterwards they only run in the heating season (heatOn: Oct 1→15 ramps in, heatOff: May 1→31 ramps out,
+    // day of year) and emit pale vapour (tint, opacity). domesticShare = how much of the city haze is domestic.
+    vapor: { yearFrom: 1915, yearTo: 1950, heatOn: [274, 288], heatOff: [121, 151], tint: 0xDDE0E2, opacity: 0.8, domesticShare: 0.75 },
     winterMultiplier: 1.80,   // heating load roughly doubles smoke in winter
     summerMultiplier: 0.70,   // hot months — industrial/cooking only
     // LOD. Per-chimney puffs come from the nearest in-view chimneys within
@@ -673,6 +677,7 @@ export const CONFIG = {
     colors: { hull: 0xE6E0CE, cabin: 0xF1EDE1, roof: 0x6B6255, trim: 0x3A3530, stack: 0x1E1C1A, wheel: 0x8B2A1E },
     wake: { length: 160, foamColor: 0xD9D2BF, foamAlpha: 0.45, armAlpha: 0.28, armAngleDeg: 19.5 },
     smokeTint: 0x8C8883,                         // wood-fired: greyer than the locomotives
+    smoke: { puffs: 24, life: [4.5, 6.5], size0: 3, grow: 9, opacity: 0.6, rise: 2.2, interval: 0.28 },   // plume per stack: puff pool, life s, start size m, growth m, opacity, climb m/s, s between puffs
     // River centrelines (lon/lat, modern river data — water offsetZ applied),
     // derived by marching perpendicular cross-sections of wpg_rivers.geojson.
     // Index order is downstream (Red south→north; Assiniboine west→Forks).
@@ -803,8 +808,9 @@ export const CONFIG = {
   // [start, full, full-until, end] (≈ May 20 · Jun 10 · Aug 10 · Sep 5).
   mosquitoes: {
     perAnchor: 40, maxAnchors: 2400,   // (was 400 — the early creeks pushed the oxbow's anchors past the cap, so its clouds never drew)
-    color: 0x121212, opacity: 0.6,
-    fade: [18, 55],
+    color: 0x121212, opacity: 0.8,
+    fade: [30, 160],          // metres from the camera: fully drawn inside the first, gone by the second
+    sizeK: 60, size: [1.6, 3.6],   // point size in px = sizeK/distance, clamped (× pixel ratio) — was 26/d clamped to 1–2.2 px: easy to miss
     seasonDays: [140, 161, 222, 248],
     wetBoost: 0.8,            // × (1 + wet) in wet summers (seasons.moisture)
     dayLevel: 0.35, duskBoost: 1.6,
@@ -864,9 +870,9 @@ export const CONFIG = {
     // stands `lifeYears` and is displaced early when a permanent building is built
     // within permanentClearM.
     areaWorld: [-700, -700, 900, 1100],
-    count: 70, trackShare: 0.45,
-    years: [1882, 1938], lifeYears: [3, 15],
-    trackClearM: 6, spreadM: 22, minSpacingM: 9, permanentClearM: 100,
+    count: 170, trackShare: 0.45,          // was 70 — more huts (the clearance rules still thin them out)
+    years: [1882, 1938], lifeYears: [4, 18],
+    trackClearM: 6, spreadM: 22, minSpacingM: 7, permanentClearM: 100,
     size: [2.4, 4.2],
     colors: [0x6A6058, 0x5A4E42, 0x7A6E60, 0x4A4440, 0x6E5A44, 0x3A3632],
   },

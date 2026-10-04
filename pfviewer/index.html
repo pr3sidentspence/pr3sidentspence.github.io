@@ -8198,6 +8198,23 @@ function updateHud(now){
     `x ${p.x.toFixed(0)}  y ${p.y.toFixed(1)}  z ${p.z.toFixed(0)}  (${agl.toFixed(0)} m above ground)\n`+
     `heading ${az.toFixed(0)}° ${card}  pitch ${pitchD.toFixed(0)}°`+(fpsMode?'':`  orbit ${p.distanceTo(orbit.target).toFixed(0)} m`);
 }
+// ── Chimney smoke after electrification / gas (CONFIG.chimneys.vapor) ──────────────────────────────
+// Residential/commercial ('light') stacks stop smoking in SUMMER once the building has electricity (and cooks on
+// electricity/gas): each stack gets its own switch year spread over yearFrom..yearTo, so it never happens all at once.
+// After its year a stack only runs in the heating season (gas furnaces), and what it puts out is condensed water
+// vapour — white and thin — not coal smoke. The city haze fades with the share of stacks still burning in summer.
+const _hazeYr=()=>yearFrac(currentViewDate);
+function heatSeasonK(doy){
+  const V=CONFIG.chimneys.vapor||{}, on=V.heatOn??[274,288], off=V.heatOff??[121,151];
+  if(doy>=on[1]||doy<=off[0]) return 1;
+  if(doy>=on[0]) return (doy-on[0])/(on[1]-on[0]);
+  if(doy<off[1]) return 1-(doy-off[0])/(off[1]-off[0]);
+  return 0;
+}
+function summerBurnShare(yr){   // share of residential/commercial stacks still smoking in summer
+  const V=CONFIG.chimneys.vapor; if(!V) return 1;
+  return Math.max(0,Math.min(1,(V.yearTo-yr)/(V.yearTo-V.yearFrom)));
+}
 function tickChimneySmoke(dt){
   // City haze layers: always on (they fade near the camera themselves)
   if(cityHazeGroup){
@@ -8205,10 +8222,15 @@ function tickChimneySmoke(dt){
     hazeUniforms.uYear.value=currentViewDate.getFullYear()+currentViewDate.getMonth()/12;
     const H=CONFIG.chimneys.cityHaze;
     const hk=hazeAltK();
-    hazeUniforms.uStrength.value=H.strength*chimneyTodMult*hk;
+    let eraK=1; const V=CONFIG.chimneys.vapor;
+    if(V){ const pb=summerBurnShare(_hazeYr()), w=heatSeasonK(season.doy), ds=V.domesticShare??0.75;
+      eraK=1-ds+ds*(pb+(1-pb)*w); }                   // domestic part of the haze fades as stacks go summer-quiet
+    hazeUniforms.uStrength.value=H.strength*chimneyTodMult*hk*eraK;
     cityHazeGroup.visible=hk>0.01;
     // From above, contrast against the ground: brownish over bare ground, dark soot over snow
     hazeUniforms.uColorAbove.value.set(H.colorAbove??H.color).lerp(_hazeSnowCol.set(H.colorAboveSnow??H.color),season.snow);
+    if(V){ const pb=summerBurnShare(_hazeYr()), vf=(1-pb)*heatSeasonK(season.doy)*(V.domesticShare??0.75)*0.8;   // winter haze turns to pale vapour
+      if(vf>0.01) hazeUniforms.uColorAbove.value.lerp(_hazeSnowCol.set(V.tint??0xDDE0E2),vf); }
   }
   if(chimneyPool.length===0||chimneyEmitters.length===0) return;
 
@@ -8237,7 +8259,7 @@ function tickChimneySmoke(dt){
     const sc=sCfg.scaleStart+(sCfg.scaleEnd-sCfg.scaleStart)*f;
     slot.spr.scale.set(sc,sc,1);
     const op=(sCfg.opacityRange[0]+(sCfg.opacityRange[1]-sCfg.opacityRange[0])*(1-f));
-    slot.spr.material.opacity=op*(1-Math.max(0,(f-0.7)/0.3));  // fade out last 30%
+    slot.spr.material.opacity=op*(slot.mult??1)*(1-Math.max(0,(f-0.7)/0.3));  // fade out last 30%
   }
 
   // ── Sort emitters by XZ distance from camera ─────────────────
@@ -8276,8 +8298,14 @@ function tickChimneySmoke(dt){
 
   // ── Emit from nearest candidates ────────────────────────────
   let active=0;
+  const _V=CONFIG.chimneys.vapor, _heat=heatSeasonK(season.doy);
   for(const {e} of cands){
     if(active>=maxActive) break;
+    let vapor=false;
+    if(_V&&e.type==='light'){   // residential/commercial: coal smoke → (heating season only) vapour after its own switch year
+      e.sq??=_V.yearFrom+(_V.yearTo-_V.yearFrom)*seededRand(e.wx*13.7+e.wz*7.1);
+      if(_chimYr>=e.sq){ vapor=true; if(_heat<0.04) continue; }
+    }
     active++;
     e.timer-=dt;
     if(e.timer>0) continue;
@@ -8297,6 +8325,7 @@ function tickChimneySmoke(dt){
 
     slot.active=true; slot.age=0;
     slot.type=e.type;
+    slot.mult=vapor?_heat*(_V.opacity??0.8):1; slot.spr.material.color.setHex(vapor?(_V.tint??0xDDE0E2):0xFFFFFF);
     slot.life=sCfg.life[0]+(sCfg.life[1]-sCfg.life[0])*seededRand(performance.now()*0.0013+e.wz);
     slot.spr.visible=true;
     slot.spr.material.opacity=sCfg.opacityRange[1];
@@ -8325,15 +8354,15 @@ const smokeTexture=makeSmokeTexture();
 const SMOKE_PER_LOCO=CONFIG.trains.smokePuffsPerLocomotive;
 const _smokeVec=new THREE.Vector3();
 
-function buildSmokePool(seed){
+function buildSmokePool(seed,n=SMOKE_PER_LOCO,lifeMin=1.6,lifeRange=1.0){
   const pool=[];
-  for(let i=0;i<SMOKE_PER_LOCO;i++){
+  for(let i=0;i<n;i++){
     const mat=new THREE.SpriteMaterial({map:smokeTexture,transparent:true,opacity:0,depthWrite:false});
     const spr=new THREE.Sprite(mat);
     spr.scale.set(0.1,0.1,1);
     spr.visible=false;
     scene.add(spr);
-    pool.push({spr,age:999,life:1.6+seededRand(seed+i)*1.0,active:false,vel:{x:0,y:0,z:0}});
+    pool.push({spr,age:999,life:lifeMin+seededRand(seed+i)*lifeRange,active:false,vel:{x:0,y:0,z:0}});
   }
   return pool;
 }
@@ -8346,11 +8375,12 @@ function tickSmoke(train,dt,stackWorldPos,moving){
     train.smokeNext=(train.smokeNext+1)%train.smoke.length;
     slot.active=true; slot.age=0;
     slot.spr.visible=true;
-    slot.spr.material.opacity=0.5;
-    slot.spr.scale.set(1.0,1.0,1);
+    const K=train.smokeCfg;   // per-emitter look (steamboats: big, slow, long-lived)
+    slot.spr.material.opacity=K?.op??0.5;
+    slot.spr.scale.set(K?.s0??1.0,K?.s0??1.0,1);
     slot.spr.position.copy(stackWorldPos);
     slot.vel.x=(seededRand(performance.now()*0.0013+1)-0.5)*0.6;
-    slot.vel.y=2.0+seededRand(performance.now()*0.0017+2)*0.8;
+    slot.vel.y=(K?.vy??2.0)+seededRand(performance.now()*0.0017+2)*0.8;
     slot.vel.z=(seededRand(performance.now()*0.0019+3)-0.5)*0.6;
   }
   for(const slot of train.smoke){
@@ -8361,9 +8391,9 @@ function tickSmoke(train,dt,stackWorldPos,moving){
     slot.spr.position.x+=(slot.vel.x+_stormWind.x)*dt; slot.spr.position.z+=_stormWind.z*dt; slot.spr.position.y-=slot.vel.y*dt*0.65*_stormWind.k;   // storm: blown flat
     slot.spr.position.y+=slot.vel.y*dt;
     slot.spr.position.z+=slot.vel.z*dt;
-    const sc=1.0+f*3.2;
+    const K=train.smokeCfg, sc=(K?.s0??1.0)+f*(K?.grow??3.2);
     slot.spr.scale.set(sc,sc,1);
-    slot.spr.material.opacity=0.5*(1-f);
+    slot.spr.material.opacity=(K?.op??0.5)*(1-f);
   }
 }
 
@@ -8512,9 +8542,10 @@ function buildSteamboatGroup(){
 }
 
 function sbSmokePools(){
-  const pools=[buildSmokePool(Math.random()*1000),buildSmokePool(Math.random()*1000)];
+  const K=SB.smoke||{};   // a steamboat's plume: big, slow, long-lived puffs (the wood-fired stacks throw a lot of smoke)
+  const pools=[buildSmokePool(Math.random()*1000,K.puffs??24,K.life?.[0]??4.5,(K.life?.[1]??6.5)-(K.life?.[0]??4.5)),buildSmokePool(Math.random()*1000,K.puffs??24,K.life?.[0]??4.5,(K.life?.[1]??6.5)-(K.life?.[0]??4.5))];
   for(const pool of pools) for(const s of pool) s.spr.material.color.setHex(SB.smokeTint);
-  return pools.map(pool=>({smoke:pool,smokeNext:0,smokeTimer:0,smokeInterval:0.35,t:Math.random()}));
+  return pools.map(pool=>({smoke:pool,smokeNext:0,smokeTimer:0,smokeInterval:K.interval??0.28,t:Math.random(),smokeCfg:{s0:K.size0??3,grow:K.grow??9,op:K.opacity??0.6,vy:K.rise??2.2}}));
 }
 function sbDisposeSmoke(emitters){
   for(const e of emitters) for(const s of e.smoke){scene.remove(s.spr);s.spr.material.dispose();}
@@ -9254,9 +9285,9 @@ function _buildMosquitoes(){
   g.setAttribute('aSeed',new THREE.BufferAttribute(seed,4));
   g.setAttribute('aLife',new THREE.BufferAttribute(life,2));
   g.boundingSphere=new THREE.Sphere(new THREE.Vector3(),1e9);
-  const u={uTime:{value:0},uYear:{value:0},uDensity:{value:0},uColor:{value:new THREE.Color(M.color)},uOpacity:{value:M.opacity},uFade:{value:new THREE.Vector2(M.fade[0],M.fade[1])}};
+  const u={uTime:{value:0},uYear:{value:0},uDensity:{value:0},uColor:{value:new THREE.Color(M.color)},uOpacity:{value:M.opacity},uFade:{value:new THREE.Vector2(M.fade[0],M.fade[1])},uSize:{value:new THREE.Vector3(M.sizeK??60,M.size?.[0]??1.6,M.size?.[1]??3.6)},uPixelRatio:{value:renderer.getPixelRatio()}};
   const mat=new THREE.ShaderMaterial({uniforms:u,transparent:true,depthWrite:false,fog:false,
-    vertexShader:`uniform float uTime,uYear,uDensity; uniform vec2 uFade; attribute vec4 aSeed; attribute vec2 aLife; varying float vA;
+    vertexShader:`uniform float uTime,uYear,uDensity,uPixelRatio; uniform vec2 uFade; uniform vec3 uSize; attribute vec4 aSeed; attribute vec2 aLife; varying float vA;
     void main(){
       vec4 s=aSeed; float t=uTime;
       vec3 p=position+vec3(sin(t*(1.3+s.x)+s.y*6.28)*(0.8+1.6*s.z), 0.3+s.w*2.0+sin(t*2.3+s.x*9.0)*0.25, cos(t*(1.1+s.y)+s.z*6.28)*(0.8+1.6*s.x));
@@ -9264,7 +9295,7 @@ function _buildMosquitoes(){
       vec4 mv=modelViewMatrix*vec4(p,1.0); gl_Position=projectionMatrix*mv;
       float d=-mv.z;
       vA=step(aLife.x,uYear)*step(uYear,aLife.y)*step(s.w,uDensity)*(1.0-smoothstep(uFade.x,uFade.y,d));
-      gl_PointSize=vA>0.0?clamp(26.0/d,1.0,2.2):0.0;
+      gl_PointSize=vA>0.0?clamp(uSize.x/d,uSize.y,uSize.z)*uPixelRatio:0.0;
     }`,
     fragmentShader:`uniform vec3 uColor; uniform float uOpacity; varying float vA;
     void main(){ if(vA<0.01) discard; gl_FragColor=vec4(uColor,uOpacity*vA); }`});
@@ -10211,6 +10242,9 @@ function gpuCensus(label){
 }
 window.gpuCensus=gpuCensus;
 function startLoop(){
+  // One failing update must not starve the ones after it (a thrown tick used to skip everything later in the frame — e.g. the
+  // oxbow, weather, season — leaving things stale until it happened to work again). Each is isolated; errors still log once.
+  const _t=(f,...a)=>{ try{ f(...a); }catch(e){ _loopError(e); } };
   function loop(now){
     requestAnimationFrame(loop);
     // Diagnostics: first frames' spacing, and any long gap (a GPU stall shows up as a late frame)
@@ -10263,7 +10297,7 @@ function startLoop(){
         const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
         const right=new THREE.Vector3(1,0,0).applyQuaternion(qYaw);
         const _alt=Math.max(0,camera.position.y-_groundFloor+EYE_H), _mx=maxAltitudeM();
-        const spd=(sprinting?38:9)*dt*(1+((CONFIG.altitude?.flySpeedAtMax??5)-1)*Math.min(1,_alt/_mx));   // the higher you fly the faster you go (5× at the ceiling)
+        const spd=(sprinting?38:9)*dt*(1+((CONFIG.altitude?.flySpeedAtMax??5)-1)*Math.pow(Math.min(1,_alt/_mx),CONFIG.altitude?.flySpeedCurve??0.6));   // the higher you fly the faster you go (5× at the ceiling)
         if(camera.position.y>_mx) camera.position.y=_mx;
         const jFwd=joyVec.y,jRight=joyVec.x;
         if(keys['KeyW']||keys['ArrowUp']||jFwd>0.15)camera.position.addScaledVector(fwd,spd*(keys['KeyW']||keys['ArrowUp']?1:jFwd));
@@ -10287,38 +10321,37 @@ function startLoop(){
         if((keys['KeyQ']||udDown) && camera.position.y <= _groundFloor + 0.1) fpsGrounded = true;
       }
     }else{orbit.update();clampOrbitAltitude();updateHover();}
-    tickStreetcars(dt);
-    tickCarts(dt);
-    tickAutos(dt);
-    tickDroppings(dt);
-    tickTimeline(dt);
-    tickTrains(dt);
-    tickSteamboats(dt);
-    updateWaterLevel();
-    maybeBuildDeferred();
-    updateConstructionMeshes();
-    tickConstructionSfx(dt);
-    tickStreetLights();
-    tickGlassLOD();
-    tickDetailLOD();
-    tickFires(dt);
-    tickFireEngines(dt);
-    tickParades(dt);
-    tickFireCues();
-    tickBeacons(dt);
-    tickMosquitoes(dt);
-    tickUtilityPoles();
-    tickPostcards();
-    if(!shantiesBuilt) initShanties();
-    tickOxbow();
-    tickCreekTerrain();
-    tickSoundHooks(dt);
-    applySeason();
-    tickWeather(dt);
-    tickFloes(dt);
-    tickTrainAudio(dt);
-    tickChimneySmoke(dt);
-    plumeUniforms.uPlumeTime.value=now*0.001;
+    _t(tickStreetcars,dt);
+    _t(tickCarts,dt);
+    _t(tickAutos,dt);
+    _t(tickDroppings,dt);
+    _t(tickTimeline,dt);
+    _t(tickTrains,dt);
+    _t(tickSteamboats,dt);
+    _t(updateWaterLevel);
+    _t(maybeBuildDeferred);
+    _t(updateConstructionMeshes);
+    _t(tickConstructionSfx,dt);
+    _t(tickStreetLights);
+    _t(tickGlassLOD);
+    _t(tickDetailLOD);
+    _t(tickFires,dt);
+    _t(tickFireEngines,dt);
+    _t(tickParades,dt);
+    _t(tickFireCues);
+    _t(tickBeacons,dt);
+    _t(tickMosquitoes,dt);
+    _t(tickUtilityPoles);
+    _t(tickPostcards);
+    _t(()=>{ if(!shantiesBuilt) initShanties(); });
+    _t(tickOxbow);
+    _t(tickCreekTerrain);
+    _t(tickSoundHooks,dt);
+    _t(applySeason);
+    _t(tickWeather,dt);
+    _t(tickFloes,dt);
+    _t(tickTrainAudio,dt);
+    _t(tickChimneySmoke,dt);    plumeUniforms.uPlumeTime.value=now*0.001;
     if(_frameN===1 && window.pfDiag) gpuCensus('first render');
     }catch(e){ _loopError(e); }   // an update that throws every frame must not freeze the view
     try{
