@@ -1,29 +1,18 @@
 {
  "bridges": [
   {
-   "name": "Bridge 11",
-   "lon": -97.1239349,
-   "lat": 49.886791,
-   "axisE": -0.2521,
-   "axisN": -0.9677,
+   "name": "Bridge 8",
+   "lon": -97.1268001,
+   "lat": 49.8829101,
+   "axisE": -0.403,
+   "axisN": -0.9152,
    "length": 28.7,
    "width": 14.7,
    "from": "1870-01-01",
    "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
   },
   {
-   "name": "Bridge 12",
-   "lon": -97.1270101,
-   "lat": 49.8829365,
-   "axisE": -0.5225,
-   "axisN": -0.8526,
-   "length": 28.7,
-   "width": 14.7,
-   "from": "1870-01-01",
-   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
-  },
-  {
-   "name": "Bridge 13",
+   "name": "Bridge 9",
    "lon": -97.1285451,
    "lat": 49.8815555,
    "axisE": 0.3324,
@@ -34,13 +23,46 @@
    "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
   },
   {
-   "name": "Bridge 15",
+   "name": "Bridge 11",
    "lon": -97.1339939,
    "lat": 49.8835739,
    "axisE": -0.9098,
    "axisN": -0.415,
    "length": 24.8,
    "width": 14.7,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  },
+  {
+   "name": "Bridge 15",
+   "lon": -97.1244825,
+   "lat": 49.8862929,
+   "axisE": -0.4157,
+   "axisN": -0.9095,
+   "length": 28.7,
+   "width": 14.7,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  },
+  {
+   "name": "Bridge 19",
+   "lon": -97.1104673,
+   "lat": 49.8796068,
+   "axisE": 0.4899,
+   "axisN": -0.8718,
+   "length": 10.2,
+   "width": 6.0,
+   "from": "1870-01-01",
+   "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
+  },
+  {
+   "name": "Bridge 25",
+   "lon": -97.1176094,
+   "lat": 49.8748575,
+   "axisE": 0.6584,
+   "axisN": -0.7527,
+   "length": 16.2,
+   "width": 7.1,
    "from": "1870-01-01",
    "source": "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
   }

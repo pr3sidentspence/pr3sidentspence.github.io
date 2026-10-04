@@ -629,10 +629,12 @@ uniform float uBankDirtTop,uBankDirtBlend,uBankDirtJitter,uBankDirtStrength;
 uniform vec3 uGcGrassAlt,uGcGrassDry,uGcYardDirt,uGcCoreDirt;
 uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear,uGcGreen;
 uniform sampler2D uGcTex;
-uniform sampler2D uCreekTex;
-uniform vec4 uCreekRect[${MAX_CREEKS}], uCreekAt[${MAX_CREEKS}];
-uniform float uCreekAlive[${MAX_CREEKS}];
-uniform int uCreekN;
+uniform sampler2D uCreekTex;                     // atlas of cut masks (one small raster per creek chunk)
+uniform highp sampler2D uCreekGridA, uCreekGridB;  // 128 m grid → up to 8 chunk ids (+1) per cell
+uniform highp sampler2D uCreekChunk;             // per chunk, 3 texels: world box · atlas rect · creek id
+uniform highp sampler2D uCreekAlive;             // per creek (x), 1 while it exists
+uniform vec4 uCreekGrid;                         // origin x, z, cell metres, 0
+uniform ivec2 uCreekGridN;
 uniform vec2 uGcMin,uGcSize;
 varying vec3 vBankWorld;
 float gcHash(vec2 p){vec3 p3=fract(vec3(p.xyx)*.1031);p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
@@ -640,11 +642,22 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
   return mix(mix(gcHash(i),gcHash(i+vec2(1,0)),u.x),mix(gcHash(i+vec2(0,1)),gcHash(i+vec2(1,1)),u.x),u.y);}
 `+shader.fragmentShader
     .replace('#include <color_fragment>',`#include <color_fragment>
-  for(int ci=0; ci<${MAX_CREEKS}; ci++){   // creek valleys show through while their creek exists
-    if(ci>=uCreekN) break;
-    if(uCreekAlive[ci]<0.5) continue;
-    vec4 cr=uCreekRect[ci]; vec2 cuv=(vBankWorld.xz-cr.xy)/(cr.zw-cr.xy);
-    if(cuv.x>0.&&cuv.y>0.&&cuv.x<1.&&cuv.y<1.){ vec4 ca=uCreekAt[ci]; if(texture2D(uCreekTex,ca.xy+cuv*ca.zw).r>0.5) discard; }
+  if(uCreekGridN.x>0){   // creek valleys show through while their creek exists — a grid lookup, so any number of creeks costs the same
+    ivec2 gc=ivec2(floor((vBankWorld.xz-uCreekGrid.xy)/uCreekGrid.z));
+    if(gc.x>=0&&gc.y>=0&&gc.x<uCreekGridN.x&&gc.y<uCreekGridN.y){
+      for(int gt=0; gt<2; gt++){
+        vec4 ids; if(gt==0) ids=texelFetch(uCreekGridA,gc,0); else ids=texelFetch(uCreekGridB,gc,0);
+        for(int k=0;k<4;k++){
+          int id=int(ids[k]+0.5)-1; if(id<0) continue;
+          vec4 bx=texelFetch(uCreekChunk,ivec2(0,id),0);
+          vec2 cuv=(vBankWorld.xz-bx.xy)/(bx.zw-bx.xy);
+          if(cuv.x<=0.||cuv.y<=0.||cuv.x>=1.||cuv.y>=1.) continue;
+          if(texelFetch(uCreekAlive,ivec2(int(texelFetch(uCreekChunk,ivec2(2,id),0).x+0.5),0),0).r<0.5) continue;
+          vec4 ca=texelFetch(uCreekChunk,ivec2(1,id),0);
+          if(texture2D(uCreekTex,ca.xy+cuv*ca.zw).r>0.5) discard;
+        }
+      }
+    }
   }
   {
     // ── Summer ground cover (see CONFIG.terrain.groundCover) ──
@@ -829,10 +842,8 @@ function flattenDEM(h, S, cellM, protect=null){
 // of the corridor (mask texture) so the valley shows through. Both only
 // while the creek exists (born..died). The water ribbon and mosquito
 // anchors sit on the valley floor (creekFloorDrop).
-const MAX_CREEKS=16;
-const creekUniforms={uCreekTex:{value:null},uCreekN:{value:0},uCreekAlive:{value:new Float32Array(MAX_CREEKS)},
-  uCreekRect:{value:Array.from({length:MAX_CREEKS},()=>new THREE.Vector4(0,0,1,1))},    // world x0,z0,x1,z1 of each creek's cut mask
-  uCreekAt:{value:Array.from({length:MAX_CREEKS},()=>new THREE.Vector4(0,0,1,1))}};     // its place in the shared mask atlas (u0,v0,du,dv)
+const creekUniforms={uCreekTex:{value:null},uCreekGridA:{value:null},uCreekGridB:{value:null},uCreekChunk:{value:null},uCreekAlive:{value:null},
+  uCreekGrid:{value:new THREE.Vector4(0,0,128,0)},uCreekGridN:{value:new THREE.Vector2(0,0)}};   // uCreekGridN.x = 0 → no creeks (shader skips)
 let creekValley=null;   // {meshes:[], cuts:[[x,z,r]], born, died, seen:Set, lastCol}
 function creekFloorDrop(){ return creekValley?CONFIG.terrain.creek.depth:0; }
 // Called once per creek feature (the creek is stored as several pieces).
@@ -873,7 +884,7 @@ function carveCreekTerrain(lines,born,died,name='creek'){
   creekValley??={meshes:[],pieces:[],creeks:[],seen:new Set(),lastCol:-1,dirty:false};
   const V=creekValley;
   let cid=V.creeks.findIndex(c=>c.name===name&&c.born===born&&c.died===died);
-  if(cid<0){ if(V.creeks.length>=MAX_CREEKS){ console.warn('too many creeks for the valley shader: '+name); return; } cid=V.creeks.length; V.creeks.push({name,born,died}); }
+  if(cid<0){ cid=V.creeks.length; V.creeks.push({name,born,died}); }
   for(const line of lines){
     const k0=line[0].join(',')+'|'+line[line.length-1].join(',');
     if(V.seen.has(k0)||line.length<2) continue; V.seen.add(k0);   // the 1880 layer repeats the same creek
@@ -944,29 +955,42 @@ function _rebuildCreekValley(){
     const mesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide})));
     mesh.receiveShadow=true; scene.add(mesh); V.meshes.push(mesh);
   }
-  // terrain cut masks: one small raster per creek, packed into one atlas texture
+  // Terrain cut masks, scalable to any number of creeks: every creek's cuts are bucketed into 128 m chunks (per creek and
+  // grid cell); each chunk gets a small raster (1.5 m cells) in one shared atlas; a coarse grid texture lists which chunks
+  // touch each cell (up to 8), a chunk table gives each its box / atlas rect / creek id, and a per-creek 'alive' texture is
+  // updated by date. The ground shader does one grid lookup per fragment, whatever the number of creeks.
   if(!cutsBy.size) return;
-  const AW=2048, ents=[]; let ax=0, ay=0, rowH=0;
-  for(const[cid,cuts]of cutsBy){
-    let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z,r]of cuts){x0=Math.min(x0,x-r);x1=Math.max(x1,x+r);z0=Math.min(z0,z-r);z1=Math.max(z1,z+r);}
-    x0-=4;z0-=4;x1+=4;z1+=4;
-    const area=(x1-x0)*(z1-z0), c=area<6e5?1.5:area<2.5e6?2.5:3.5;   // metres per mask cell: fine for compact creeks, coarser for the long far ones (keeps the atlas within 4096 px)
-    const MW=Math.ceil((x1-x0)/c), MH=Math.ceil((z1-z0)/c);
+  const CELL=128, CM=1.5, AW=2048, chunks=[], buckets=new Map();
+  for(const[cid,cuts]of cutsBy) for(const ct of cuts){ const k=cid+'|'+Math.floor(ct[0]/CELL)+'|'+Math.floor(ct[1]/CELL); let b=buckets.get(k); if(!b) buckets.set(k,b={cid,cuts:[]}); b.cuts.push(ct); }
+  let ax=0, ay=0, rowH=0;
+  for(const b of buckets.values()){
+    let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const[x,z,r]of b.cuts){x0=Math.min(x0,x-r);x1=Math.max(x1,x+r);z0=Math.min(z0,z-r);z1=Math.max(z1,z+r);}
+    x0-=3;z0-=3;x1+=3;z1+=3;
+    const MW=Math.ceil((x1-x0)/CM), MH=Math.ceil((z1-z0)/CM);
     if(ax+MW+2>AW){ ax=0; ay+=rowH+2; rowH=0; }
-    ents.push({cid,cuts,c,x0,z0,x1:x0+MW*c,z1:z0+MH*c,MW,MH,px:ax+1,py:ay+1}); ax+=MW+2; rowH=Math.max(rowH,MH);
+    chunks.push({cid:b.cid,cuts:b.cuts,x0,z0,x1:x0+MW*CM,z1:z0+MH*CM,MW,MH,px:ax+1,py:ay+1}); ax+=MW+2; rowH=Math.max(rowH,MH);
   }
-  const AH=ay+rowH+2, data=new Uint8Array(AW*AH);
-  for(const e of ents){
-    const c=e.c;
-    for(const[x,z,r]of e.cuts){ const gx=Math.floor((x-e.x0)/c), gz=Math.floor((z-e.z0)/c), rr=Math.ceil(r/c);
-      for(let j=-rr;j<=rr;j++) for(let i=-rr;i<=rr;i++){ if(i*i+j*j>rr*rr) continue; const X=gx+i,Z=gz+j; if(X>=0&&Z>=0&&X<e.MW&&Z<e.MH) data[(e.py+Z)*AW+e.px+X]=255; } }
-    creekUniforms.uCreekRect.value[e.cid].set(e.x0,e.z0,e.x1,e.z1);
-    creekUniforms.uCreekAt.value[e.cid].set(e.px/AW,e.py/AH,e.MW/AW,e.MH/AH);
-  }
+  const AH=ay+rowH+2, data=new Uint8Array(AW*AH), chunkData=new Float32Array(chunks.length*3*4);
+  chunks.forEach((e,i)=>{
+    for(const[x,z,r]of e.cuts){ const gx=Math.floor((x-e.x0)/CM), gz=Math.floor((z-e.z0)/CM), rr=Math.ceil(r/CM);
+      for(let j=-rr;j<=rr;j++) for(let ii=-rr;ii<=rr;ii++){ if(ii*ii+j*j>rr*rr) continue; const X=gx+ii,Z=gz+j; if(X>=0&&Z>=0&&X<e.MW&&Z<e.MH) data[(e.py+Z)*AW+e.px+X]=255; } }
+    chunkData.set([e.x0,e.z0,e.x1,e.z1, e.px/AW,e.py/AH,e.MW/AW,e.MH/AH, e.cid,0,0,0],i*12);
+  });
+  // grid of chunk ids
+  let gx0=1e9,gz0=1e9,gx1=-1e9,gz1=-1e9; for(const e of chunks){ gx0=Math.min(gx0,Math.floor(e.x0/CELL)); gz0=Math.min(gz0,Math.floor(e.z0/CELL)); gx1=Math.max(gx1,Math.floor(e.x1/CELL)); gz1=Math.max(gz1,Math.floor(e.z1/CELL)); }
+  const GW=gx1-gx0+1, GH=gz1-gz0+1, gridA=new Float32Array(GW*GH*4), gridB=new Float32Array(GW*GH*4), fill=new Uint8Array(GW*GH); let overflow=0;
+  chunks.forEach((e,i)=>{ for(let gz=Math.floor(e.z0/CELL);gz<=Math.floor(e.z1/CELL);gz++) for(let gx=Math.floor(e.x0/CELL);gx<=Math.floor(e.x1/CELL);gx++){
+    const cI=(gz-gz0)*GW+(gx-gx0), n=fill[cI]; if(n>=8){ overflow++; continue; } (n<4?gridA:gridB)[cI*4+(n&3)]=i+1; fill[cI]=n+1; } });
+  if(overflow) console.warn(`🏞 creek grid: ${overflow} chunk(s) didn't fit 8 per cell`);
+  const ft=(arr,w,h)=>{ const t=new THREE.DataTexture(arr,w,h,THREE.RGBAFormat,THREE.FloatType); t.magFilter=t.minFilter=THREE.NearestFilter; t.needsUpdate=true; return t; };
+  for(const k of ['uCreekTex','uCreekGridA','uCreekGridB','uCreekChunk','uCreekAlive']) creekUniforms[k].value?.dispose?.();
   const tex=new THREE.DataTexture(data,AW,AH,THREE.RedFormat); tex.magFilter=tex.minFilter=THREE.LinearFilter; tex.needsUpdate=true;
-  creekUniforms.uCreekTex.value?.dispose?.(); creekUniforms.uCreekTex.value=tex; creekUniforms.uCreekN.value=V.creeks.length;
+  creekUniforms.uCreekTex.value=tex; creekUniforms.uCreekGridA.value=ft(gridA,GW,GH); creekUniforms.uCreekGridB.value=ft(gridB,GW,GH);
+  creekUniforms.uCreekChunk.value=ft(chunkData,3,chunks.length);
+  V.aliveArr=new Float32Array(V.creeks.length*4); V.aliveTex=ft(V.aliveArr,V.creeks.length,1); creekUniforms.uCreekAlive.value=V.aliveTex;
+  creekUniforms.uCreekGrid.value.set(gx0*CELL,gz0*CELL,CELL,0); creekUniforms.uCreekGridN.value.set(GW,GH);
   V.lastCol=-1;
-  console.log(`🏞 Creek valleys: ${V.creeks.length} creek(s), ${pieces.length} piece(s), mask atlas ${AW}×${AH} (${pieces.map(p=>p.free.map(f=>f?'free':'joined').join('/')).join(', ')}), ≤ ${D} m deep`);
+  console.log(`🏞 Creek valleys: ${V.creeks.length} creek(s), ${pieces.length} piece(s), ${chunks.length} mask chunks, atlas ${AW}×${AH}, grid ${GW}×${GH} (${pieces.map(p=>p.free.map(f=>f?'free':'joined').join('/')).join(', ')}), ≤ ${D} m deep`);
 }
 window._debugWalkways=(x0,z0,x1,z1)=>{ const out=[], all=[...layerGroups.map(l=>l.geojson),...deferredChunks.map(c=>c.gj)];
   const bankY=CONFIG.water.startY+1;
@@ -987,7 +1011,15 @@ window._debugLOD=(x,y,z)=>{ camera.position.set(x,y,z); for(let k=0;k<8;k++){ ti
   const vis=glassTiles.filter(t=>t.mesh.visible);
   return {glassTiles:vis.length+'/'+glassTiles.length,panes:vis.reduce((a,t)=>a+t.n,0),paintedFrom:+windowPaintUniforms.uWinFade.value.x.toFixed(0),detail:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
 window._sampleLL=(lon,lat)=>{ const[sx,sy]=project(lon,lat); return +sampleTerrainY(sx,-sy).toFixed(2); };   // terrain height (world Y) at lon/lat
-window._debugCreek=()=>creekValley?{alive:Array.from(creekUniforms.uCreekAlive.value).slice(0,creekValley.creeks.length).join(''),creeks:creekValley.creeks.map(c=>c.name),pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
+window._creekMaskTest=(wx,wz,pi=0)=>{ const V=creekValley; if(!V) return null; if(wx===undefined){ const P=V.pieces[pi], m=P[Math.floor(P.length/2)]; wx=m[0]; wz=m[1]; } const r=window._renderer, c=window._cam, gl=r.getContext(), size=new THREE.Vector2(); r.getSize(size); const pr=r.getPixelRatio();
+  const snap=()=>{ r.render(scene,c); const w=gl.drawingBufferWidth,h=gl.drawingBufferHeight, px=new Uint8Array(w*h*4); gl.readPixels(0,0,w,h,gl.RGBA,gl.UNSIGNED_BYTE,px); return px; };
+  r.setPixelRatio(1); r.setSize(200,200,false); c.aspect=1; c.updateProjectionMatrix();
+  c.position.set(wx,60,wz); window._orbit.target.set(wx,0,wz); c.lookAt(wx,0,wz);
+  V.meshes.forEach(m=>m.visible=false);   // hide the valley strips so only the ground's cut-out shows
+  const on=snap(); const saved=V.aliveArr.slice(); V.aliveArr.fill(0); V.aliveTex.needsUpdate=true; const off=snap(); V.aliveArr.set(saved); V.aliveTex.needsUpdate=true; V.meshes.forEach(m=>m.visible=true);
+  let diff=0; for(let i=0;i<on.length;i+=4) if(Math.abs(on[i]-off[i])+Math.abs(on[i+1]-off[i+1])+Math.abs(on[i+2]-off[i+2])>30) diff++;
+  r.setPixelRatio(pr); r.setSize(size.x,size.y,false); c.aspect=size.x/size.y; c.updateProjectionMatrix(); return {diffPixels:diff,of:200*200}; };
+window._debugCreek=()=>creekValley?{alive:creekValley.creeks.map((c,i)=>creekValley.aliveArr?creekValley.aliveArr[i*4]:'?').join(''),creeks:creekValley.creeks.map(c=>c.name),pieces:creekValley.meshes.length,verts:creekValley.meshes.reduce((a,m)=>a+m.geometry.attributes.position.count,0)}:null;
 // Per frame: valley on/off with the creek's dates; vertex colours = the
 // seasonal ground colour, blending to bank dirt toward the floor (summer;
 // snow covers it like the banks).
@@ -995,7 +1027,7 @@ const _cvA=new THREE.Color(), _cvB=new THREE.Color();
 function tickCreekTerrain(){
   if(!creekValley) return;
   const yr=yearFrac(currentViewDate);
-  creekValley.creeks.forEach((c,i)=>{ creekUniforms.uCreekAlive.value[i]=yr>=c.born&&yr<c.died?1:0; });
+  { const V=creekValley; if(V.aliveArr){ let ch=false; V.creeks.forEach((c,i)=>{ const v=yr>=c.born&&yr<c.died?1:0; if(V.aliveArr[i*4]!==v){ V.aliveArr[i*4]=v; ch=true; } }); if(ch) V.aliveTex.needsUpdate=true; } }
   if(!groundMatRef) return;
   const key=groundMatRef.color.getHex()*7+Math.round(season.snow*50);
   if(key===creekValley.lastCol) return; creekValley.lastCol=key;
@@ -10213,6 +10245,35 @@ function tickTipis(dt){
 }
 window._debugTipis=()=>tipis?{n:tipis.list.length,visible:tipis.list.filter(t=>{const yr=yearFrac(currentViewDate),d=season.doy;return yr<t.endYr&&(t.yearRound||(d>t.tin+2&&d<t.tout-2));}).length}:null;
 
+// ── Ponds (data/early_ponds.json: polygons Mike drew from the 1881 map) ─────────────────────────────
+// A flat water surface at the lower part of the polygon's ground (so the polygon is mostly under water), dated like a
+// creek, coloured like the oxbow lake (ice / snow follow the season). A few mosquito anchors each.
+let pondMeshes=null;
+function tickPonds(){
+  if(!earlyPonds.length||!_demLoaded) return;
+  if(!pondMeshes){
+    pondMeshes=[]; const O=CONFIG.terrain.oxbow?.lake, anchors=[];
+    for(const P of earlyPonds){
+      const wz=P.ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
+      const shape=new THREE.Shape(wz.map(q=>new THREE.Vector2(q.x,-q.z)));
+      let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+      const hs=[], inside=[]; for(let x=ax;x<=bx;x+=4) for(let z=az;z<=bz;z+=4) if(pointInPolygon(x,z,wz)){ hs.push(sampleTerrainY(x,z)); inside.push([x,z]); }
+      if(hs.length<4) continue; hs.sort((a,b)=>a-b); const level=hs[Math.floor(hs.length*0.3)]+0.12;
+      const g=new THREE.ShapeGeometry(shape); g.rotateX(-Math.PI/2); g.translate(0,level,0);
+      tagLifespan(g,_isoYearFrac(P.born,NO_BORN),_isoYearFrac(P.died,NO_DIED));
+      const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:O?.color??0x4A5236,transparent:true,opacity:O?.opacity??0.88,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1,side:THREE.DoubleSide}));
+      const m=new THREE.Mesh(g,mat); m.renderOrder=1; scene.add(m); pondMeshes.push(m);
+      for(let k=0;k<Math.min(14,inside.length);k++){ const[x,z]=inside[Math.floor(k*inside.length/Math.min(14,inside.length))];
+        mosquitoAnchors.push({x,y:level+0.8,z,born:_isoYearFrac(P.born,-1e9),died:_isoYearFrac(P.died,1e9),group:{visible:true}}); }
+    }
+    if(_mosq){ scene.remove(_mosq.pts); _mosq=null; }
+    console.log(`💧 Ponds built: ${pondMeshes.length}`);
+  }
+  const O=CONFIG.terrain.oxbow?.lake; if(!O) return;
+  const ice=season.ice, snow=season.snow;
+  for(const m of pondMeshes) m.material.color.set(O.color).lerp(_wc.b.set(O.iceColor),ice).lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.85);
+}
+
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -10411,6 +10472,7 @@ function startLoop(){
     _t(()=>{ if(!shantiesBuilt) initShanties(); });
     _t(tickOxbow);
     _t(tickTipis,dt);
+    _t(tickPonds);
     _t(tickCreekTerrain);
     _t(tickSoundHooks,dt);
     _t(applySeason);
@@ -10660,11 +10722,13 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
-let earlyBridges=[];
+let earlyBridges=[], earlyPonds=[];
 async function loadEarlyBridges(){
-  const f=CONFIG.terrain?.creek?.bridge?.file; if(!f) return;
-  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); }
+  const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.pondsFile;
+  if(f) try{ const r=await fetch(f+'?v='+Date.now()); if(r.ok){ earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }
   catch(e){ console.warn('Creek bridges: failed to load',e); }
+  if(pf) try{ const r=await fetch(pf+'?v='+Date.now()); if(r.ok){ earlyPonds=(await r.json()).ponds||[]; console.log(`💧 Ponds: ${earlyPonds.length}`); } }
+  catch(e){ console.warn('Ponds: failed to load',e); }
 }
 async function loadEarlyVegetation(){
   await loadEarlyBridges();

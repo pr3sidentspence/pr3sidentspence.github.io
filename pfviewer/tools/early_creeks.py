@@ -135,28 +135,31 @@ def nearest_on(rings_, lon, lat):
 # in satellite imagery, drawn as 'railway' lines, plus bridges drawn as polygons (long edge = span, short = deck width).
 # These replace my own tracings of the oxbow outlet / Fort Rouge creeks. Dates are guesses (see MIKE_CREEKS).
 SRC_MIKE = "Mike's routes from satellite imagery (tools/sources/StB_creeks_bridges.geojson)"
-MIKE_CREEKS = {   # feature id -> (creek name, died)
-  4:  ("South St Boniface creek", "1910-04-15"),
-  5:  ("Oxbow outlet creek", "1910-04-15"),          # from the north end of the bow west to the Red (mouth at the Grey Nuns monument bridge)
-  6:  ("Oxbow outlet creek", "1910-04-15"),          # its short branch (the Y)
-  7:  ("Oxbow south outlet creek", "1910-04-15"),    # along the bank south of the hospital
-  9:  ("Oxbow south outlet creek", "1910-04-15"),
-  10: ("St Boniface bank creek", "1910-04-15"),      # the long one from the south-west
-  14: ("Fort Rouge creek", "1900-01-01"),
-  16: ("St Boniface north creek", "1910-04-15"),
-  17: ("St Boniface north creek", "1910-04-15"),
+MIKE_DEFAULT_DIED = "1910-04-15"   # creeks Mike hasn't dated: they went with the oxbow's fill (guess)
+MIKE_CREEKS = {   # feature id -> creek name (the died date comes from the file when Mike set one: 1880-02-01 = "Not present on 1881 map")
+  1:  "South St Boniface creek",
+  4:  "Oxbow south outlet creek",
+  5:  "Oxbow south outlet creek",
+  6:  "St Boniface bank creek",       # the long one from the south-west
+  10: "Fort Rouge creek",
+  12: "St Boniface north creek",
+  13: "St Boniface north creek",
+  16: "Oxbow outlet creek",           # from the north end of the bow west to the Red (the 1881 map's route)
+  17: "South St Boniface creek (west)",
+  23: "South St Boniface marsh creek",
+  24: "South St Boniface marsh creek",
 }
 MIKE_BRIDGE_FROM = "1870-01-01"   # guess
 def mike_features_and_bridges():
     g = json.load(open(os.path.join(HERE, 'sources', 'StB_creeks_bridges.geojson')))
-    feats, bridges = [], []
+    feats, bridges, ponds = [], [], []
     for f in g['features']:
-        pid, geom = f['properties']['id'], f['geometry']
+        pr, geom = f['properties'], f['geometry']; pid = pr['id']
         if geom['type'] == 'LineString' and pid in MIKE_CREEKS:
-            name, died = MIKE_CREEKS[pid]
-            feats.append({"type": "Feature", "properties": {"name": name, "type": "fence", "material": "unknown",
-                "born": "1700-08-01", "died": died, "source": SRC_MIKE}, "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in geom['coordinates']]}})
-        elif geom['type'] == 'Polygon':
+            feats.append({"type": "Feature", "properties": {"name": MIKE_CREEKS[pid], "type": "fence", "material": "unknown",
+                "born": "1700-08-01", "died": pr.get('died') or MIKE_DEFAULT_DIED, "source": SRC_MIKE + (f" — {pr['notes']}" if pr.get('notes') else '')},
+                "geometry": {"type": "LineString", "coordinates": [[round(x, 7), round(y, 7)] for x, y in geom['coordinates']]}})
+        elif geom['type'] == 'Polygon' and pr.get('type') == 'bridge':
             ring = geom['coordinates'][0][:4]
             lat0 = sum(q[1] for q in ring) / 4; lon0 = sum(q[0] for q in ring) / 4
             xy = [((q[0] - lon0) * M_LON, (q[1] - lat0) * M_LAT) for q in ring]
@@ -168,7 +171,10 @@ def mike_features_and_bridges():
             bridges.append({"name": f"Bridge {pid}", "lon": round(lon0, 7), "lat": round(lat0, 7),
                             "axisE": round(ex / n, 4), "axisN": round(ey / n, 4), "length": round(L, 1), "width": round(W, 1),
                             "from": MIKE_BRIDGE_FROM, "source": SRC_MIKE})
-    return feats, bridges
+        elif geom['type'] == 'Polygon':      # a polygon with no type: a pond / marsh outline (1881 map)
+            ponds.append({"name": f"Pond {pid}", "ring": [[round(x, 7), round(y, 7)] for x, y in geom['coordinates'][0]],
+                          "born": "1700-08-01", "died": pr.get('died') or MIKE_DEFAULT_DIED, "source": SRC_MIKE})
+    return feats, bridges, ponds
 
 def main():
     rv = rings(os.path.join(HERE, '..', 'data', 'wpg_rivers.geojson'))
@@ -192,9 +198,10 @@ def main():
                 "name": name, "type": "fence", "material": "unknown", "born": "1700-08-01", "died": died,
                 "source": ("1874 plan of the City of Winnipeg (Parr)" if name in CREEKS_1874 else "1836 Plan Red River and Assiniboine" if name in CREEKS_1836 else "Graham 1984, Fig. 1")+" — traced by eye; ±100–300 m"},
                 "geometry": {"type": "LineString", "coordinates": coords}})
-    mf, mb = mike_features_and_bridges(); feats += mf
+    mf, mb, mp = mike_features_and_bridges(); feats += mf
     json.dump({"bridges": mb}, open(os.path.join(HERE, '..', 'data', 'early_bridges.json'), 'w'), indent=1)
-    print(f'Mike: {len(mf)} creek line(s), {len(mb)} bridge(s)')
+    json.dump({"ponds": mp}, open(os.path.join(HERE, '..', 'data', 'early_ponds.json'), 'w'), indent=1)
+    print(f'Mike: {len(mf)} creek line(s), {len(mb)} bridge(s), {len(mp)} pond(s)')
     out = os.path.join(HERE, '..', 'data', 'early_creeks.geojson')
     json.dump({"type": "FeatureCollection", "features": feats}, open(out, 'w'))
     print('wrote', out, len(feats), 'lines')
