@@ -478,6 +478,10 @@ export const CONFIG = {
       { name: 'Seine at Provencher',   a: [-97.10986, 49.89598], b: [-97.10972, 49.89562], halfWidthM: 12, bedY: -7.0 },
       { name: 'Seine at the railway',  a: [-97.10404, 49.89040], b: [-97.10424, 49.89000], halfWidthM: 12, bedY: -7.0 },
       { name: 'Seine at Marion',       a: [-97.10442, 49.88295], b: [-97.10442, 49.88251], halfWidthM: 12, bedY: -7.0 },
+      // found by labelling the water cells of the viewer's own terrain mesh (what you actually see), after the cuts above:
+      { name: 'Seine at Marion (north)', a: [-97.10338, 49.88308], b: [-97.10366, 49.88290], halfWidthM: 12, bedY: -7.0 },
+      { name: 'Seine at Marion (south)', a: [-97.10443, 49.88245], b: [-97.10450, 49.88209], halfWidthM: 12, bedY: -7.0 },
+      { name: 'Seine, south reach',      a: [-97.10394, 49.87967], b: [-97.10394, 49.87949], halfWidthM: 10, bedY: -7.0 },
     ],
     creek: { bridge: { roads: null, creeks: '.', length: 31, width: 12, minWidth: 5, clusterM: 30, color: 0x5d4a36,
                file: './data/early_bridges.json' },   // bridges listed in data (centre, span axis, length, width) — Mike's, from satellite imagery; extra: [] would hand-list more by creek + metres from its mouth   // timber bridge wherever a street crosses a creek while both exist (roads: a list of street names limits it; width = widest deck)
@@ -1073,6 +1077,15 @@ export const CONFIG = {
     ],
     crownColors: [0x2E4A1C, 0x365421, 0x2A4418, 0x3D5A26, 0x33501F],
     barkColor: 0x4A4036,
+  },
+
+  // ── Tipis at the Forks ──────────────────────────────────────────────
+  // Camps on the point at the Forks until about 1870. Each tipi goes up within appearDays after the snow is gone, comes down
+  // within leaveDays before the next snow, and yearRoundShare of them stay all year. until = each tipi's own last year.
+  tipis: {
+    camps: [ { lon: -97.1308, lat: 49.8881, n: 14, radius: 70 }, { lon: -97.1240, lat: 49.8868, n: 8, radius: 45 } ],   // the point itself, and the east bank opposite
+    yearRoundShare: 0.2, appearDays: 30, leaveDays: 30, until: [1864, 1872],
+    size: [0.9, 1.15], minSpacingM: 7, minAboveWater: 1.5,
   },
 
   // ── Early vegetation (stands traced from early plans; see tools/early_vegetation.py) ──

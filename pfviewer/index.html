@@ -10148,6 +10148,58 @@ function tickWindmills(dt){
 }
 window._debugWind=()=>({speed:+_wmWind.speed.toFixed(2),fromDeg:+(((_wmWind.from*180/Math.PI)%360+360)%360).toFixed(0),mills:(windmills||[]).map(m=>m.M.name+(m.obj?.group.visible?' ✓':' –')+' y='+(m.obj?m.obj.group.position.y.toFixed(1):'?'))});
 
+// ── Tipis at the Forks (CONFIG.tipis) ───────────────────────────────────────────────────────────────
+// Indigenous camps on the point at the Forks until about 1870 (each tipi has its own last year, 1864–1872): they go
+// up over the month after the snow is gone, come down over the month before the next snow, and a handful stay all
+// year. Day-of-year thresholds come from the snow keyframes (CONFIG.seasons.snow). Instanced, one matrix per tipi,
+// refreshed twice a day of simulated time.
+let tipis=null;
+function _tipiGeometry(){
+  const parts=[], col=(g,c)=>{ const n=g.attributes.position.count, a=new Float32Array(n*3), k=new THREE.Color(c); for(let i=0;i<n;i++) a.set([k.r,k.g,k.b],i*3); g.setAttribute('color',new THREE.BufferAttribute(a,3)); return g; };
+  const cone=new THREE.CylinderGeometry(0.18,2.15,5.0,16,1,true); cone.translate(0,2.5,0);       // the hide cover
+  parts.push(col(cone,0xD8C7A2));
+  const flap=new THREE.BoxGeometry(0.9,1.5,0.06); flap.translate(0,0.8,2.05-0.12); parts.push(col(flap,0x4A3A28));   // door
+  for(let i=0;i<9;i++){ const a=i/9*Math.PI*2, pole=new THREE.CylinderGeometry(0.035,0.05,1.7,5); pole.rotateX(0.35); pole.rotateY(a); pole.translate(Math.sin(a)*0.25,5.1,Math.cos(a)*0.25); parts.push(col(pole,0x6B5236)); }   // pole tips through the smoke hole
+  const ring=new THREE.CylinderGeometry(2.2,2.2,0.25,16,1,true); ring.translate(0,0.12,0); parts.push(col(ring,0x8A7658));  // weighted hem
+  return mergeGeometries(parts.map(g=>g.toNonIndexed()),false);
+}
+function tickTipis(dt){
+  const T=CONFIG.tipis; if(!T||!_demLoaded||!riverRings.length) return;
+  if(!tipis){
+    const rnd=mulberry('tipis'), list=[], S=CONFIG.seasons.snow, doyOf=md=>{const[m,d]=md.split('-').map(Number);return [0,31,59,90,120,151,181,212,243,273,304,334][m-1]+d;};
+    const gone=doyOf(S.find(k=>k[1]===0)[0]), snowBack=doyOf([...S].reverse().find(k=>k[1]===0)[0]);   // first snow-free key / last snow-free key
+    for(const C of T.camps){
+      const[sx,sy]=project(C.lon,C.lat), cx=sx, cz=-sy; let tries=0, k=0, yearRound=Math.round(C.n*(T.yearRoundShare??0.2));
+      while(k<C.n&&tries++<C.n*80){
+        const a=rnd()*Math.PI*2, r=Math.sqrt(rnd())*C.radius, x=cx+Math.cos(a)*r, z=cz+Math.sin(a)*r;
+        if(riverRings.some(rg=>pointInPolygon(x,z,rg))||sampleTerrainY(x,z)<CONFIG.water.startY+T.minAboveWater) continue;
+        if(list.some(t=>Math.hypot(t.x-x,t.z-z)<T.minSpacingM)) continue;
+        list.push({x,z,y:sampleTerrainY(x,z),rot:rnd()*Math.PI*2,sc:T.size[0]+rnd()*(T.size[1]-T.size[0]),
+          tin:gone+rnd()*T.appearDays, tout:snowBack-rnd()*T.leaveDays, yearRound:k<yearRound, endYr:T.until[0]+rnd()*(T.until[1]-T.until[0]), tint:0.88+rnd()*0.2});
+        k++;
+      }
+    }
+    if(!list.length){ tipis={list:[],mesh:null}; return; }
+    const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide});
+    const mesh=new THREE.InstancedMesh(_tipiGeometry(),mat,list.length); mesh.castShadow=true; mesh.receiveShadow=true; mesh.frustumCulled=false;
+    list.forEach((t,i)=>mesh.setColorAt(i,new THREE.Color(t.tint,t.tint,t.tint)));
+    scene.add(mesh); tipis={list,mesh,key:null};
+    console.log(`⛺ Tipis: ${list.length} (${list.filter(t=>t.yearRound).length} all year)`);
+  }
+  if(!tipis.mesh) return;
+  const yr=yearFrac(currentViewDate), doy=season.doy, key=Math.floor(doy*2)+'|'+Math.floor(yr*2);
+  if(key===tipis.key) return; tipis.key=key;
+  const m=new THREE.Matrix4(), q=new THREE.Quaternion(), p=new THREE.Vector3(), sv=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
+  tipis.list.forEach((t,i)=>{
+    let k=yr<t.endYr?1:0;
+    if(k&&!t.yearRound) k*=Math.max(0,Math.min(1,(doy-t.tin)/2))*Math.max(0,Math.min(1,(t.tout-doy)/2));   // pitched / struck over a couple of days
+    q.setFromAxisAngle(up,t.rot); p.set(t.x,t.y-0.1,t.z); sv.setScalar(Math.max(0.0001,t.sc*k));
+    m.compose(p,q,sv); tipis.mesh.setMatrixAt(i,m);
+  });
+  tipis.mesh.instanceMatrix.needsUpdate=true;
+}
+window._debugTipis=()=>tipis?{n:tipis.list.length,visible:tipis.list.filter(t=>{const yr=yearFrac(currentViewDate),d=season.doy;return yr<t.endYr&&(t.yearRound||(d>t.tin+2&&d<t.tout-2));}).length}:null;
+
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -10345,6 +10397,7 @@ function startLoop(){
     _t(tickPostcards);
     _t(()=>{ if(!shantiesBuilt) initShanties(); });
     _t(tickOxbow);
+    _t(tickTipis,dt);
     _t(tickCreekTerrain);
     _t(tickSoundHooks,dt);
     _t(applySeason);
