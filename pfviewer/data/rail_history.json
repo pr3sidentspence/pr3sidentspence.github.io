@@ -66,6 +66,27 @@
     ]
    ],
    "length_m": 1155
+  },
+  {
+   "id": 1003,
+   "name": "CNoR mainline over the Red River (Mill St to Rue Davreau)",
+   "rail_class": "through",
+   "line": "cnor_east",
+   "born": "1902-01-01",
+   "died": null,
+   "basis": "Canadian Northern bridge over the Red, built with the line 1901-02 (MHS); Mill St (west) to Rue Davreau (east) per Mike; straight and schematic",
+   "confidence": "low",
+   "coordinates": [
+    [
+     -97.1333954,
+     49.8950996
+    ],
+    [
+     -97.1257675,
+     49.8969321
+    ]
+   ],
+   "length_m": 584
   }
  ],
  "lines": {

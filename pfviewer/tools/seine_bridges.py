@@ -23,6 +23,11 @@ BRIDGES = [
    "Date a guess."),
   ("Railway bridge over the Seine", None, (-97.10414, 49.89020), 30, 6, "1902-01-01", None,
    "Canadian Northern line east (tools/date_rails.py cnor_east, 1902; low-confidence identification)."),
+  # The Canadian Northern mainline over the Red River, Mill St (west) to Rue Davreau (east) — Mike. Built with the line (1901-02).
+  # Centred on where the schematic link (rail_history extra 1003) crosses the Red; bearing 69.5° (the link's); bridge_fit trims the ends to the banks.
+  ("Canadian Northern Railway Bridge (Red River)", 69.5, (-97.13089, 49.89570), 270, 7, "1902-01-01", None,
+   "Steel through truss carrying the CNoR mainline over the Red; Mike places it from near Mill St to Rue Davreau; the date follows the line (1902); the exact crossing is schematic.",
+   {"material": "iron", "bridge_style": "truss", "bridge_fit": True}),
 ]
 
 def street_nearest(name, lon, lat):
@@ -55,8 +60,10 @@ def rail_nearest(lon, lat):
 
 def main():
     feats = []
-    for name, street, (lon, lat), L, W, born, died, note in BRIDGES:
-        brg, d, (lon, lat) = (street_nearest(street, lon, lat) if street else rail_nearest(lon, lat))   # centre the deck where the street/rail crosses the channel
+    for entry in BRIDGES:
+        name, street, (lon, lat), L, W, born, died, note = entry[:8]; over = entry[8] if len(entry) > 8 else {}
+        if isinstance(street, (int, float)): brg, d = math.radians(street), 0.0     # explicit bearing; centre as given
+        else: brg, d, (lon, lat) = (street_nearest(street, lon, lat) if street else rail_nearest(lon, lat))   # centre the deck where the street/rail crosses the channel
         ue, un = math.sin(brg), math.cos(brg)          # along the span (east, north)
         ve, vn = -un, ue                               # across
         ring = []
@@ -66,6 +73,7 @@ def main():
         ring.append(ring[0])
         props = {"id": name, "uid": name, "pf_uid": name, "name": name, "type": "bridge", "material": "wood", "bridge_style": "trestle",
                  "floors": 1, "born": born, "born_basis": "estimated", "source_file": "generated: tools/seine_bridges.py", "notes": note, "cohort": "bridges"}
+        props.update(over)
         if died: props["died"] = died
         feats.append({"type": "Feature", "properties": props, "geometry": {"type": "Polygon", "coordinates": [ring]}})
         print(f'{name}: axis {math.degrees(brg) % 180:.0f}° (street/rail {d:.0f} m from the gap, deck centred on it at {lon:.5f}, {lat:.5f})')

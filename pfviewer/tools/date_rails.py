@@ -81,6 +81,12 @@ EXTRAS = [
   {'id': 1002, 'name': 'CPR over the Louise Bridge and east to the east-bank line', 'line': 'cpr_louise', 'born': '1881-07-26', 'died': '1904-01-01',
    'pts': [(1473, -961), (1506, -1024), (1600, -1198), (1700, -1235), (1950, -1170), (2200, -1020), (2354, -850)],
    'basis': 'CPR trains used the Louise Bridge from 26 Jul 1881 (CBC/MHS); "Combination CPR/City Bridge until 1904" (City of Winnipeg). East connector is schematic.'},
+  # The Canadian Northern mainline's Red River crossing (Mike: "from near Mill Street on the West side and Rue Davreau on the
+  # East side", built with the line, 1901-02): a straight schematic link from the Mill St end to the east-bank line's first vertex
+  # (feature 283/284, cnor_east). The bridge itself is data/pastforward_2026_seine_bridges.geojson (tools/seine_bridges.py).
+  {'id': 1003, 'name': 'CNoR mainline over the Red River (Mill St to Rue Davreau)', 'line': 'cnor_east', 'born': '1902-01-01', 'died': None,
+   'pts': [(152, 33), (699, -171)],
+   'basis': 'Canadian Northern bridge over the Red, built with the line 1901-02 (MHS); Mill St (west) to Rue Davreau (east) per Mike; straight and schematic'},
 ]
 YARD_TRACK_MAX_M = 1000
 SPREAD_TO = {'cpr_louise': '1900-01-01', 'cpr_weston': '1906-01-01', 'npm_forks': '1904-01-01',
