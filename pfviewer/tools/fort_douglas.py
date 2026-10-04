@@ -16,7 +16,7 @@ Replace with real footprints when there are some.
 import json, math, os, uuid
 HERE = os.path.dirname(os.path.abspath(__file__))
 M_LON, M_LAT = 71600.0, 111320.0
-CEN = (-97.13150, 49.89985)       # lon, lat — north-west of Logan's Creek mouth (-97.13103, 49.89930)
+CEN = (-97.13150, 49.90015)       # lon, lat — downstream (north) of Logan's Creek, on the west bank (the creek mouth is at -97.13103, 49.89930)
 ROT = math.radians(15)
 NS = uuid.UUID('6f1d0c1e-5b7a-4d0e-9a53-0f0718130001')
 def pt(x, y):                      # local metres (east, north) → lon/lat, turned by ROT
