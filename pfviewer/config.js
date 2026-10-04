@@ -241,7 +241,7 @@ export const CONFIG = {
   // ── Altitude ────────────────────────────────────────────────────────
   // maxM: the ceiling (default = the orbit's maxDistance). Haze (city smoke haze + distance fog) is full below
   // hazeFadeFromM and gone at hazeGoneFrac × maxM. Flying (walk mode, E/Q) speeds up with height: ×flySpeedAtMax at maxM.
-  altitude: { maxM: 3000, hazeFadeFromM: 700, hazeGoneFrac: 0.8, fogToo: true, flySpeedAtMax: 5 },
+  altitude: { maxM: 3000, hazeFadeFromM: 150, hazeGoneFrac: 0.8, fadePower: 2, fogToo: true, flySpeedAtMax: 5 },   // fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
 
   orbitControls: {
     dampingFactor: 0.07,

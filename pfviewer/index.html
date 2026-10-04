@@ -8142,7 +8142,7 @@ function maxAltitudeM(){ return CONFIG.altitude?.maxM??CONFIG.orbitControls.maxD
 function hazeAltK(){
   if(hazeOff) return 0;
   const A=CONFIG.altitude||{}, y=camera.position.y, a=A.hazeFadeFromM??700, b=(A.hazeGoneFrac??0.8)*maxAltitudeM();
-  const t=Math.max(0,Math.min(1,(y-a)/Math.max(1,b-a))); return 1-t*t*(3-2*t);
+  const t=Math.max(0,Math.min(1,(y-a)/Math.max(1,b-a))); return Math.pow(1-t,A.fadePower??2);   // steeper than linear: seeing far matters most for the fog
 }
 window.toggleHaze=()=>{ hazeOff=!hazeOff; try{localStorage.setItem('pfviewer.hazeOff',hazeOff?'1':'0');}catch(e){}
   const b=document.getElementById('haze-btn'); if(b) b.textContent='☁ Haze: '+(hazeOff?'off':'on'); };
