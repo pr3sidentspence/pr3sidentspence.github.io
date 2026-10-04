@@ -118,7 +118,8 @@ body.fps-touch #legend{display:none !important;}   /* would cover the walk/sprin
    !important beats the inline display the loaders set when they show them. */
 body:not(.advanced) #layer-bar,
 body:not(.advanced) #winter-btn,
-body:not(.advanced) #flood-control{display:none !important;}
+body:not(.advanced) #flood-control,
+body:not(.advanced) #haze-btn{display:none !important;}
 </style>
 </head>
 <body>
@@ -209,6 +210,7 @@ body:not(.advanced) #flood-control{display:none !important;}
   </div>
 </div>
 <div id="layer-bar" style="display:none;position:fixed;top:100px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
+<button id="haze-btn" onclick="toggleHaze()" style="position:fixed;top:54px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">☁ Haze: on</button>
 <button id="winter-btn" onclick="toggleWinter()" style="display:none;position:fixed;top:18px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">❄ Winter</button>
 
 <div id="facade-picker" style="display:none;position:fixed;top:50%;right:24px;transform:translateY(-50%);background:rgba(9,8,10,0.95);border:1px solid #C8A05A;border-radius:12px;padding:16px;pointer-events:auto;z-index:20;max-width:220px;text-align:center;">
@@ -8132,13 +8134,28 @@ const _cv        = new THREE.Vector3();
 const _frustum   = new THREE.Frustum();
 const _psMat     = new THREE.Matrix4();
 const _hazeSnowCol=new THREE.Color();
+// ── Haze (city smoke haze + distance fog) fades out with altitude ──────────────────────────
+// Full below CONFIG.altitude.hazeFadeFromM, gone by hazeGoneFrac × the maximum altitude (the orbit's maxDistance),
+// so a high, zoomed-out view isn't veiled. The ☁ Haze button (advanced options, Ctrl+A) turns it off altogether.
+let hazeOff=false; try{ hazeOff=localStorage.getItem('pfviewer.hazeOff')==='1'; }catch(e){}
+function maxAltitudeM(){ return CONFIG.altitude?.maxM??CONFIG.orbitControls.maxDistance; }
+function hazeAltK(){
+  if(hazeOff) return 0;
+  const A=CONFIG.altitude||{}, y=camera.position.y, a=A.hazeFadeFromM??700, b=(A.hazeGoneFrac??0.8)*maxAltitudeM();
+  const t=Math.max(0,Math.min(1,(y-a)/Math.max(1,b-a))); return 1-t*t*(3-2*t);
+}
+window.toggleHaze=()=>{ hazeOff=!hazeOff; try{localStorage.setItem('pfviewer.hazeOff',hazeOff?'1':'0');}catch(e){}
+  const b=document.getElementById('haze-btn'); if(b) b.textContent='☁ Haze: '+(hazeOff?'off':'on'); };
+{ const b=document.getElementById('haze-btn'); if(b) b.textContent='☁ Haze: '+(hazeOff?'off':'on'); }
 function tickChimneySmoke(dt){
   // City haze layers: always on (they fade near the camera themselves)
   if(cityHazeGroup){
     hazeUniforms.uTime.value+=dt;
     hazeUniforms.uYear.value=currentViewDate.getFullYear()+currentViewDate.getMonth()/12;
     const H=CONFIG.chimneys.cityHaze;
-    hazeUniforms.uStrength.value=H.strength*chimneyTodMult;
+    const hk=hazeAltK();
+    hazeUniforms.uStrength.value=H.strength*chimneyTodMult*hk;
+    cityHazeGroup.visible=hk>0.01;
     // From above, contrast against the ground: brownish over bare ground, dark soot over snow
     hazeUniforms.uColorAbove.value.set(H.colorAbove??H.color).lerp(_hazeSnowCol.set(H.colorAboveSnow??H.color),season.snow);
   }
@@ -9203,7 +9220,7 @@ function _buildMosquitoes(){
   const pts=new THREE.Points(g,mat); pts.frustumCulled=false; pts.renderOrder=4; scene.add(pts);
   _mosq={pts,u,count:A.length};
 }
-window._debugMosq=()=>({anchors:mosquitoAnchors.length,dens:+mosquitoDensity().toFixed(2),visible:!!_mosq?.pts.visible});
+window._debugMosq=()=>({max:CONFIG.mosquitoes.maxAnchors,built:_mosq?.count,anchors:mosquitoAnchors.length,dens:+mosquitoDensity().toFixed(2),visible:!!_mosq?.pts.visible});
 function mosquitoDensity(){
   const M=CONFIG.mosquitoes, S=season, doy=S.doy;
   const [a,b,c,d]=M.seasonDays;   // ramp up a→b, full b→c, down c→d
@@ -10194,7 +10211,9 @@ function startLoop(){
       }else{
         const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(qYaw);
         const right=new THREE.Vector3(1,0,0).applyQuaternion(qYaw);
-        const spd=(sprinting?38:9)*dt;
+        const _alt=Math.max(0,camera.position.y-_groundFloor+EYE_H), _mx=maxAltitudeM();
+        const spd=(sprinting?38:9)*dt*(1+((CONFIG.altitude?.flySpeedAtMax??5)-1)*Math.min(1,_alt/_mx));   // the higher you fly the faster you go (5× at the ceiling)
+        if(camera.position.y>_mx) camera.position.y=_mx;
         const jFwd=joyVec.y,jRight=joyVec.x;
         if(keys['KeyW']||keys['ArrowUp']||jFwd>0.15)camera.position.addScaledVector(fwd,spd*(keys['KeyW']||keys['ArrowUp']?1:jFwd));
         if(keys['KeyS']||keys['ArrowDown']||jFwd<-0.15)camera.position.addScaledVector(fwd,spd*(keys['KeyS']||keys['ArrowDown']?-1:jFwd));
@@ -10252,7 +10271,12 @@ function startLoop(){
     if(_frameN===1 && window.pfDiag) gpuCensus('first render');
     }catch(e){ _loopError(e); }   // an update that throws every frame must not freeze the view
     try{
-      if(!_glLost) renderer.render(scene,camera);   // after a context loss, rendering only throws
+      if(!_glLost){   // after a context loss, rendering only throws
+        const fd=scene.fog?.density, fk=CONFIG.altitude?.fogToo===false?1:hazeAltK();   // distance fog fades out with the haze
+        if(fd!==undefined&&fk<1) scene.fog.density=fd*fk;
+        renderer.render(scene,camera);
+        if(fd!==undefined) scene.fog.density=fd;
+      }
       drawMinimap();
     }catch(e){ _loopError(e); }
   }

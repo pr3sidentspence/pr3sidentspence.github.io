@@ -237,6 +237,11 @@ export const CONFIG = {
     homeAltitude: 1500,  // metres above ground for H key top-down overview
   },
 
+  // ── Altitude ────────────────────────────────────────────────────────
+  // maxM: the ceiling (default = the orbit's maxDistance). Haze (city smoke haze + distance fog) is full below
+  // hazeFadeFromM and gone at hazeGoneFrac × maxM. Flying (walk mode, E/Q) speeds up with height: ×flySpeedAtMax at maxM.
+  altitude: { maxM: 3000, hazeFadeFromM: 700, hazeGoneFrac: 0.8, fogToo: true, flySpeedAtMax: 5 },
+
   orbitControls: {
     dampingFactor: 0.07,
     maxPolarAngle: 0.98,   // × Math.PI — 1.0 would let you flip under the ground
@@ -796,7 +801,7 @@ export const CONFIG = {
   // only visible within `fade` metres. seasonDays = day-of-year ramp
   // [start, full, full-until, end] (≈ May 20 · Jun 10 · Aug 10 · Sep 5).
   mosquitoes: {
-    perAnchor: 40, maxAnchors: 400,
+    perAnchor: 40, maxAnchors: 2400,   // (was 400 — the early creeks pushed the oxbow's anchors past the cap, so its clouds never drew)
     color: 0x121212, opacity: 0.6,
     fade: [18, 55],
     seasonDays: [140, 161, 222, 248],
@@ -1379,6 +1384,7 @@ export const CONFIG = {
   // Deep-merged over this config on touch devices (or ?profile=mobile);
   // ?profile=desktop skips it. Same shape as the settings it overrides.
   mobile: {
+    mosquitoes: { perAnchor: 24, maxAnchors: 1200 },
     earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
     terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
     // Only buildings within 3 km. Small details and real window glass only near the camera:
