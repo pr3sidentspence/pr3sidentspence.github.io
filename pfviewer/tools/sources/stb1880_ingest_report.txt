@@ -1,0 +1,36 @@
+Stoner 1880 St Boniface buildings: 135 in, 131 added, 2 duplicates dropped, 2 probable duplicates dropped
+
+DUPLICATES (overlap an existing building born <= 1890) — dropped: 2
+  b106 (institutional, 703 m², 5 Archeveche) overlaps Archbishop's Residence [osm, born 1864-06-20, heritage_construction_date] (43% of it)
+  b113 (institutional, 559 m², 3 Couvent (Grey Nuns)) overlaps Grey Nun's Convent (St. Boniface Museum) [osm, born 1845-03-24, heritage_construction_date] (47% of it)
+
+PROBABLE DUPLICATES (centre within 12 m of an existing early building) — dropped: 2
+  b008 (house, 100 m², -) is 10 m from Maison Kittson [osm, born 1878-11-16, heritage_construction_date]
+  b069 (hotel, 262 m², 12 Fidele Mondor, Hotel St. Boniface) is 12 m from 740 TACHE AVENUE [osm, born 1880-05-15, assessment_year_built]
+
+REPLACED (an existing LATER building stands on the footprint) — kept, died set: 5
+  b029 (house, 150 m², -) overlaps later building(s): 143 TAAPWEEWIN WAY [osm, born 1930-06-19, assessment_year_built] (46%) → died 1930-06-19
+  b056 (house, 171 m², -) overlaps later building(s): 220 NOTRE DAME STREET [osm, born 1930-10-02, assessment_year_built] (38%) → died 1930-10-02
+  b062 (house, 143 m², -) overlaps later building(s): 205 DUMOULIN STREET [osm, born 1929-04-10, assessment_year_built] (46%) → died 1929-04-10
+  b080 (house, 219 m², long shed) overlaps later building(s): 138 NOTRE DAME STREET [osm, born 1911-07-16, assessment_year_built] (28%) → died 1911-07-16
+  b121 (house, 169 m², -) overlaps later building(s): 457 JEANNE D'ARC STREET [osm, born 1914-11-25, assessment_year_built] (40%) → died 1914-11-25
+
+NEAR (within 50 m of an early building) — kept, for review: 18
+  b009 (house, 446 m², -) is 29 m from early Maison Kittson [osm, born 1878-11-16, heritage_construction_date]
+  b038 (public, 650 m², 15 Batisse des Emigrants) is 44 m from early 189 LA VERENDRYE STREET [osm, born 1870-02-19, assessment_year_built]
+  b039 (outbuilding, 110 m², -) is 23 m from early 189 LA VERENDRYE STREET [osm, born 1870-02-19, assessment_year_built]
+  b057 (house, 216 m², -) is 45 m from early Francois Gingras House [osm, born 1884-09-15, heritage_construction_date]
+  b058 (house, 36 m², -) is 27 m from early Francois Gingras House [osm, born 1884-09-15, heritage_construction_date]
+  b059 (house, 139 m², -) is 20 m from early Francois Gingras House [osm, born 1884-09-15, heritage_construction_date]
+  b061 (house, 756 m², lower side wing) is 35 m from early Francois Gingras House [osm, born 1884-09-15, heritage_construction_date]
+  b064 (house, 549 m², towered) is 37 m from early 262 DUMOULIN STREET [osm, born 1890-04-04, assessment_year_built]
+  b070 (house, 240 m², connected sheds) is 33 m from early 740 TACHE AVENUE [osm, born 1880-05-15, assessment_year_built]
+  b071 (house, 311 m², -) is 47 m from early 149 NOTRE DAME STREET [osm, born 1890-04-17, assessment_year_built]
+  b072 (house, 279 m², front porch) is 32 m from early 149 NOTRE DAME STREET [osm, born 1890-04-17, assessment_year_built]
+  b073 (house, 60 m², -) is 43 m from early 740 TACHE AVENUE [osm, born 1880-05-15, assessment_year_built]
+  b090 (house, 169 m², -) is 30 m from early 740 TACHE AVENUE [osm, born 1880-05-15, assessment_year_built]
+  b091 (outbuilding, 51 m², mill annex) is 49 m from early 740 TACHE AVENUE [osm, born 1880-05-15, assessment_year_built]
+  b105 (outbuilding, 268 m², long low building) is 20 m from early 157 MASSON STREET [osm, born 1890-10-01, assessment_year_built]
+  b125 (house, 169 m², -) is 45 m from early 343 DUMOULIN STREET [osm, born 1870-03-18, assessment_year_built]
+  b156 (house, 86 m², -) is 32 m from early Francois Gingras House [osm, born 1884-09-15, heritage_construction_date]
+  b158 (institutional, 190 m², 5 Archeveche west wing) is 44 m from early Archbishop's Residence [osm, born 1864-06-20, heritage_construction_date]
