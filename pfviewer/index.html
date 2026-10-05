@@ -4319,6 +4319,7 @@ function buildGroundCover(){
 // deck at road level (rails/ruts sit on it), bents down into the valley and
 // handrails stand in its place; after the creek is filled in the road returns.
 let creekBridgeMesh=null, creekBridgeSites=[];
+let sidewalkMesh=null;   // wooden (later granolithic) sidewalks, see buildSidewalks
 function findCreekBridgeSites(roadFeats,roadInfo){
   const BR=CONFIG.terrain.creek?.bridge; creekBridgeSites=[];
   if(!BR||!creekValley) return;
@@ -4484,6 +4485,66 @@ function addCornerFills(segs,pos,col,life,latF){
   }
   console.log(`🛣 corner fills: ${nFill} corners at ${nodes.size} junction nodes`);
 }
+// ── Sidewalks (CONFIG.sidewalks) ─────────────────────────────────────────────────────────────────
+// Plank (board) walks run along both sides of a street once enough has been built beside it, from the year the city
+// started laying them; on the busiest stretches they're replaced by granolithic (artificial stone) walks, elsewhere they
+// last into the 1920s. History (Artibise, Gateway City; City of Winnipeg Archives): small board walks on Main St by 1871;
+// 4,316 yd laid by the city in 1874; boom of 1882 (38.5 miles laid in a year) "wide sidewalks … not only on the business but
+// on the private streets"; 1904: 186 mi plank vs 23 mi artificial stone; 1911: 352 mi plank vs 99 mi granolithic.
+// "Worthy" = the K-th earliest building within radiusM of a 10 m stretch (no business data yet, so building density stands
+// in for businesses: ≥ minBuildings → a walk, ≥ businessBuildings → a business street). Cheap: flat strips, one mesh.
+function buildSidewalks(segs,centGrid,CELL){
+  if(sidewalkMesh){ scene.remove(sidewalkMesh); sidewalkMesh.geometry.dispose(); sidewalkMesh.material.dispose(); sidewalkMesh=null; }
+  const SW=CONFIG.sidewalks; if(!SW||SW.enabled===false||!segs.length||OFF.has('sidewalks')) return;
+  const pos=[], col=[], life=[], R2=SW.radiusM*SW.radiusM, cr=Math.max(1,Math.ceil(SW.radiusM/CELL));
+  const plank=new THREE.Color(SW.plankColor), stone=new THREE.Color(SW.stoneColor), tmp=new THREE.Color();
+  const waterMin=CONFIG.water.startY+0.8, half=SW.width/2;
+  const nearOtherRoad=(x,z,name)=>{ const gx=Math.floor(x/RSEG_CELL), gz=Math.floor(z/RSEG_CELL);
+    for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const q of _roadSegGrid.get((gx+i)+','+(gz+j))||[]){
+      if(q.name===name) continue; const dx=q.x2-q.x1, dz=q.z2-q.z1, L2=dx*dx+dz*dz||1, t=Math.max(0,Math.min(1,((x-q.x1)*dx+(z-q.z1)*dz)/L2));
+      if(Math.hypot(x-q.x1-dx*t,z-q.z1-dz*t)<q.w/2+0.4) return true; }
+    return false; };
+  let nPlank=0, nStone=0;
+  for(const sg of segs){
+    if(!sg.name||SW.excludeTypes.includes(sg.type)||sg.w<SW.minRoadWidth) continue;
+    const dx=(sg.x2-sg.x1)/sg.len, dz=(sg.z2-sg.z1)/sg.len, nx=-dz, nz=dx, n=Math.max(1,Math.round(sg.len/10)), step=sg.len/n;
+    for(let c=0;c<n;c++){
+      const mx=sg.x1+dx*step*(c+0.5), mz=sg.z1+dz*step*(c+0.5);
+      // how built-up is it, and since when
+      const borns=[], gx=Math.floor(mx/CELL), gz=Math.floor(mz/CELL);
+      for(let i=-cr;i<=cr;i++) for(let j=-cr;j<=cr;j++) for(const b of centGrid.get((gx+i)+','+(gz+j))||[]) if((b.cx-mx)**2+(b.cz-mz)**2<R2&&b.born>NO_BORN+1) borns.push(b.born);
+      if(borns.length<SW.minBuildings) continue;
+      borns.sort((a,b)=>a-b);
+      const tWalk=borns[SW.minBuildings-1], biz=borns.length>=SW.businessBuildings, tBiz=biz?borns[SW.businessBuildings-1]:1e9;
+      const r=seededRand(mx*0.131+mz*0.377);
+      const tw=Math.min(tWalk,SW.streetStarts?.[sg.name]??1e9);   // named main streets had walks before the data's buildings are dated (it's sparse before 1880)
+      const start=Math.max(sg.span[0],biz||SW.streetStarts?.[sg.name]?SW.eraStart:SW.residentialFrom,tw+SW.delayYears);
+      const stoneAt=biz?SW.businessEnd[0]+r*(SW.businessEnd[1]-SW.businessEnd[0]):1e9;      // granolithic replaces the planks on business streets…
+      const plankEnd=Math.min(sg.span[1],biz?Math.max(stoneAt,start+1):SW.residentialEnd[0]+r*(SW.residentialEnd[1]-SW.residentialEnd[0]));   // …and the rest are renewed in concrete by the 1920s
+      const stoneFrom=biz?Math.max(plankEnd,tBiz+0.5):plankEnd, stoneTo=sg.span[1];
+      const wantPlank=start<plankEnd, wantStone=SW.concrete&&stoneTo>stoneFrom&&(biz||SW.concreteEverywhere);
+      if(!wantPlank&&!wantStone) continue;
+      if(roadCutAt(mx,mz,sg.name)) continue;
+      for(const side of [-1,1]){
+        const off=sg.w/2+SW.gapM+half, cx=mx+nx*side*off, cz=mz+nz*side*off;
+        if(sampleTerrainY(cx,cz)<waterMin||nearOtherRoad(cx,cz,sg.name)) continue;
+        const L=step/2+0.15, P=[[cx-dx*L+nx*half,cz-dz*L+nz*half],[cx+dx*L+nx*half,cz+dz*L+nz*half],[cx+dx*L-nx*half,cz+dz*L-nz*half],[cx-dx*L-nx*half,cz-dz*L-nz*half]];
+        const Y=P.map(q=>surfaceY(q[0],q[1],dx,dz)+SW.lift);
+        const quad=(b0,b1,color,lift)=>{ for(const k of [0,1,2, 0,2,3]){ pos.push(P[k][0],Y[k]+lift,P[k][1]); col.push(color.r,color.g,color.b); life.push(b0,b1); } };
+        const j=0.9+0.2*seededRand(cx*0.7+cz*0.3+side);
+        if(wantPlank){ tmp.copy(plank).multiplyScalar(j); quad(start,plankEnd,tmp,0); nPlank++; }
+        if(wantStone){ tmp.copy(stone).multiplyScalar(0.94+0.1*seededRand(cx*0.3+cz*0.9)); quad(stoneFrom,stoneTo,tmp,-0.02); nStone++; }
+      }
+    }
+  }
+  if(!pos.length){ console.log('🚶 Sidewalks: none'); return; }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.setAttribute('aLifespan',new THREE.Float32BufferAttribute(life,2));
+  g.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(life.length*2),4)); g.computeVertexNormals();
+  const mat=withRoadBend(tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3})),'B');
+  sidewalkMesh=new THREE.Mesh(g,mat); sidewalkMesh.receiveShadow=true; sidewalkMesh.renderOrder=-1; scene.add(sidewalkMesh);
+  window._debugSidewalks=years=>{ const L=g.attributes.aLifespan.array, C=g.attributes.color.array, out={}; for(const y of years){ let pl=0,st=0; for(let q=0;q<L.length/12;q++){ const b0=L[q*12], b1=L[q*12+1]; if(y>=b0&&y<b1){ if(C[q*18]<0.3) pl++; else st++; } } out[y]=[pl,st]; } return out; };   // [plank quads, stone quads] alive per year
+  console.log(`🚶 Sidewalks: ${nPlank} plank + ${nStone} granolithic strips (${(pos.length/3/6)|0} quads)`);
+}
 async function buildRoads(geojson){
   buildGroundCover();
   if(cityHazeGroup) buildHazeSources();   // same active-layer centroids
@@ -4611,7 +4672,7 @@ async function buildRoads(geojson){
         const span=featSpan(feat,stName,mx,mz);
         if(!span)continue;
         _addRoadSeg(x1,z1,x2,z2,w,span,stName);
-        cornerSegs.push({x1,z1,x2,z2,w,span,len});
+        cornerSegs.push({x1,z1,x2,z2,w,span,len,name:stName,type:feat.properties.st_type});
         const pxu=(-dz/len),pzu=(dx/len);
         // Lift road slightly above terrain; use each chunk's own mean so the
         // quad sits flush rather than twisting on sloped ground.
@@ -4696,6 +4757,7 @@ async function buildRoads(geojson){
   roadMesh.receiveShadow=true;roadMesh.renderOrder=-1;scene.add(roadMesh);   // first of the transparents (it fades)
   buildStreetLights();   // placed from the segments just recorded
   buildCreekBridges();
+  buildSidewalks(cornerSegs,centGrid,CENT_CELL);
 
   // Cart tracks — two narrow ruts per segment, visible in winter only
   const trackPos=[], trackLife=[];

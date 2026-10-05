@@ -1087,6 +1087,19 @@ export const CONFIG = {
     barkColor: 0x4A4036,
   },
 
+  // ── Sidewalks ───────────────────────────────────────────────────────
+  // Plank walks on both sides of a street where enough has been built (see buildSidewalks): `minBuildings` within radiusM of a 10 m stretch
+  // earns a walk (from residentialFrom — the 1882 boom — or eraStart, 1873, on business streets), `businessBuildings` makes it a business street whose
+  // planks give way to granolithic in businessEnd years (spread by place); other walks are renewed in concrete by residentialEnd. delayYears after the
+  // buildings. Sources: Artibise 'Gateway City' (MHS), City of Winnipeg Archives. No business data yet: building density stands in for businesses.
+  sidewalks: { enabled: true, radiusM: 28, minBuildings: 3, businessBuildings: 9, eraStart: 1873, residentialFrom: 1882, delayYears: 1,
+    businessEnd: [1898, 1920], residentialEnd: [1920, 1935], concrete: true, concreteEverywhere: true,   // concrete everywhere once the planks go (off on phones: fewer quads)
+   
+    width: 1.7, gapM: 0.35, lift: 0.16, minRoadWidth: 8, excludeTypes: ['LANE', 'PATH', 'TRAIL', 'HWY', 'RD'],
+    // streets that had board walks early (Main's small stretches by 1871, the city's own from 1874) even where the buildings beside them are only dated later:
+    streetStarts: { Main: 1872, Portage: 1874, 'Notre Dame': 1875, Water: 1875, McDermot: 1875, Bannatyne: 1875, Princess: 1876, Albert: 1876, Ross: 1877, William: 1877, Market: 1876 },
+    plankColor: 0x7A6A55, stoneColor: 0xA9A59B },
+
   // ── Marshes (the ellipses on the 1881 map) ───────────────────────────
   marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
 
@@ -1416,6 +1429,7 @@ export const CONFIG = {
   // Deep-merged over this config on touch devices (or ?profile=mobile);
   // ?profile=desktop skips it. Same shape as the settings it overrides.
   mobile: {
+    sidewalks: { concreteEverywhere: false },
     mosquitoes: { perAnchor: 24, maxAnchors: 1200, cloud: { puffs: 3, size: 4.5, opacity: 0.2, maxPx: 100, fade: [40, 200], color: 0x1A1816 } },
     earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
     terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
