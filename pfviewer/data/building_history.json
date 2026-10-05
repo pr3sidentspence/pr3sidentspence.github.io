@@ -122,14 +122,15 @@
   },
   "6c27ad24-51fc-4ec2-8f1a-d25c860f8eeb": {
    "name": "Fort Garry Gate (Governor's Gate)",
-   "notes": "The better of two models of the gate (Mike, 2026-09-29). Built 1853 with the fort's northern extension; still standing.",
+   "notes": "The better of two models of the gate (Mike, 2026-09-29). Built 1853 with the fort's northern extension; still standing. Height: 4.6 m overall (from a card match, Mike 2026-10-05): wall 3.8 m (floors 0.905 x 4.2) + the 0.8 m stone parapet.",
    "set": {
     "born": "1853-08-01",
     "died": null,
     "died_basis": "still_standing",
     "date_precision": {
      "born": "year"
-    }
+    },
+    "floors": 0.9048
    }
   },
   "802ae591-76d8-4586-92e3-a2980b09a4bc": {

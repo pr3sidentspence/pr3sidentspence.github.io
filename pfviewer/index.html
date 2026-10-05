@@ -1004,6 +1004,9 @@ window._debugRails=()=>{ const yf=yearFrac(currentViewDate), by={};
   const feats=(railGeojson?.features||[]); const dated=feats.filter(f=>f.properties.born);
   return {date:currentViewDate.toISOString().slice(0,10),trainsAlive:by,trainsTotal:trainConsists.length,stretchesBuilt:dated.filter(f=>_isoYearFrac(f.properties.born,0)<=yf).length+'/'+feats.length}; };
 window._debugWx=()=>({mode:timelineMode,date:currentViewDate.toISOString().slice(0,16),k:+_wxK.toFixed(3),active:_weatherActive,fog:+scene.fog.density.toFixed(5),stormNow:!!stormAt(currentViewDate),hold:!!_hold});
+window._topAt=(lon,lat)=>{ const[sx,sy]=project(lon,lat), rc=new THREE.Raycaster(new THREE.Vector3(sx,200,-sy),new THREE.Vector3(0,-1,0),0,400), hits=[];
+  scene.traverse(o=>{ if(!o.isMesh||!o.visible||o.isInstancedMesh||o.material?.isShaderMaterial||o.material?.transparent||!o.geometry?.attributes?.position||o===terrainMesh) return; try{ for(const h of rc.intersectObject(o,false)) hits.push({y:+h.point.y.toFixed(2),obj:o.name||o.material?.type||'mesh'}); }catch(e){} });
+  hits.sort((a,b)=>b.y-a.y); return hits.slice(0,3).concat([{ground:+sampleTerrainY(sx,-sy).toFixed(2)}]); };   // vertical-ray height check (highest meshes + ground)
 window._cam=camera;   // test/debug handle (window._orbit is set where the controls are created)
 window._debugCam=(x,y,z,tx,ty,tz)=>{ camera.position.set(x,y,z); orbit.target.set(tx,ty,tz); orbit.update(); tickGlassLOD(); tickDetailLOD(); renderer.render(scene,camera); renderer.render(scene,camera); const i=renderer.info.render;
   return {tris:i.triangles,calls:i.calls,glassTilesVisible:glassTiles.filter(t=>t.mesh.visible).length+'/'+glassTiles.length,glassPanesVisible:glassTiles.filter(t=>t.mesh.visible).reduce((a,t)=>a+(t.mesh.geometry.index?.count||t.mesh.geometry.userData.n||0)/6,0),detailTilesVisible:detailTiles.filter(t=>t.mesh.visible).length+'/'+detailTiles.length}; };
