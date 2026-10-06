@@ -1,6 +1,6 @@
-1910 McPhillips digitization: 137 features in → 103 buildings/walkways added, 6 yard(s), 4 cemetery plot polygon(s)
+1910 McPhillips digitization: 137 features in → 2 buildings/walkways added, 6 yard(s), 4 cemetery plot polygon(s)
 
-ALREADY IN THE DATA (same uid) — skipped: 12
+ALREADY IN THE DATA (same uid) — skipped: 115
   1015 tinsmith
   1016 
   1017 AB Ormsby Limited sheet metal works
@@ -12,12 +12,113 @@ ALREADY IN THE DATA (same uid) — skipped: 12
   19388 Turenne House
   19389 La Chapelle de Notre-Dame-du-Bon-Secours (St. Norbert Chapel)
   19391 St. Boniface Cathedral 
+  19393 [?] Brewery [?} (Site of Winnipeg Brewery)
+  19394 All Saints' Church
+  19395 
+  19396 
+  19397 
+  19400 
+  19402 
+  19403 
+  19404 
+  19405 
+  19407 
+  19408 
+  19409 
+  19410 
+  19411 
+  19412 
+  19413 
+  19414 
+  19416 
+  19417 
+  19418 
+  19419 
+  19420 
+  19421 
+  19423 
+  19424 
+  19425 
+  19426 
+  19427 
+  19428 
+  19429 General Hospital
+  19430 General Hospital
+  19431 General Hospital
+  19432 General Hospital
+  19433 General Hospital
+  19434 General Hospital
+  19435 General Hospital
+  19436 General Hospital
+  19437 Canadian Pacific Railway Roundhouse
+  19439 Greek Catholic Church
+  19449 Martin [School?]
+  19454 
+  19457 Industrial School for Indian Boys
+  19458 Industrial School for Indian Boys
+  19459 
+  19460 
+  19461 
+  19462 
   19464 St. Boniface Cathedral 
+  19469 [?] Hospital
+  19470 Rat Portage Lumber Company
+  19471 Rat Portage Lumber Company
+  19472 Rat Portage Lumber Company
+  19473 Rat Portage Lumber Company
+  19474 Winnipeg Canoe Club
+  19475 Methodist Church
+  19476 Presbyterian Church
+  19477 
+  19478 McPhillips Church [?]
+  19479 Winnipeg Rowing Club
+  19480 (St. Bonniface) Town Hall
+  19481 
+  19483 Union Station
+  19484 unlabeled
+  19487 Wellington School
+  19491 Winnipeg Industrial Exhibition Track
+  19493 Winnipeg Industrial Exhibition Structure
+  19494 Winnipeg Industrial Exhibition Structure
+  19495 Winnipeg Industrial Exhibition Structure
+  19496 Winnipeg Industrial Exhibition Structure
+  19497 Winnipeg Industrial Exhibition Structure
+  19498 Winnipeg Industrial Exhibition Structure
+  19499 Winnipeg Industrial Exhibition Structure
+  19501 Winnipeg Industrial Exhibition Structure
+  19502 Winnipeg Industrial Exhibition Structure
+  19504 Winnipeg Industrial Exhibition Structure
+  19507 Winnipeg Industrial Exhibition Structure
+  19508 Winnipeg Industrial Exhibition Structure
+  19509 Winnipeg Industrial Exhibition Structure
+  19510 Winnipeg Industrial Exhibition Structure
+  19511 Winnipeg Industrial Exhibition Structure
+  19513 Winnipeg Industrial Exhibition Structure
+  19515 Winnipeg Industrial Exhibition Structure
+  19516 Strathcona School
+  19517 [Illegible] Church
+  19518 [Illegible] Church
+  19519 [Illegible] Church
+  19520 St. [Illegible] Church
+  19522 Fire Hall
+  19523 Machray School
+  19524 St. John's Coleege
+  19527 Redwood Brewery
+  19529 Redwood Brewery
+  19530 Redwood Brewery
+  19531 Redwood Brewery
+  19532 Redwood Brewery
+  19533 Redwood Brewery
+  19535 St. John's Cathedral
+  19536 St. John's Cathedral Tower
+  19537 St. John's Cathedral
+  19538 St. John's Cathedral
+  19539 St. John's Cathedral
+  19540 St. John's Cathedral
+  19541 German Catholic Church
 
-REPEATS inside the file — collapsed: 3
-  19398 (unnamed) (427 m²) — same outline as an earlier feature
+REPEATS inside the file — collapsed: 1
   19399 (unnamed) (427 m²) — same outline as an earlier feature
-  19528 Redwood Brewery (575 m²) — same outline as an earlier feature
 
 DUPLICATES of existing buildings born <= 1915 — dropped (previous data wins): 6
   19456 (unnamed) (333 m²) overlaps St. Boniface Normal School (Residence Langevin) [osm, born 1902-04-09] 78%
@@ -27,14 +128,7 @@ DUPLICATES of existing buildings born <= 1915 — dropped (previous data wins): 
   19488 Somerset School (582 m²) overlaps d21c91c4 [assessment, born 1905-12-28] 36%
   19534 St. John's School (335 m²) overlaps A-181 CHURCH AVENUE [osm, born 1902-11-23] 73%
 
-REPLACED by a later existing building — kept, died set: 7
-  19413 (unnamed) (330 m²) overlaps later Manitoba Legislative Building [legislature_osm, born 1920-07-15] 54% → died 1920-07-15
-  19535 St. John's Cathedral (643 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 92% → died 1926-01-09
-  19536 St. John's Cathedral Tower (46 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 89% → died 1926-01-09
-  19537 St. John's Cathedral (215 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 97% → died 1926-01-09
-  19538 St. John's Cathedral (29 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 73% → died 1926-01-09
-  19539 St. John's Cathedral (29 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 34% → died 1926-01-09
-  19540 St. John's Cathedral (68 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 100% → died 1926-01-09
+REPLACED by a later existing building — kept, died set: 0
 
 NOT DRAWN: 2
   19453 Canadian National Railway Yards (389993 m²) — Not building (and not sure it was ever really here)
@@ -55,7 +149,6 @@ CEMETERY polygons: 5
   19443 Elmwood Cemetary (20446 m²)
   19450 Elmwood Cemetary Paths (27300 m²)
 
-NEEDS REVIEW: 1
-  19522 Fire Hall (379 m²) — Mike's note 'Does not by 2026': it's gone today; the end date isn't known (left open)
+NEEDS REVIEW: 0
 
 NAME TO ADD TO AN EXISTING BUILDING: [[19488, "Somerset School", "d21c91c4 [assessment, born 1905-12-28] 36%"]]

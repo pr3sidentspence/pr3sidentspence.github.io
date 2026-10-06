@@ -64,10 +64,10 @@ def main():
         if 'not building (and not sure' in note: rep['skipped_doubtful'].append(label + ' — ' + p['notes']); continue
         if nm.startswith('Elmwood Cemetary'):
             rings = [poly for poly in (f['geometry']['coordinates'] if f['geometry']['type'] == 'MultiPolygon' else [f['geometry']['coordinates']])]
-            (cem['paths'] if p.get('type') == 'walkway' else cem['plots']).extend([r[0] for r in rings]); rep['cemetery'].append(label); continue
+            (cem['paths'] if p.get('type') == 'walkway' else cem['plots']).extend(rings); rep['cemetery'].append(label); continue
         if 'complex' in note or 'complext' in note or 'area not building' in note:
             polys = f['geometry']['coordinates'] if f['geometry']['type'] == 'MultiPolygon' else [f['geometry']['coordinates']]
-            yards.append({"name": nm or 'yard', "kind": 'stockyard' if 'stock' in nm.lower() else 'yard', "rings": [r[0] for r in polys], "born": "1895-01-01", "died": None, "note": p.get('notes'), "source": "McPhillips 1910, Mike's digitization"})
+            yards.append({"name": nm or 'yard', "kind": 'stockyard' if 'stock' in nm.lower() else 'yard', "polys": polys, "born": "1895-01-01", "died": None, "note": p.get('notes'), "source": "McPhillips 1910, Mike's digitization"})
             rep['yards'].append(label + f" — {p.get('notes')}"); continue
         if p.get('type') == 'building' and g.area > 20000 and not nm:
             rep['skipped_doubtful'].append(label + ' — unnamed building outline of 27,000 m² (probably an area, not a building): not drawn; tell me if it should be'); continue
