@@ -10382,6 +10382,63 @@ function tickMarshes(){
   for(const m of marshMeshes) m.material.color.set(C.color??0x5A6A38).lerp(_wc.b.set(C.dormantColor??0x7A6A44),dry*0.7).lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.9);
 }
 
+// ── Yards & cemetery (data/early_yards.json, data/cemeteries.json: Mike's 1910 McPhillips digitization) ────────
+// Company yards/complexes are bare cinder-and-dirt ground patches (not buildings). Elmwood Cemetery: gravel paths plus
+// instanced headstones in rows that multiply year by year (opened 1901, full by CONFIG.cemetery.fullYear — a guess).
+let groundMeshes=null, cemStones=null;
+function _groundPatch(rings,color,born,died,lift,st,skip){
+  const pos=[], col=[], rnd=mulberry('ground'+rings.length+born);
+  for(const ring of rings){
+    const wz=ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
+    let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+    for(let x=ax;x<bx;x+=st) for(let z=az;z<bz;z+=st){
+      if(!pointInPolygon(x+st/2,z+st/2,wz)) continue;
+      const y=(px,pz)=>sampleTerrainY(px,pz)+lift, a=y(x,z), b=y(x+st,z), c=y(x+st,z+st), d=y(x,z+st), j=0.8+rnd()*0.2;
+      pos.push(x,a,z, x,d,z+st, x+st,b,z,  x+st,b,z, x,d,z+st, x+st,c,z+st); for(let v=0;v<6;v++) col.push(j,j,j);
+    }
+  }
+  if(!pos.length) return null;
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.computeVertexNormals();
+  tagLifespan(g,_isoYearFrac(born,NO_BORN),_isoYearFrac(died,NO_DIED));
+  const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color,vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  const m=new THREE.Mesh(g,mat); m.receiveShadow=true; scene.add(m); return m;
+}
+function tickGrounds(){
+  if(!_demLoaded||!(earlyYards.length||cemetery)) return;
+  const C=CONFIG.cemetery||{};
+  if(!groundMeshes){
+    groundMeshes=[];
+    for(const Y of earlyYards){ const m=_groundPatch(Y.rings,Y.kind==='stockyard'?0x5E5240:0x6E6556,Y.born,Y.died,0.06,3,null); if(m) groundMeshes.push(m); }
+    if(cemetery){
+      const founded=(cemetery.founded||1901)+'-01-01', pm=_groundPatch(cemetery.paths,0xB0A48A,founded,null,0.08,2,null); if(pm) groundMeshes.push(pm);
+      // headstones: rows on a grid inside the plots, skipping the paths; each gets a random place in the fill order
+      const toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
+      const plots=cemetery.plots.map(toWz), paths=cemetery.paths.map(toWz), rnd=mulberry('headstones'), sx=C.rowGapM??2.4, sz=C.stoneGapM??3.4, pts=[];
+      for(const wz of plots){
+        let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+        for(let x=ax;x<bx;x+=sx) for(let z=az;z<bz;z+=sz){
+          const px=x+(rnd()-0.5)*0.5, pz=z+(rnd()-0.5)*0.6;
+          if(!pointInPolygon(px,pz,wz)||paths.some(p=>pointInPolygon(px,pz,p))) continue;
+          pts.push({x:px,z:pz,o:rnd(),r:(rnd()-0.5)*0.12,h:0.7+rnd()*0.5,s:0.9+rnd()*0.3});
+        }
+      }
+      pts.sort((a,b)=>a.o-b.o);
+      const geo=new THREE.BoxGeometry(0.55,1,0.12); geo.translate(0,0.5,0);
+      const im=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:0x9A9890}),pts.length), mx=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler(), cc=new THREE.Color();
+      pts.forEach((p,i)=>{ e.set(0,p.r,0); q.setFromEuler(e); mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x,p.z)+0.02,p.z),q,new THREE.Vector3(p.s,p.h,p.s)); im.setMatrixAt(i,mx); const g=0.55+0.25*p.o; im.setColorAt(i,cc.setRGB(g,g,g*0.97)); });
+      im.instanceMatrix.needsUpdate=true; im.castShadow=true; im.receiveShadow=true; im.count=0; im.frustumCulled=false; scene.add(im);
+      cemStones={mesh:im,total:pts.length,founded:cemetery.founded||1901}; console.log(`🪦 Cemetery headstones: ${pts.length}`);
+    }
+    console.log(`🏭 Yards built: ${earlyYards.length}`);
+  }
+  if(cemStones){
+    const yf=yearFrac(window.currentViewDate||new Date()), f0=cemStones.founded, f1=C.fullYear??1990;
+    const k=Math.max(0,Math.min(1,(yf-f0)/(f1-f0))), n=Math.floor(cemStones.total*Math.pow(k,C.fillPower??0.8));
+    if(cemStones.mesh.count!==n) cemStones.mesh.count=n;
+  }
+}
+
+window._debugGrounds=()=>({yards:earlyYards.length,cem:!!cemetery,meshes:groundMeshes&&groundMeshes.length,stones:cemStones&&[cemStones.total,cemStones.mesh.count]});
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -10581,6 +10638,7 @@ function startLoop(){
     _t(tickOxbow);
     _t(tickTipis,dt);
     _t(tickMarshes);
+    _t(tickGrounds);
     _t(tickCreekTerrain);
     _t(tickSoundHooks,dt);
     _t(applySeason);
@@ -10830,13 +10888,15 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
-let earlyBridges=[], earlyMarshes=[];
+let earlyBridges=[], earlyMarshes=[], earlyYards=[], cemetery=null;
 async function loadEarlyBridges(){
   const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.marshFile;
   if(f) try{ const r=await fetch(f+'?v='+Date.now()); if(r.ok){ earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }
   catch(e){ console.warn('Creek bridges: failed to load',e); }
   if(pf) try{ const r=await fetch(pf+'?v='+Date.now()); if(r.ok){ earlyMarshes=(await r.json()).marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }
   catch(e){ console.warn('Marshes: failed to load',e); }
+  try{ const r=await fetch('./data/early_yards.json?v='+Date.now()); if(r.ok) earlyYards=(await r.json()).yards||[]; }catch(e){ console.warn('Yards: failed to load',e); }
+  try{ const r=await fetch('./data/cemeteries.json?v='+Date.now()); if(r.ok) cemetery=await r.json(); }catch(e){ console.warn('Cemetery: failed to load',e); }
 }
 async function loadEarlyVegetation(){
   await loadEarlyBridges();

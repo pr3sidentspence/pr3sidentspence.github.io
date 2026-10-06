@@ -28,6 +28,7 @@ export const CONFIG = {
       './data/pastforward_2026_osm.geojson',         // new pre-1907 buildings with OSM footprints — ODbL, kept as a separate database
       './data/pastforward_2026_ufg_walls.geojson',        // Upper Fort Garry: the NE-wall gap + the angled fence that replaced it (tools/ufg_walls.py)
       './data/pastforward_2026_fort_douglas.geojson',    // Fort Douglas (1813-1826/52): PLACEHOLDER footprints (tools/fort_douglas.py)
+      './data/pastforward_2026_mcphillips1910.geojson',   // 1910 McPhillips map outside the Goad sheets (Mike's digitization; tools/mcphillips1910_ingest.py)
       './data/pastforward_2026_stb1880.geojson',          // St Boniface buildings from the 1880 bird's-eye view (tools/stb1880_ingest.py; deduped against the master)
       './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
       './data/pastforward_2026_seine_bridges.geojson',    // timber bridges over the Seine at Provencher, the railway and Marion (tools/seine_bridges.py)
@@ -1101,6 +1102,7 @@ export const CONFIG = {
     plankColor: 0x7A6A55, stoneColor: 0xA9A59B },
 
   // ── Marshes (the ellipses on the 1881 map) ───────────────────────────
+  cemetery: { fullYear: 1990, fillPower: 0.8, rowGapM: 2.4, stoneGapM: 3.4 },   // Elmwood headstones multiply from 1901 to fullYear (fullYear is a guess)
   marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
 
   // ── Tipis at the Forks ──────────────────────────────────────────────

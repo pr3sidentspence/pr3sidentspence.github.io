@@ -1,0 +1,61 @@
+1910 McPhillips digitization: 137 features in → 103 buildings/walkways added, 6 yard(s), 4 cemetery plot polygon(s)
+
+ALREADY IN THE DATA (same uid) — skipped: 12
+  1015 tinsmith
+  1016 
+  1017 AB Ormsby Limited sheet metal works
+  5093 Winnipeg Fish Company
+  19383 Turenne House
+  19385 Kildonan Presbyterian Church
+  19386 KPC fence
+  19387 Delorme House
+  19388 Turenne House
+  19389 La Chapelle de Notre-Dame-du-Bon-Secours (St. Norbert Chapel)
+  19391 St. Boniface Cathedral 
+  19464 St. Boniface Cathedral 
+
+REPEATS inside the file — collapsed: 3
+  19398 (unnamed) (427 m²) — same outline as an earlier feature
+  19399 (unnamed) (427 m²) — same outline as an earlier feature
+  19528 Redwood Brewery (575 m²) — same outline as an earlier feature
+
+DUPLICATES of existing buildings born <= 1915 — dropped (previous data wins): 6
+  19456 (unnamed) (333 m²) overlaps St. Boniface Normal School (Residence Langevin) [osm, born 1902-04-09] 78%
+  19465 Public School (272 m²) overlaps Ancien College [stb1880, born 1880-01-01] 75%
+  19466 (unnamed) (2371 m²) overlaps St. Boniface Hospital [osm, born 1914-07-25] 62%
+  19486 Alexander Schhol [?] (563 m²) overlaps Alexandra Public School [assessment, born 1901-02-18] 75%
+  19488 Somerset School (582 m²) overlaps d21c91c4 [assessment, born 1905-12-28] 36%
+  19534 St. John's School (335 m²) overlaps A-181 CHURCH AVENUE [osm, born 1902-11-23] 73%
+
+REPLACED by a later existing building — kept, died set: 7
+  19413 (unnamed) (330 m²) overlaps later Manitoba Legislative Building [legislature_osm, born 1920-07-15] 54% → died 1920-07-15
+  19535 St. John's Cathedral (643 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 92% → died 1926-01-09
+  19536 St. John's Cathedral Tower (46 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 89% → died 1926-01-09
+  19537 St. John's Cathedral (215 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 97% → died 1926-01-09
+  19538 St. John's Cathedral (29 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 73% → died 1926-01-09
+  19539 St. John's Cathedral (29 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 34% → died 1926-01-09
+  19540 St. John's Cathedral (68 m²) overlaps later St. John's Anglican Cathedral & Cemetery [osm, born 1926-01-09] 100% → died 1926-01-09
+
+NOT DRAWN: 2
+  19453 Canadian National Railway Yards (389993 m²) — Not building (and not sure it was ever really here)
+  19525 (unnamed) (27383 m²) — unnamed building outline of 27,000 m² (probably an area, not a building): not drawn; tell me if it should be
+
+YARDS / COMPLEXES (ground patches, not buildings): 6
+  19445 Canadian Petrified Brick Company (7190 m²) — Complex not one building
+  19446 Canadian PPort [?] (6097 m²) — Complex not one building
+  19447 Canadian PPort [?] (6097 m²) — Complex not one building
+  19448 J.Y. Griffin and Company (31323 m²) — Complex not single building
+  19489 Stock yards (20224 m²) — area not building
+  19490 Abbattoir Gordon Ironside & Faresly (24109 m²) — complext nott insividual building
+
+CEMETERY polygons: 5
+  19440 Elmwood Cemetary (32713 m²)
+  19441 Elmwood Cemetary (36475 m²)
+  19442 Elmwood Cemetary (64455 m²)
+  19443 Elmwood Cemetary (20446 m²)
+  19450 Elmwood Cemetary Paths (27300 m²)
+
+NEEDS REVIEW: 1
+  19522 Fire Hall (379 m²) — Mike's note 'Does not by 2026': it's gone today; the end date isn't known (left open)
+
+NAME TO ADD TO AN EXISTING BUILDING: [[19488, "Somerset School", "d21c91c4 [assessment, born 1905-12-28] 36%"]]
