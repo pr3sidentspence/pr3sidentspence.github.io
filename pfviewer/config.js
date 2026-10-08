@@ -53,7 +53,8 @@ export const CONFIG = {
     facadeImageDir: './images/',
     // Building-material stems that get an auto-loaded bump/texture map
     // (looked for at `./data/bump_<stem>.png`).
-    bumpMapStems: ['brick', 'wood', 'stone', 'log', 'iron', 'concrete', 'lumber'],
+    bumpFallbackDir: './images',   // wall bump maps are also looked for here (null = only ./data/)
+    bumpMapStems: ['brick', 'roofpeak', 'roofgravel', 'wood', 'stone', 'log', 'iron', 'concrete', 'lumber'],
   },
 
   // ── Start behaviour ─────────────────────────────────────────────────
@@ -158,8 +159,8 @@ export const CONFIG = {
     buildingOffsetZ:   0,
     // DEM terrain offset — shifts the terrain mesh in world space (no reprocessing needed).
     // Positive terrainOffsetZ = shift terrain south; negative = shift north.
-    terrainOffsetX:    0,
-    terrainOffsetZ:  -5,
+    terrainOffsetX:   -29.0,   // −29.0 E / +19.6 S = 35 m along bearing 236° from the old (0, −5): terrain was 35 m too far WSW of the map data
+    terrainOffsetZ:   14.6,
     // DEM terrain rotation — rotates the terrain mesh around a geographic pivot.
     // terrainRotationDeg: clockwise-positive degrees around world Y axis.  0 = no rotation.
     // Pivot is the tip of land at The Forks (west of the Red, south of the Assiniboine).
@@ -305,6 +306,8 @@ export const CONFIG = {
   // ── Building heights & roads ───────────────────────────────────────
   building: {
     tileMetres: 1000,      // building meshes are merged per map tile (culling; shadow pass only draws nearby tiles)
+    deferSliceMs: 6,       // while a deferred chunk builds, yield to the frame loop every this many ms (lower = smoother, slower to appear)
+    deferOverdueSliceMs: 40,   // same, when the clock has already passed the chunk's start (date jumps): finish sooner, accept a few hitches
     deferFuture: true,     // PastForward buildings are built only once the clock nears their construction start (false = all at launch)
     detailDistance: 1500,  // parapets, roof caps, chimneys hidden beyond this (m)
     // Feature properties kept in memory after load (everything else in the
@@ -340,9 +343,18 @@ export const CONFIG = {
     fenceSpecular: 0x111111,
     // UV tiling repeat [u,v] for wall bump/texture maps, per material —
     // how many times the bump image tiles per metre of wall.
-    bumpRepeat: {
-      brick: [4, 13], stone: [1.5, 1.5], wood: [1, 5], log: [0.8, 3],
-      iron: [2, 2], concrete: [1, 1], unknown: [2, 2], lumber: [0.3, 0.66],
+    // Bump strength = scale × height change per screen pixel (three r160), so it needs to be several units, not ~0.5.
+    // If a wall looks plain at street level, raise its number; if it looks like sandpaper, lower it.
+    bumpScale: { default: 5, lumber: 6, iron: 4, roofpeak: -6, roofgravel: 6 },
+    bumpRepeat: {   // repeats per metre = 1 / (size in metres one bump_*.png tile covers) — [along the wall, up]
+      brick: [0.57, 1.0],      // ~1.75 m × 1.0 m: 13 courses of 7.5 cm, bricks ~22 cm
+      brick_veneer: [0.57, 1.0],
+      stone: [0.4, 0.4],       // 2.5 m tile, 8 courses ≈ 30 cm
+      wood: [0.67, 0.67],      // 1.5 m tile, 10 clapboards ≈ 15 cm
+      log: [0.5, 0.5],         // 2 m tile, 8 logs ≈ 25 cm
+      iron: [0.8, 0.8],        // 1.25 m tile, 16 ribs ≈ 8 cm
+      concrete: [0.5, 0.5], unknown: [0.5, 0.5], lumber: [0.67, 0.67],
+      roofpeak: [1, 1], roofgravel: [1, 1],   // roofs: 1 m tiles (peaked roofs do their own UVs in the shader)   // lumber: 30 boards ≈ 5 cm
     },
   },
 
@@ -860,6 +872,7 @@ export const CONFIG = {
     majorStreets: ['Main','Portage','Provencher','Broadway','Notre Dame','William','Logan','Higgins','Princess','Market','Bannatyne','McDermot','Graham','Donald','Fort','Garry','Kennedy','Selkirk'],
     wires: { telegraph: 2, major: 4, all: 8 },
     radius: 350, rebuildDistance: 90,
+    orbitMaxAltitude: 120,     // the orbit camera also shows poles/wires when it is within this height of the ground (walk mode always does)
     spacing: 38, kerbOffset: 1.0,
     height: 9.5, armLength: 2.2,
     sag: 0.7, sagSegments: 4,
@@ -1102,7 +1115,7 @@ export const CONFIG = {
     plankColor: 0x7A6A55, stoneColor: 0xA9A59B },
 
   // ── Marshes (the ellipses on the 1881 map) ───────────────────────────
-  cemetery: { fullYear: 1990, fillPower: 0.8, rowGapM: 2.4, stoneGapM: 3.4 },   // Elmwood headstones multiply from 1901 to fullYear (fullYear is a guess)
+  cemetery: { treesFile: './data/cemetery_trees.json', treeSpreadYears: 55, treeJitterYears: 8, treeTauYears: 60, treeMinScale: 0.5, treeScalePerRating: 0.9, grassColor: 0x40692A, moundLength: 2, moundWidth: 0.9, moundHeight: 0.22, moundYears: 0.5, moundSoil: 0x4A3828, minGroundY: -3.5, fullYear: 1990, fillPower: 0.8, rowGapM: 3.2, stoneGapM: 1.5 },   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
   marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
 
   // ── Tipis at the Forks ──────────────────────────────────────────────
@@ -1171,6 +1184,7 @@ export const CONFIG = {
     rampHours: 6,
     offPeak: 0.75,
     snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
+    roadWet: { darken: 0.45, drySeconds: 25 },   // thunderstorm rain darkens the roads by this much; they dry over ~drySeconds after
     fadeSeconds: 0.1,          // time constant of the storm fade in/out (~3× this to settle)
     fogHalfHeight: 180,        // storm fog halves at this camera height above ground (so zoomed-out views don't white/black out)
     boxSize: 180,              // metres — precipitation volume that travels with the camera

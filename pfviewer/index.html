@@ -611,6 +611,11 @@ const groundCoverUniforms={
   uGcMin:{value:new THREE.Vector2()},
   uGcSize:{value:new THREE.Vector2(1,1)},
 };
+const cemSnow={uSnow:{value:0}};   // season snow cover (0-1) for headstones and grave mounds — set in applySeason
+const cemUniforms={   // maintained cemetery lawn: a coverage mask over the cemetery's bounding box (built in tickGrounds)
+  uCemTex:{value:null}, uCemMin:{value:new THREE.Vector2()}, uCemSize:{value:new THREE.Vector2(1,1)}, uCemHas:{value:0},
+  uCemGreen:{value:new THREE.Color(CONFIG.cemetery?.grassColor??0x4C8A2E)}, uCemFrom:{value:CONFIG.cemetery?.founded??1901},
+};
 const bankDirtUniforms={
   uBankDirtColor:{value:new THREE.Color(CONFIG.terrain.bankDirt.color)},
   uBankDirtTop:{value:CONFIG.water.startY+CONFIG.terrain.bankDirt.aboveWater},
@@ -619,7 +624,7 @@ const bankDirtUniforms={
   uBankDirtStrength:{value:1},
 };
 groundMat.onBeforeCompile=shader=>{
-  Object.assign(shader.uniforms,bankDirtUniforms,groundCoverUniforms,creekUniforms);
+  Object.assign(shader.uniforms,bankDirtUniforms,groundCoverUniforms,creekUniforms,cemUniforms);
   if(!creekUniforms.uCreekTex.value){ const t=new THREE.DataTexture(new Uint8Array([0]),1,1,THREE.RedFormat); t.needsUpdate=true; creekUniforms.uCreekTex.value=t; }
   shader.uniforms.uGcYear=buildingYearUniform;   // shared with the building born/died discard (declared later in the module, so bound here)
   shader.vertexShader='varying vec3 vBankWorld;\n'+shader.vertexShader
@@ -628,7 +633,10 @@ groundMat.onBeforeCompile=shader=>{
 uniform float uBankDirtTop,uBankDirtBlend,uBankDirtJitter,uBankDirtStrength;
 uniform vec3 uGcGrassAlt,uGcGrassDry,uGcYardDirt,uGcCoreDirt;
 uniform float uGcDryAmount,uGcMottle,uGcFadeYears,uGcStrength,uGcHasTex,uGcYear,uGcGreen;
-uniform sampler2D uGcTex;
+uniform sampler2D uGcTex, uCemTex;
+uniform vec3 uCemGreen;
+uniform vec2 uCemMin,uCemSize;
+uniform float uCemHas,uCemFrom;
 uniform sampler2D uCreekTex;                     // atlas of cut masks (one small raster per creek chunk)
 uniform highp sampler2D uCreekGridA, uCreekGridB;  // 128 m grid → up to 8 chunk ids (+1) per cell
 uniform highp sampler2D uCreekChunk;             // per chunk, 3 texels: world box · atlas rect · creek id
@@ -680,13 +688,18 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
       g=mix(g,uGcYardDirt,yard*(.3+.55*patchy));
       g=mix(g,uGcCoreDirt,core*(.7+.3*patchy));
     }
+    if(uCemHas>.5){   // mown, watered cemetery lawn: lusher and more even than the surrounding prairie, from the year it opened
+      vec2 cuv=(wp-uCemMin)/uCemSize;
+      float lawn=texture2D(uCemTex,cuv).r*step(0.,cuv.x)*step(cuv.x,1.)*step(0.,cuv.y)*step(cuv.y,1.)*smoothstep(uCemFrom,uCemFrom+3.,uGcYear);
+      g=mix(g,uCemGreen*(.95+.1*nFine*(1.-smoothstep(40.,220.,camD))+.06*(nSm-.5)),lawn);
+    }
     diffuseColor.rgb=mix(diffuseColor.rgb,g,uGcStrength);
   }
   float bankTop=uBankDirtTop+(sin(vBankWorld.x*0.13)+sin(vBankWorld.z*0.17+1.3))*0.5*uBankDirtJitter;
   float bankF=1.0-smoothstep(bankTop-uBankDirtBlend,bankTop,vBankWorld.y);
   diffuseColor.rgb=mix(diffuseColor.rgb,uBankDirtColor,bankF*uBankDirtStrength);`);
 };
-groundMat.customProgramCacheKey=()=>'bankDirt';
+groundMat.customProgramCacheKey=()=>'bankDirt2';
 if(OFF.has('ground')){ groundMat.onBeforeCompile=()=>{}; groundMat.customProgramCacheKey=()=>'plainGround'; }
 const _tSegs = CONFIG.terrain?.segments ?? 300;
 const _tGeo  = new THREE.PlaneGeometry(12000, 12000, _tSegs, _tSegs);
@@ -1388,6 +1401,7 @@ const keys={};
 const raycaster=new THREE.Raycaster();
 const mouseNDC=new THREE.Vector2(-9,-9);
 let buildingMeshes=[];
+const wallMatsAll={}, _wallBumpTex={};   // every wall material per key (each buildCity batch makes its own) + the bump texture per key, applied to late-built ones too
 const wallMaterials  = {};   // matKey → MeshPhongMaterial
 const wallMeshes     = {};   // matKey → THREE.Mesh (for DecalGeometry projection)
 
@@ -1608,6 +1622,76 @@ function tagMaterialForLifespan(mat, kind=0, table=false, walls=false){
   mat.onBeforeCompile = _lifespanShaderFor(kind, table, paint, stripes);
   mat.customProgramCacheKey = () => 'lifespan'+kind+(table?'t':'')+(paint?'w':'')+(stripes?'s':'');
   return mat;
+}
+// Wall bump UVs from the wall itself. The extruded walls' own UVs are raw world x/z (a different axis on each triangle of a
+// quad → a visible crease) and not in texture-sized units. Here: u = distance along the wall, v = height, both in metres, so
+// bump_*.png repeats are 1/(tile size in m) — see CONFIG.building.bumpRepeat.
+function wallBumpUV(mat){
+  const prev=mat.onBeforeCompile, k0=mat.customProgramCacheKey?.bind(mat);
+  mat.onBeforeCompile=(sh,r)=>{ if(prev) prev(sh,r);
+    sh.vertexShader=sh.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
+#ifdef USE_BUMPMAP
+  vBumpMapUv=(bumpMapTransform*vec3(dot(position.xz-vec2(-1400.,-1400.),vec2(-normal.z,normal.x)),position.y,1.)).xy;
+#endif`); };
+  mat.customProgramCacheKey=()=>(k0?k0():'')+'|wallBumpUV'; return mat;
+}
+// ── Roofs: peaked roofs pick wood shingle / asphalt shingle / standing-seam metal per building and DATE; flat gravel caps get a pebble bump.
+// Peaked: one atlas bump (bump_roofpeak.png: wood TL, asphalt TR, metal BL). UVs, slope axes and the tile lookup are all computed in
+// the fragment from the face's own plane, so there are no seams (and no vertex-normal assumptions). Colour per kind is set here too.
+// Wood until a re-roof (born+15…40 y, but not before ~1912) or from the start if built after ~1910–1930; then asphalt. Iron/industrial: metal.
+const _ROOF_FUNCS=`
+uniform float uRoofForce, uSnow;
+varying vec3 vRoofPos; varying vec2 vRoofR;
+float roofKind(){
+  if(uRoofForce>=0.) return uRoofForce;
+  float b=vLifespan.x<1700.?1880.:vLifespan.x, r=vRoofR.x, r2=vRoofR.y;
+  float asph=(b>=1910.+20.*r2)?1.:0.;
+  if(buildingYear>=max(b+15.+25.*r,1912.+14.*r2)) asph=1.;
+  return asph;
+}
+vec3 roofColour(float k){
+  float b=vLifespan.x<1700.?1880.:vLifespan.x, age=clamp((buildingYear-max(b,1895.))/30.,0.,1.), r=vRoofR.x;
+  if(k<0.5) return mix(vec3(.42,.28,.17),vec3(.33,.31,.28),age)*(.85+.3*r);                 // cedar: new brown → weathered grey
+  if(k<1.5) return r<.4?vec3(.17,.17,.17):(r<.75?vec3(.28,.20,.16):vec3(.20,.26,.22));        // asphalt: charcoal / brown / green-grey
+  return mix(vec3(.50,.52,.55),vec3(.40,.25,.18),age*r);                                       // galvanized → rusty
+}
+`;
+const _ROOF_DH=`
+vec2 dHdxy_fwd(){
+  // derivatives from the camera-relative position (small numbers keep their precision; world coords ~1400 m do not, up close)
+  vec3 vp=-vViewPosition, pxv=dFdx(vp), pyv=dFdy(vp);
+  vec3 n=inverseTransformDirection(normalize(cross(pxv,pyv)),viewMatrix), px=inverseTransformDirection(pxv,viewMatrix), py=inverseTransformDirection(pyv,viewMatrix);
+  if(n.y<0.) n=-n;
+  vec3 d=vec3(0.,1.,0.)-n*n.y; float dl=length(d); vec3 t;
+  if(dl<0.08){ d=vec3(0.,0.,1.); t=vec3(1.,0.,0.); } else { d/=dl; t=cross(n,d); }
+  vec2 uv=vec2(dot(vRoofPos,t),dot(vRoofPos,d)), gx=vec2(dot(px,t),dot(px,d))*.48, gy=vec2(dot(py,t),dot(py,d))*.48;
+  float k=roofKind(), sc=(k<.5)?1.45:((k<1.5)?1.2:1.);   // tile size per kind: wood 0.7 m, asphalt 0.85 m, metal 1 m
+  uv*=sc; gx*=sc; gy*=sc; vec2 q=vec2(mod(k,2.)*.5,.5-floor(k/2.)*.5)+.01, a=q+fract(uv)*.48;   // atlas image: wood top-left, asphalt top-right, metal bottom-left (v=1 is the image top)
+  
+  float H=bumpScale*textureGrad(bumpMap,a,gx,gy).x;
+  return vec2(bumpScale*textureGrad(bumpMap,a+gx,gx,gy).x-H, bumpScale*textureGrad(bumpMap,a+gy,gx,gy).x-H);
+}
+`;
+function roofPeakShader(mat,force=-1){
+  const prev=mat.onBeforeCompile, k0=mat.customProgramCacheKey?.bind(mat);
+  mat.onBeforeCompile=(sh,r)=>{ if(prev) prev(sh,r);
+    sh.uniforms.uRoofForce={value:force}; sh.uniforms.uSnow=cemSnow.uSnow;
+    sh.vertexShader=('varying vec3 vRoofPos; varying vec2 vRoofR;\n'+sh.vertexShader).replace('#include <project_vertex>',`#include <project_vertex>
+  vRoofPos=(modelMatrix*vec4(transformed,1.)).xyz; vRoofR=vec2(fract(sin(aBldIdx*12.9898)*43758.5453),fract(sin(aBldIdx*78.233+1.7)*24634.6345));`);
+    const bm=THREE.ShaderChunk.bumpmap_pars_fragment, i0=bm.indexOf('vec2 dHdxy_fwd'), i1=bm.indexOf('vec3 perturbNormalArb');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <bumpmap_pars_fragment>',_ROOF_FUNCS+bm.slice(0,i0)+_ROOF_DH+bm.slice(i1))
+      .replace('#include <color_fragment>','#include <color_fragment>\n  diffuseColor.rgb=mix(roofColour(roofKind()),vec3(.96,.97,1.),uSnow*.92);'); };
+  mat.customProgramCacheKey=()=>(k0?k0():'')+'|roofPeak'+force; return mat;
+}
+// Flat gravel cap: world x/z, 1 m tiles
+function roofFlatBumpUV(mat){
+  const prev=mat.onBeforeCompile, k0=mat.customProgramCacheKey?.bind(mat);
+  mat.onBeforeCompile=(sh,r)=>{ if(prev) prev(sh,r);
+    sh.vertexShader=sh.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
+#ifdef USE_BUMPMAP
+  vBumpMapUv=(bumpMapTransform*vec3(position.x,position.z,1.)).xy;
+#endif`); };
+  mat.customProgramCacheKey=()=>(k0?k0():'')+'|roofFlat'; return mat;
 }
 // One fresh depth material per call — three.js needs a distinct customDepthMaterial
 // per mesh (it's not a shared cache key like the main material is).
@@ -2130,19 +2214,23 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
   const margin=(tMax-tMin)*0.05,rMin=tMin+margin,rMax=tMax-margin;
   const ridgeH=ridgeHOverride??FLOOR_H*0.64;
   function ridgePt(x,z){const t=Math.max(rMin,Math.min(rMax,(x-cx)*ax+(z-cz)*az));return{x:cx+ax*t,y:roofBaseY+ridgeH,z:cz+az*t};}
-  const pos=[];
+  const pos=[], gab=[];   // gab: the gable-end triangles — they are WALL (see pushRoofGables), wound to face outward
   const tri=(a,b,c)=>pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
   for(let i=0;i<n;i++){
     const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n];
     const v1={x:x1,y:roofBaseY,z:z1},v2={x:x2,y:roofBaseY,z:z2};
     const r1=ridgePt(x1,z1),r2=ridgePt(x2,z2);
-    tri(v1,v2,r1);
-    if(Math.abs(r1.x-r2.x)+Math.abs(r1.z-r2.z)>0.05)tri(v2,r2,r1);
+    if(Math.abs(r1.x-r2.x)+Math.abs(r1.z-r2.z)>0.05){ tri(v1,v2,r1); tri(v2,r2,r1); }
+    else{   // both ends of this edge meet the same ridge point: a gable end
+      const nx=(v2.y-v1.y)*(r1.z-v1.z)-(r1.y-v1.y)*(v2.z-v1.z), nz=(v2.x-v1.x)*(r1.y-v1.y)-(v2.y-v1.y)*(r1.x-v1.x);   // cross((v2-v1),(r1-v1)).xz
+      const out=nx*((x1+x2)/2-cx)+nz*((z1+z2)/2-cz)>=0;
+      if(out) gab.push(v1.x,v1.y,v1.z,v2.x,v2.y,v2.z,r1.x,r1.y,r1.z); else gab.push(v2.x,v2.y,v2.z,v1.x,v1.y,v1.z,r1.x,r1.y,r1.z);
+    }
   }
-  if(pos.length===0)return null;
+  if(pos.length===0&&gab.length===0)return null;
   const geom=new THREE.BufferGeometry();
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
-  geom.computeVertexNormals();return geom;
+  geom.computeVertexNormals(); if(gab.length) geom.userData.gable=gab; return geom;
 }
 // Complex outlines (wings, courtyards-less complexes, ragged digitizing):
 // split the footprint into convex pieces — triangulate, then merge
@@ -2191,7 +2279,9 @@ function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null){
     const rh=ridgeHOverride??Math.max(1.2,Math.min(CONFIG.building.wingRoof?.maxRidgeM??9,short*0.5*pitch));
     const g=buildRoofGeometry(pr,roofBaseY,rh); if(g) geos.push(g);
   }
-  return geos.length?mergeGeometries(geos,false):null;
+  if(!geos.length) return null;
+  const gab=[]; for(const g of geos) if(g.userData.gable) gab.push(...g.userData.gable);
+  const m=mergeGeometries(geos.filter(g=>g.attributes.position.count>0),false); if(m&&gab.length) m.userData.gable=gab; return m;
 }
 // Curved tower roofs (roof_type conical / dome / bell): the footprint ring is
 // shrunk toward its centroid as the roof rises, so a square tower gets a
@@ -2224,6 +2314,13 @@ function buildCurvedRoof(ring,roofBaseY,type,heightM){
   const nrm=geom.attributes.normal; let up=0; for(let i=0;i<nrm.count;i++) up+=nrm.getY(i);
   if(up<0){ for(let i=0;i<idx.length;i+=3){const t=idx[i+1];idx[i+1]=idx[i+2];idx[i+2]=t;} geom.setIndex(idx); geom.computeVertexNormals(); }
   return geom;
+}
+// A ridge roof's gable-end triangles belong to the walls: same material and colour as the rest of the building.
+function pushRoofGables(rg,wallArr,bldgCol,baseY){
+  const g=rg?.userData?.gable; if(!g||!g.length) return;
+  const gg=new THREE.BufferGeometry(); gg.setAttribute('position',new THREE.Float32BufferAttribute(g,3)); gg.computeVertexNormals();
+  gg.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(g.length/3*2),2));
+  gg.translate(0,baseY,0); applyVertexColour(gg,bldgCol); wallArr.push(gg);
 }
 function roofColor(hex){
   const r=(hex>>16)&0xff,g=(hex>>8)&0xff,b=hex&0xff,avg=(r+g+b)/3;
@@ -3123,7 +3220,10 @@ function chunkCentroids(ch){
   return ch._cents;
 }
 const DEFER_MARGIN=0.1;    // years (~5 weeks): same margin for "build now" at load and for opening a chunk
-let _deferBusy=false;
+let _deferBusy=false, _deferCpu=0, _deferOverdue=0, _deferLoopEnd=0, _deferYields=0;
+// Slice length while a deferred chunk builds. A chunk that is already overdue (the clock jumped past it) gets long slices — the
+// scene is incomplete anyway, and with short slices every 6 ms of work waits behind a whole frame render (~10% duty on a slow GPU).
+const _deferSlice=()=>_deferOverdue>=1?(CONFIG.building.deferOverdueSliceMs??40):(CONFIG.building.deferSliceMs??6);
 function deferFutureBuildings(gj){
   if(!CONFIG.building.deferFuture||!/pastforward/i.test(gj._filename||'')) return gj;
   const y0=yearFrac(currentViewDate), now=[], later=new Map();
@@ -3155,11 +3255,14 @@ function maybeBuildDeferred(){
   if(yearFrac(currentViewDate)<deferredChunks[0].start-DEFER_MARGIN) return;
   const c=deferredChunks.shift();
   _deferBusy=true;
+  _deferOverdue=yearFrac(currentViewDate)-c.start;   // years the clock is already past this chunk's start
+  const _t0=performance.now(); _deferCpu=0; _deferYields=0; _deferLoopEnd=0;
   window.pfDiag?.add('step',`building ${c.gj.features.length} buildings from the ${c.decade}s`);
   buildCity(c.gj).then(n=>{
     totalBuildings+=n;
-    buildLayerBar();          // visibility for the new group + road/ground-cover/haze refresh
-    applySeason(true);        // new roof materials pick up the season
+    console.log(`[defer] ${c.decade}s: ${n} buildings, wall ${Math.round(performance.now()-_t0)} ms, build-loop CPU ${Math.round(_deferCpu)} ms in ${_deferYields} slices, loop ends at ${Math.round(_deferLoopEnd-_t0)} ms, merge/tail ${Math.round(performance.now()-_deferLoopEnd)} ms (overdue ${_deferOverdue.toFixed(1)} y)`);
+    buildLayerBar(true);      // visibility for the new group — NOT a road/sidewalk/ground-cover/haze rebuild (~1 s of work per chunk, and nothing in them changes: activeCents already includes unbuilt chunks)
+    for(const{mat3,summerCol,winterCol}of seasonalMats) mat3.color.copy(_sc.a.set(summerCol).lerp(_sc.b.set(winterCol),season.snow));   // new roofs pick up the season (a forced applySeason() rewrites every road colour and re-matrixes every tree)
     if(pendingAutoFacades.length) retryPendingFacades();   // facades for buildings in this chunk
   }).catch(e=>console.error('Deferred build failed',e)).finally(()=>{_deferBusy=false;});
 }
@@ -3190,6 +3293,7 @@ async function buildCity(geojson){
   const parapetKeys=[],stoneParapetKeys=[],roofCapKeys=[],chimneyKeys=[],lumberKeys=[],walkwayKeys=[];
   const walkwayWallGeos=[];  // separate accumulator → own mesh with terrain lift + polygonOffset
   const lumberLog=[];  // [{name, floors}] for end-of-load console summary
+  let _sliceT=performance.now();
   const chimneyStackGeos=[];  // CylinderGeometry stacks merged → one chimney mesh per layer
 
   for(let i=0;i<total;i++){
@@ -3204,6 +3308,7 @@ async function buildCity(geojson){
     const _parapetStart0=parapetGeos.length, _stoneParapetStart0=stoneParapetGeos.length;
     const _roofCapStart0=roofCapGeos.length, _chimneyStart0=chimneyStackGeos.length, _towerRoofStart0=towerRoofGeos.length;
     const _lumberWallStart0=lumberWallGeos.length, _walkwayWallStart0=walkwayWallGeos.length;
+    let _roofRise=0;   // how far a peaked roof (if any) climbs above the wall top — chimneys must clear it
     const _glassOuterStart0=glassVerts.length;
     const floors=props.floors??1,isPlatform=floors<=0.2;
     if(isPlatform&&CONFIG.docks&&FLOAT_DOCK_RE.test(props.name||'')){ collectFloatingDock(feat,props,group); continue; }   // rides the river (tickDocks)
@@ -3349,7 +3454,7 @@ async function buildCity(geojson){
           const innerRing=shapeInner.map(([x,y])=>[x,-y]); // shapeY → worldZ
           const elevRidgeH=upperH*0.9;
           const rg=buildRoofGeometry(innerRing,height+0.05,elevRidgeH);
-          if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
+          if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
 
           // Register for minimap
           matCounts[mat]++;
@@ -3545,7 +3650,7 @@ async function buildCity(geojson){
         const rg=(roofTypeOverride==='wings'||outer.length>14)&&roofTypeOverride!=='mansard'
           ?buildWingRoof(ring,height+0.05,props.roof_height??null)
           :buildRoofGeometry(ring,height+0.05,props.roof_height??null);
-        if(rg){ rg.translate(0,buildingBaseY,0);
+        if(rg){ rg.translate(0,buildingBaseY,0); pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY); rg.computeBoundingBox(); _roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));
           if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }   // e.g. copper
           else roofGeos[mat].push(rg); }
       }
@@ -3557,7 +3662,7 @@ async function buildCity(geojson){
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const churchRidgeH=height*0.8;
         const rg=buildRoofGeometry(ring,height+0.05,churchRidgeH);
-        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);}
+        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
       }
 
       // ── Brick flat-roof details ──────────────────────────────────
@@ -3635,7 +3740,8 @@ async function buildCity(geojson){
           const count=Math.max(1,rawCount);
           // Chimney height scales slightly with floors
           const floorScale=Math.min(1,0.55+floors*0.15);
-          const chimH=chimDef.height[0]+(chimDef.height[1]-chimDef.height[0])*floorScale;
+          let chimH=chimDef.height[0]+(chimDef.height[1]-chimDef.height[0])*floorScale;
+          if(_roofRise>0) chimH=_roofRise+Math.max(0.8,chimH*0.5);   // peaked roof: the stack runs from the wall top up through the roof and clears the ridge
           const chimRB=chimDef.radius[0];
           const chimRT=chimDef.radius[1]*0.7;  // slightly narrower at top (period-correct taper)
           const spread=Math.sqrt(props.area_m2||100)*CHIM.placementRadius;
@@ -3736,9 +3842,11 @@ async function buildCity(geojson){
       fireRecords.push({group,died:start+days/365,dur:days/365,x:_cx/_e.length,z:_cz/_e.length,baseY:_minY,topY:_maxY,
         radius:Math.sqrt(_fArea)/2*(fe.severity??0.8),survive:true,name:props.name});
     }
-    if(i%300===0){setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();}
+    if(i%300===0){_deferCpu+=performance.now()-_sliceT;setProgress(5+Math.round(i/total*68),`Buildings: ${i.toLocaleString()} / ${total.toLocaleString()}`);await tick();_sliceT=performance.now();}
+    else if(_deferBusy&&performance.now()-_sliceT>_deferSlice()){_deferCpu+=performance.now()-_sliceT;_deferYields++;await tick();_sliceT=performance.now();}   // a chunk built mid-session: hand the frame back every few ms instead of every 300 buildings
   }
   partyGrid=null;   // party-wall index no longer needed — let it be collected
+  if(_deferBusy) _deferLoopEnd=performance.now();
 
   // ── Fence/wall LineString renderer ──────────────────────────────
   // Only type:'fence' features — walkways/bridges are polygons handled elsewhere.
@@ -4011,6 +4119,7 @@ async function buildCity(geojson){
       specular:mat==='iron'?CONFIG.building.wallSpecular.iron:CONFIG.building.wallSpecular.default,  // iron gets slight metallic specular
     });
     tagMaterialForLifespan(wMat,0,true,true);   // + painted distant windows
+    wallBumpUV(wMat); (wallMatsAll[mat]??=[]).push(wMat); if(_wallBumpTex[mat]) _putBump(wMat,mat,_wallBumpTex[mat]);
     wallMaterials[mat]=wMat;
     const wDepth=makeLifespanDepthMaterial(true);
     // Hover lookup per tile: each tile's infos in global order, with cumulative
@@ -4039,7 +4148,8 @@ async function buildCity(geojson){
       setProgress(74,`Merging roofs: ${MATS[mat].label}…`);await tick();
       const summerCol=roofColor(MATS[mat].color);
       const rMat=new THREE.MeshPhongMaterial({color:summerCol,shininess:5,specular:CONFIG.building.roofSpecular,side:THREE.DoubleSide});
-      tagMaterialForLifespan(rMat,0,true);
+      tagMaterialForLifespan(rMat,0,true); roofPeakShader(rMat,(mat==='iron'||mat==='wood_industrial')?2:-1);
+      (wallMatsAll.roofpeak??=[]).push(rMat); if(_wallBumpTex.roofpeak) _putBump(rMat,'roofpeak',_wallBumpTex.roofpeak);
       if(!SNOW_SKIP.has(mat)) seasonalMats.push({mat3:rMat,summerCol,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
       const rDepth=makeLifespanDepthMaterial(true);
       for(const{geom}of mergeByTile(roofGeos[mat],roofKeys[mat])){
@@ -4055,7 +4165,7 @@ async function buildCity(geojson){
     const lMat=new THREE.MeshPhongMaterial({
       vertexColors:true, shininess:MATS.lumber.shininess, specular:CONFIG.building.fenceSpecular,
     });
-    tagMaterialForLifespan(lMat,0,true);
+    tagMaterialForLifespan(lMat,0,true); wallBumpUV(lMat); (wallMatsAll.lumber??=[]).push(lMat); if(_wallBumpTex.lumber) _putBump(lMat,'lumber',_wallBumpTex.lumber);
     wallMaterials['lumber']=lMat;
     const lDepth=makeLifespanDepthMaterial(true);
     for(const{geom}of mergeByTile(lumberWallGeos,lumberKeys)){
@@ -4117,7 +4227,8 @@ async function buildCity(geojson){
   if(roofCapGeos.length>0){
     setProgress(74,'Merging roof caps…');await tick();
     const cMat=new THREE.MeshLambertMaterial({color:CONFIG.building.roofCap.tarPaperColor,side:THREE.FrontSide,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
-    tagMaterialForLifespan(cMat,0,true);
+    tagMaterialForLifespan(cMat,0,true); roofFlatBumpUV(cMat);
+    (wallMatsAll.roofgravel??=[]).push(cMat); if(_wallBumpTex.roofgravel) _putBump(cMat,'roofgravel',_wallBumpTex.roofgravel);
     seasonalMats.push({mat3:cMat,summerCol:CONFIG.building.roofCap.tarPaperColor,winterCol:CONFIG.building.roofCap.tarPaperWinterColor});
     // Big buildings' caps go in their own tile meshes that stay visible out to
     // roofCap.bigDistance — a large flat roof changing colour is easy to see.
@@ -5283,6 +5394,21 @@ function buildRiverTrees(){
     console.log(`🌳 Early stands: ${nStand} trees`);
   }
 
+  // ── Cemetery trees (CONFIG.cemetery, data/cemetery_trees.json): planted from the opening year, the bigger the present-day
+  //    rating the earlier; each grows 1-exp(-age/tau) toward a rating-sized crown (t.plant/t.gr, see updateTreeBuildings) ──
+  if(cemTrees&&CONFIG.cemetery&&!OFF.has('cemetery')){
+    const C=CONFIG.cemetery, f0=cemetery?.founded??1901, minY=C.minGroundY??-3.5; let nc=0;
+    for(const ct of cemTrees){
+      const[sx,sy]=project(ct.lon,ct.lat), x=sx, z=-sy, y=sampleTerrainY(x,z); if(y<minY) continue;
+      let pick=rnd()*wTot, sp=T.species[0]; for(const s of T.species){if((pick-=s.weight)<=0){sp=s;break;}}
+      const plant=f0+(1-ct.r)*(C.treeSpreadYears??55)+(rnd()-0.5)*(C.treeJitterYears??8);
+      placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc:(C.treeMinScale??0.5)+(C.treeScalePerRating??0.9)*ct.r,sy:0.9+0.2*rnd(),sp:sp.name,phase:rnd()*0.5,aPhase:rnd()*0.4,hide:null,plant:Math.max(f0,plant),
+                             col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
+      nc++;
+    }
+    console.log(`🌳 Cemetery trees: ${nc}`);
+  }
+
   // ── Instanced meshes ──
   const barkMat=new THREE.MeshLambertMaterial({color:T.barkColor});
   const crownMat=new THREE.MeshLambertMaterial({color:0xFFFFFF});
@@ -5738,10 +5864,6 @@ async function retryPendingFacades(){
   }
 }
 async function loadFacade(imageFile,opts={}){
-  let rawCanvas;
-  try{rawCanvas=await loadImageToCanvas(imageFile);}
-  catch(e){console.warn('Image load failed:',e);return;}
-
   // ── Auto-match by filename ─────────────────────────────────────
   const rawStem=normName(imageFile.name.replace(/\.[^.]+$/,''));
   const idSuffixMatch=rawStem.match(/^(.+?)\s+(\d+)$/);
@@ -5761,6 +5883,12 @@ async function loadFacade(imageFile,opts={}){
     }
     match=bestPartialVal;
   }
+
+  // Autoloaded and its building isn't built yet: decide that BEFORE decoding the (3–6 MB) image — this is retried after every chunk build
+  if(!match&&opts.autoload){ pendingAutoFacades.push(imageFile); return; }
+  let rawCanvas;
+  try{rawCanvas=await loadImageToCanvas(imageFile);}
+  catch(e){console.warn('Image load failed:',e);return;}
 
   if(match){
     const wallCol=MATS[match.props.material??'unknown']?.color??CONFIG.materials.unknown.color;
@@ -9494,7 +9622,7 @@ function _clearPoles(){
 }
 function tickUtilityPoles(){
   const U=CONFIG.utilityPoles; if(!U) return;
-  if(!fpsMode){ _clearPoles(); return; }
+  if(!fpsMode&&!(camera.position.y-sampleTerrainY(camera.position.x,camera.position.z)<(U.orbitMaxAltitude??0))){ _clearPoles(); return; }   // walk mode, or the orbit camera down near street level
   const yr=yearFrac(currentViewDate), cam=camera.position, key=Math.floor(yr*12);
   if(poleSet&&poleSet.key===key&&Math.hypot(cam.x-poleSet.cx,cam.z-poleSet.cz)<U.rebuildDistance) return;
   _clearPoles();
@@ -10386,13 +10514,20 @@ function tickMarshes(){
 // Company yards/complexes are bare cinder-and-dirt ground patches (not buildings). Elmwood Cemetery: gravel paths plus
 // instanced headstones in rows that multiply year by year (opened 1901, full by CONFIG.cemetery.fullYear — a guess).
 let groundMeshes=null, cemStones=null;
+function _snowCap(mat,key,lo,hi){   // snow settles on up-facing surfaces (object-space normal; instances only turn about Y)
+  mat.onBeforeCompile=sh=>{ sh.uniforms.uSnow=cemSnow.uSnow;
+    sh.vertexShader='varying float vUp;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n  vUp=normal.y;');
+    sh.fragmentShader='varying float vUp;\nuniform float uSnow;\n'+sh.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>\n  diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.93,.95,.98),uSnow*smoothstep(${lo.toFixed(2)},${hi.toFixed(2)},vUp));`); };
+  mat.customProgramCacheKey=()=>key; return mat;
+}
+const moundUniforms={ uMYear:{value:0}, uMFade:{value:CONFIG.cemetery?.moundYears??1}, uMSoil:{value:new THREE.Color(CONFIG.cemetery?.moundSoil??0x4A3828)}, uMGrass:{value:new THREE.Color(CONFIG.cemetery?.grassColor??0x4C8A2E)} };
 function _groundPatch(polys,color,born,died,lift,st,skip){
   const pos=[], col=[], rnd=mulberry('ground'+polys.length+born), toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
   for(const poly of polys){   // poly = [outer, ...holes]
     const wz=toWz(poly[0]), holes=poly.slice(1).map(toWz);
     let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
     for(let x=ax;x<bx;x+=st) for(let z=az;z<bz;z+=st){
-      if(!pointInPolygon(x+st/2,z+st/2,wz)||holes.some(h=>pointInPolygon(x+st/2,z+st/2,h))) continue;
+      if(!pointInPolygon(x+st/2,z+st/2,wz)||holes.some(h=>pointInPolygon(x+st/2,z+st/2,h))||(skip&&skip(x+st/2,z+st/2))) continue;
       const y=(px,pz)=>sampleTerrainY(px,pz)+lift, a=y(x,z), b=y(x+st,z), c=y(x+st,z+st), d=y(x,z+st), j=0.8+rnd()*0.2;
       pos.push(x,a,z, x,d,z+st, x+st,b,z,  x+st,b,z, x,d,z+st, x+st,c,z+st); for(let v=0;v<6;v++) col.push(j,j,j);
     }
@@ -10409,37 +10544,74 @@ function tickGrounds(){
   if(!groundMeshes){
     groundMeshes=[];
     for(const Y of earlyYards){ const m=_groundPatch(Y.polys,Y.kind==='stockyard'?0x5E5240:0x6E6556,Y.born,Y.died,0.06,3,null); if(m) groundMeshes.push(m); }
-    if(cemetery){
-      const founded=(cemetery.founded||1901)+'-01-01', pm=_groundPatch(cemetery.paths,0xB0A48A,founded,null,0.08,2,null); if(pm) groundMeshes.push(pm);
+    if(cemetery&&!OFF.has('cemetery')){   // ?off=cemetery: skip paths, headstones, mounds, lawn
+      const founded=(cemetery.founded||1901)+'-01-01', minY=C.minGroundY??-3.5, tooLow=(x,z)=>sampleTerrainY(x,z)<minY,   // the digitized west edge runs down the river bank in the DEM: nothing below the bank toe
+        pm=_groundPatch(cemetery.paths,0xB0A48A,founded,null,0.08,2,tooLow); if(pm) groundMeshes.push(pm);
       // headstones: rows on a grid inside the plots, skipping the paths; each gets a random place in the fill order
       const toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
       const plots=cemetery.plots.map(p=>({o:toWz(p[0]),h:p.slice(1).map(toWz)})), paths=cemetery.paths.map(p=>({o:toWz(p[0]),h:p.slice(1).map(toWz)})),
         inPoly=(x,z,P)=>pointInPolygon(x,z,P.o)&&!P.h.some(h=>pointInPolygon(x,z,h)), rnd=mulberry('headstones'), sx=C.rowGapM??2.4, sz=C.stoneGapM??3.4, pts=[];
       for(const P of plots){ const wz=P.o;
         let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
-        for(let x=ax;x<bx;x+=sx) for(let z=az;z<bz;z+=sz){
-          const px=x+(rnd()-0.5)*0.5, pz=z+(rnd()-0.5)*0.6;
-          if(!inPoly(px,pz,P)||paths.some(p=>inPoly(px,pz,p))) continue;
-          pts.push({x:px,z:pz,o:rnd(),r:(rnd()-0.5)*0.12,h:0.7+rnd()*0.5,s:0.9+rnd()*0.3});
+        for(let x=Math.floor(ax/sx)*sx;x<bx;x+=sx) for(let z=Math.floor(az/sz)*sz;z<bz;z+=sz){   // one global grid, so rows line up across plots
+          const px=x+(rnd()-0.5)*0.12, pz=z+(rnd()-0.5)*0.12;
+          if(!inPoly(px,pz,P)||paths.some(p=>inPoly(px,pz,p))||tooLow(px,pz)) continue;
+          pts.push({x:px,z:pz,o:rnd(),r:(rnd()-0.5)*0.05,h:0.7+rnd()*0.5,s:0.9+rnd()*0.3});
         }
       }
       pts.sort((a,b)=>a.o-b.o);
-      const geo=new THREE.BoxGeometry(0.55,1,0.12); geo.translate(0,0.5,0);
-      const im=new THREE.InstancedMesh(geo,new THREE.MeshLambertMaterial({color:0x9A9890}),pts.length), mx=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler(), cc=new THREE.Color();
+      { // lawn coverage mask (2 m cells over the plots' bounding box; linear filtering softens the edge)
+        let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const P of plots) for(const q of P.o){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+        ax-=6;az-=6;bx+=6;bz+=6; const cs=2, W=Math.ceil((bx-ax)/cs), H=Math.ceil((bz-az)/cs), data=new Uint8Array(W*H);
+        for(let j=0;j<H;j++) for(let i=0;i<W;i++){ const x=ax+(i+.5)*cs, z=az+(j+.5)*cs; if(plots.some(P=>inPoly(x,z,P))&&!tooLow(x,z)) data[j*W+i]=255; }
+        const t=new THREE.DataTexture(data,W,H,THREE.RedFormat); t.minFilter=t.magFilter=THREE.LinearFilter; t.needsUpdate=true;
+        cemUniforms.uCemTex.value=t; cemUniforms.uCemMin.value.set(ax,az); cemUniforms.uCemSize.value.set(W*cs,H*cs); cemUniforms.uCemHas.value=1; cemUniforms.uCemFrom.value=cemetery.founded||1901;
+      }
+      // when each stone first appears (inverse of the fill curve below) — drives its fresh grave mound
+      const born=new Float32Array(pts.length), N=pts.length;
+      if(cemCum){ const ys=Object.keys(cemCum.years).map(Number).sort((a,b)=>a-b); let yi=0;
+        for(let i=0;i<N;i++){ const T=(i+1)*cemCum.total/N; while(yi<ys.length-1&&cemCum.years[ys[yi]][0]+cemCum.years[ys[yi]][1]<T) yi++;
+          const[c0,d]=cemCum.years[ys[yi]]; born[i]=ys[yi]+Math.max(0,Math.min(1,(T-c0)/d)); } }
+      else { const f0=cemetery.founded||1901, f1=C.fullYear??1990; for(let i=0;i<N;i++) born[i]=f0+Math.pow((i+1)/N,1/(C.fillPower??0.8))*(f1-f0); }
+      const geo=new THREE.BoxGeometry(0.12,1,0.55); geo.translate(0,0.5,0);   // graves lie head-to-west: the stone stands at the west end, thin in x, facing east
+      const im=new THREE.InstancedMesh(geo,_snowCap(new THREE.MeshLambertMaterial({color:0x9A9890}),'cemStone',0.6,0.9),pts.length), mx=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler(), cc=new THREE.Color();
       pts.forEach((p,i)=>{ e.set(0,p.r,0); q.setFromEuler(e); mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x,p.z)+0.02,p.z),q,new THREE.Vector3(p.s,p.h,p.s)); im.setMatrixAt(i,mx); const g=0.55+0.25*p.o; im.setColorAt(i,cc.setRGB(g,g,g*0.97)); });
       im.instanceMatrix.needsUpdate=true; im.castShadow=true; im.receiveShadow=true; im.count=0; im.frustumCulled=false; scene.add(im);
-      cemStones={mesh:im,total:pts.length,founded:cemetery.founded||1901}; console.log(`🪦 Cemetery headstones: ${pts.length}`);
+      // fresh-grave mounds: a low earth dome in front (+z, the face of the stone), flattening and greening over CONFIG.cemetery.moundYears
+      const ML=C.moundLength??2, MW=C.moundWidth??0.9, MH=C.moundHeight??0.22, mg=new THREE.SphereGeometry(1,12,6,0,Math.PI*2,0,Math.PI/2);
+      mg.scale(ML/2,1,MW/2); mg.translate(ML/2+0.1,0,0); mg.setAttribute('aBorn',new THREE.InstancedBufferAttribute(born,1));
+      const mm=new THREE.MeshLambertMaterial({color:0x5A4630}); mm.onBeforeCompile=sh=>{ Object.assign(sh.uniforms,moundUniforms,cemSnow);
+        sh.vertexShader='attribute float aBorn;\nuniform float uMYear,uMFade;\nvarying float vAge,vUp;\n'+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+  vUp=normal.y; vAge=(uMYear-aBorn)/uMFade; float mk=(vAge<0.||vAge>=1.)?0.:(1.-vAge)*(1.-vAge);   // earth settles fast at first transformed*=vec3(1.,mk,1.);
+  if(vAge<0.||vAge>=1.) transformed=vec3(0.);   // not born yet / settled: collapse to nothing (a flat oval would still show)
+  else transformed.xz*=smoothstep(0.,0.25,1.-vAge);   // the last quarter: the footprint melts into the lawn`);
+        sh.fragmentShader='varying float vAge,vUp;\nuniform vec3 uMSoil,uMGrass;\nuniform float uSnow;\n'+sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n  diffuseColor.rgb=mix(uMSoil,uMGrass,smoothstep(0.1,0.95,vAge));\n  diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.93,.95,.98),uSnow*smoothstep(0.3,0.65,vUp));'); };
+      mm.customProgramCacheKey=()=>'graveMound3';
+      const mound=new THREE.InstancedMesh(mg,mm,pts.length); mound.receiveShadow=true; mound.frustumCulled=false; mound.count=0;
+      pts.forEach((p,i)=>{ e.set(0,p.r,0); q.setFromEuler(e); mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x+ML/2,p.z),p.z),q,new THREE.Vector3(1,MH,1)); mound.setMatrixAt(i,mx); });
+      mound.instanceMatrix.needsUpdate=true; scene.add(mound);
+      cemStones={mesh:im,mound,total:pts.length,founded:cemetery.founded||1901}; console.log(`🪦 Cemetery headstones: ${pts.length}`);
     }
     console.log(`🏭 Yards built: ${earlyYards.length}`);
   }
   if(cemStones){
-    const yf=yearFrac(window.currentViewDate||new Date()), f0=cemStones.founded, f1=C.fullYear??1990;
-    const k=Math.max(0,Math.min(1,(yf-f0)/(f1-f0))), n=Math.floor(cemStones.total*Math.pow(k,C.fillPower??0.8));
-    if(cemStones.mesh.count!==n) cemStones.mesh.count=n;
+    const yf=yearFrac(window.currentViewDate||new Date());
+    let n;
+    if(cemCum){ // cumulative interments (yearly counts, interpolated within the year) as a share of all interments = share of the grid filled
+      const y=Math.floor(yf), e=cemCum.years[y], cum=e?e[0]+e[1]*(yf-y):(yf<cemStones.founded?0:cemCum.total);
+      n=Math.floor(cemStones.total*Math.min(1,cum/cemCum.total));
+    } else { const f0=cemStones.founded, f1=C.fullYear??1990, k=Math.max(0,Math.min(1,(yf-f0)/(f1-f0))); n=Math.floor(cemStones.total*Math.pow(k,C.fillPower??0.8)); }
+    if(cemStones.mesh.count!==n){ cemStones.mesh.count=n; cemStones.mound.count=n; }
+    moundUniforms.uMYear.value=yf;
   }
 }
 
-window._debugGrounds=()=>({yards:earlyYards.length,cem:!!cemetery,meshes:groundMeshes&&groundMeshes.length,stones:cemStones&&[cemStones.total,cemStones.mesh.count]});
+window._debugCemTerrain=()=>{ if(!cemetery) return null; const toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};}); const out={wl:waterLevelAt(window.currentViewDate||new Date()),water:waterMesh&&waterMesh.position.y,plots:[],paths:[]};
+  for(const[k,L] of [['plots',cemetery.plots],['paths',cemetery.paths]]) for(const P of L){ const o=toWz(P[0]); let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of o){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
+    const rows=[]; for(let x=ax;x<=bx;x+=10){ let mn=1e9,mx=-1e9,n=0; for(let z=az;z<=bz;z+=4){ if(!pointInPolygon(x,z,o)) continue; const y=sampleTerrainY(x,z); mn=Math.min(mn,y);mx=Math.max(mx,y);n++; } if(n) rows.push([Math.round(x),+mn.toFixed(1),+mx.toFixed(1)]); }
+    out[k].push({bbox:[ax,bx,az,bz].map(Math.round),cols:rows}); } return out; };
+window._debugBump=()=>Object.fromEntries(Object.entries(wallMatsAll).map(([k,a])=>[k,{mats:a.length,withBump:a.filter(m=>m.bumpMap).length}]));
+window._debugGrounds=()=>({yards:earlyYards.length,cem:!!cemetery,meshes:groundMeshes&&groundMeshes.length,stones:cemStones&&[cemStones.total,cemStones.mesh.count],interments:cemCum&&cemCum.total});
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -10681,7 +10853,7 @@ function updateStatBar(){
   }
 }
 
-function buildLayerBar(){
+function buildLayerBar(skipRoads=false){   // skipRoads: a deferred chunk just opened — roads/ground cover/haze already count its buildings (activeCents includes unbuilt chunks)
   const bar=document.getElementById('layer-bar');
   if(!bar)return;
 
@@ -10724,9 +10896,9 @@ function buildLayerBar(){
       lg.group.traverse(m=>{if(m.isMesh&&m.userData.cums)buildingMeshes.push(m);});
     }
     // Rebuild roads for active layer — segment filtering uses active-layer centroids
-    if(roadGeojson) buildRoads(roadGeojson).catch(e=>console.error('Road rebuild error:',e));
+    if(roadGeojson&&!skipRoads) buildRoads(roadGeojson).catch(e=>console.error('Road rebuild error:',e));
   }
-  applyVisibility();  // always run — hides non-active layers even if bar is suppressed
+  applyVisibility(); skipRoads=false;   // later layer-button clicks do rebuild  // always run — hides non-active layers even if bar is suppressed
 
   if(!hasMultiple){bar.style.display='none';return;}
 
@@ -10805,7 +10977,7 @@ function applySeason(force){
     groundMatRef.color.copy(g);
     if(channelMatRef) channelMatRef.color.copy(g);
     bankDirtUniforms.uBankDirtStrength.value=1-S.snow;
-    groundCoverUniforms.uGcStrength.value=1-S.snow;
+    groundCoverUniforms.uGcStrength.value=1-S.snow; cemSnow.uSnow.value=S.snow;
     groundCoverUniforms.uGcGreen.value=S.green*(1-Math.max(0,-wet)*0.5);
     groundCoverUniforms.uGcDryAmount.value=CONFIG.terrain.groundCover.dryAmount*(1+Math.max(0,-wet)*(M.dryPatches??0.9)-Math.max(0,wet)*0.5);
     const gr=CONFIG.scene.grid;
@@ -10889,7 +11061,7 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
-let earlyBridges=[], earlyMarshes=[], earlyYards=[], cemetery=null;
+let earlyBridges=[], earlyMarshes=[], earlyYards=[], cemetery=null, cemCum=null, cemTrees=null;
 async function loadEarlyBridges(){
   const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.marshFile;
   if(f) try{ const r=await fetch(f+'?v='+Date.now()); if(r.ok){ earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }
@@ -10897,6 +11069,8 @@ async function loadEarlyBridges(){
   if(pf) try{ const r=await fetch(pf+'?v='+Date.now()); if(r.ok){ earlyMarshes=(await r.json()).marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }
   catch(e){ console.warn('Marshes: failed to load',e); }
   try{ const r=await fetch('./data/early_yards.json?v='+Date.now()); if(r.ok) earlyYards=(await r.json()).yards||[]; }catch(e){ console.warn('Yards: failed to load',e); }
+  try{ const r=await fetch('./data/elmwood_years.json?v='+Date.now()); if(r.ok){ const iv=(await r.json()).interments, ys=Object.keys(iv).map(Number).sort((a,b)=>a-b); let c=0; cemCum={years:{},total:0}; for(const y of ys){ cemCum.years[y]=[c,iv[y]]; c+=iv[y]; } cemCum.total=c; } }catch(e){ console.warn('Cemetery interments: failed to load',e); }
+  try{ const f=CONFIG.cemetery?.treesFile; if(f){ const r=await fetch(f+'?v='+Date.now()); if(r.ok) cemTrees=(await r.json()).trees; } }catch(e){ console.warn('Cemetery trees: failed to load',e); }
   try{ const r=await fetch('./data/cemeteries.json?v='+Date.now()); if(r.ok) cemetery=await r.json(); }catch(e){ console.warn('Cemetery: failed to load',e); }
 }
 async function loadEarlyVegetation(){
@@ -10989,7 +11163,7 @@ function _makePrecip(kind){
   o.frustumCulled=false; o.visible=false; o.renderOrder=5; scene.add(o);
   return{o,u,n,verts:snow?1:2};
 }
-let _rain=null,_snowP=null,_weatherActive=false,_weatherT=0,_wxK=0,_lastStorm=null;
+let _rain=null,_snowP=null,_weatherActive=false,_weatherT=0,_wxK=0,_lastStorm=null,_roadWet=0,_roadWetApplied=0;
 let _lightning={next:3,t:-1,bolt:null,dist:0};
 let _rainNoise=null;
 const _wc={a:new THREE.Color(),b:new THREE.Color()};
@@ -11054,6 +11228,11 @@ function tickWeather(dt){
   const st=(target||_wxK>0.004)&&_lastStorm?{s:_lastStorm,k:_wxK}:null;
   if(!st) _wxK=0;
   const k=st?st.k:0, blizzard=st?.s.type==='blizzard';
+  { // wet streets: rain darkens the roads fast, they dry slowly after (CONFIG.storms.roadWet)
+    const R=C.roadWet??{}, w=(st&&!blizzard)?k:0; _roadWet+=(w-_roadWet)*Math.min(1,dt/(w>_roadWet?0.5:(R.drySeconds??25)));
+    if(roadMatRef&&Math.abs(_roadWet-_roadWetApplied)>0.01){ _roadWetApplied=_roadWet<0.01?0:_roadWet; roadMatRef.color.setScalar(1-(R.darken??0.45)*_roadWetApplied); }
+  }
+  if(!st&&!_weatherActive&&!_roadWetApplied) return;
   if(!st&&!_weatherActive) return;
   _weatherActive=!!st;
   _weatherT+=dt;
@@ -11179,12 +11358,13 @@ function updateTreeBuildings(){
   for(const e of riverTreeMeshes){
     if(!e.crown||!e.list||!e.wood) continue;
     e.list.forEach((t,i)=>{
-      if(!t.hide) return;
-      let h=false; for(let k=0;k<t.hide.length;k+=2) if(yf>=t.hide[k]-0.5&&yf<t.hide[k+1]){h=true;break;}
-      if(h===!!t.hid) return;
-      t.hid=h; changed=true;
+      if(!t.hide&&t.plant==null) return;
+      let h=false, gr=1; if(t.hide) for(let k=0;k<t.hide.length;k+=2) if(yf>=t.hide[k]-0.5&&yf<t.hide[k+1]){h=true;break;}
+      if(t.plant!=null){ const a=yf-t.plant, G=CONFIG.cemetery||{}; if(a<0) h=true; else gr=Math.round((0.08+0.92*(1-Math.exp(-a/(G.treeTauYears??60))))*100)/100; }
+      if(h===!!t.hid&&gr===t.gr) return;
+      t.hid=h; t.gr=gr; changed=true;
       _tq.setFromAxisAngle(_brY,t.rot);
-      _tm.compose(_tp.set(t.x,t.y,t.z),_tq,h?_ts.set(0,0,0):_ts.set(t.sc,t.sc*t.sy,t.sc));
+      _tm.compose(_tp.set(t.x,t.y,t.z),_tq,h?_ts.set(0,0,0):_ts.set(t.sc*gr,t.sc*gr*t.sy,t.sc*gr));
       e.wood.setMatrixAt(i,_tm);
     });
     e.wood.instanceMatrix.needsUpdate=true;
@@ -11198,7 +11378,7 @@ function updateTreeSeason(leaf,autumn){
     if(!e.crown||!e.list) continue;
     e.list.forEach((t,i)=>{
       const sLeaf=Math.max(0,Math.min(1,(leaf-t.phase)/0.5));            // this tree's leaf fullness
-      const k=t.hid||sLeaf<0.02?0:t.sc*(0.4+0.6*sLeaf);
+      const k=t.hid||sLeaf<0.02?0:t.sc*(t.gr??1)*(0.4+0.6*sLeaf);
       _tq.setFromAxisAngle(_brY,t.rot);
       _tm.compose(_tp.set(t.x,t.y,t.z),_tq,_ts.set(k,k*t.sy,k));
       e.mesh.setMatrixAt(i,_tm);
@@ -11304,18 +11484,20 @@ async function loadBumpTexture(imageFile){
   });
 }
 
+function _putBump(m,matKey,tex){ m.bumpMap=tex; m.bumpScale=CONFIG.building.bumpScale?.[matKey]??CONFIG.building.bumpScale?.default??5; m.needsUpdate=true; }
 async function applyWallBump(imageFile, matKey){
   try{
     const tex=await loadBumpTexture(imageFile);
     tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
     const[ru,rv]=BUMP_REPEAT[matKey]??[2,2];
     tex.repeat.set(ru,rv);
-    const mat=wallMaterials[matKey];
-    if(mat){
-      mat.bumpMap=tex; mat.bumpScale=matKey==='lumber'?1.5:0.5; mat.needsUpdate=true;
-      console.log(`🧱 Wall bump applied: ${imageFile.name} → ${matKey} (repeat ${ru}×${rv}/m, ${tex.image.width}×${tex.image.height}px)`);
+    tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy()); _wallBumpTex[matKey]=tex;
+    const mats=wallMatsAll[matKey]?.length?wallMatsAll[matKey]:(wallMaterials[matKey]?[wallMaterials[matKey]]:[]);
+    if(mats.length){
+      for(const m of mats) _putBump(m,matKey,tex);
+      console.log(`🧱 Wall bump applied: ${imageFile.name} → ${matKey} on ${mats.length} material(s) (repeat ${ru}×${rv}/m, ${tex.image.width}×${tex.image.height}px)`);
     }else{
-      console.warn(`🧱 Wall bump loaded but wallMaterials['${matKey}'] not found — no ${matKey} buildings in scene? Known keys:`, Object.keys(wallMaterials));
+      console.warn(`🧱 Wall bump loaded but wallMaterials['${matKey}'] not found yet (it will be applied when one is built). Known keys:`, Object.keys(wallMaterials));
     }
   }catch(e){ console.warn(`🧱 Wall bump load failed for ${imageFile.name}:`,e); }
 }
@@ -11560,8 +11742,9 @@ async function loadWindowMask(imageFile){
   const panelHeight=facadeEntry?.panelHeight??null;
   windowMaskCache.set(stem,{canvas,W:canvas.width,H:canvas.height,windows,props:match.props,panelHeight});
   console.log(`Window mask: "${imageFile.name}" → "${match.props.name||match.props.id}" | ${windows.length} windows detected`);
-  // Rebuild glass geometry for all layers so mask takes effect immediately
-  for(const lg of layerGroups) rebuildGlassMesh(lg);
+  // Rebuild glass only in the layers that hold this building (a rebuild walks every feature of the layer: tens of thousands of buildings)
+  const sib=new Set(facadeSiblings(match).map(m=>m.feat)); sib.add(match.feat);
+  for(const lg of layerGroups) if(lg.geojson?.features?.some(f=>sib.has(f))) rebuildGlassMesh(lg);
 }
 
 
@@ -11809,16 +11992,19 @@ renderer.render(scene,camera);
 
   // ── Auto-load bump maps from ./data/ ─────────────────────────────
   // Silently skips any that are absent.  Keyed by material name stem.
-  const AUTOLOAD_BUMPS = CONFIG.dataFiles.bumpMapStems;
+  const AUTOLOAD_BUMPS = OFF.has('bump')?[]:CONFIG.dataFiles.bumpMapStems;   // ?off=bump: no wall/roof relief (to find out whether it costs frame time)
   for(const stem of AUTOLOAD_BUMPS){
-    const burl=`./data/bump_${stem}.png`;
+    let burl=`./data/bump_${stem}.png`;
     try{
-      const bres=await fetch(burl+'?v='+Date.now());
+      let bres=await fetch(burl+'?v='+Date.now());
+      const fb=CONFIG.dataFiles.bumpFallbackDir;   // wall bumps also live in ./images/ (brick, wood, lumber, + generated stone/iron/concrete/log)
+      if(!bres.ok&&fb){ burl=`${fb}/bump_${stem}.png`; bres=await fetch(burl+'?v='+Date.now()); }
       if(!bres.ok){ console.log(`🧱 Bump autoload: ${burl} → ${bres.status} (skipped)`); continue; }
       const blob=await bres.blob();
       const file=new File([blob],`bump_${stem}.png`,{type:'image/png'});
       console.log(`🧱 Bump autoload: ${burl} → fetched (${(blob.size/1024).toFixed(1)}KB), applying…`);
       await applyWallBump(file, stem);
+      if(stem==='brick') await applyWallBump(file,'brick_veneer');   // veneer shares the brick relief
     }catch(e){ console.warn(`🧱 Bump autoload error for ${burl}:`,e); }
   }
   applyCameraFromURL();  // ?lon=/lat=/az=/elev=/alt= — no-op if none are present
