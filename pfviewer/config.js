@@ -17,6 +17,19 @@
 // work, the same restriction that already applies to index.html.
 // ═══════════════════════════════════════════════════════════════════════
 
+// Sound-hook presets for CONFIG.audio.sfx: distance behaviour by kind of sound (from the sound wiring map).
+// _sfx(preset, 'file-name', {overrides}) → { path, refDistance, rolloffPower, maxDistance, …overrides }
+const _SFX_CLASS = {
+  vehicle: { refDistance: 16, rolloffPower: 1.7, maxDistance: 450 },    // engines, wheels, hooves
+  foley:   { refDistance: 8,  rolloffPower: 2.5, maxDistance: 180 },    // hammers, splashes, domestic
+  signal:  { refDistance: 45, rolloffPower: 1.3, maxDistance: 2500 },   // whistles, bells, sirens, thunder
+  crowd:   { refDistance: 30, rolloffPower: 1.7, maxDistance: 750 },    // bands, crowds, fires
+  insect:  { refDistance: 3,  rolloffPower: 3,   maxDistance: 40 },
+  step:    { refDistance: 4,  rolloffPower: 3,   maxDistance: 40 },     // the walker's own footsteps
+  bed:     {},                                                          // non-positional ambience
+};
+const _sfx = (cls, file, o = {}) => ({ path: `./sounds/${file}.mp3`, ..._SFX_CLASS[cls], ...o });
+
 export const CONFIG = {
 
   // ── Data files ──────────────────────────────────────────────────────
@@ -1398,26 +1411,172 @@ export const CONFIG = {
       constructionHammer: { path: './sounds/construction-hammer.mp3', gain: 0.7, refDistance: 12, rolloffPower: 3, maxDistance: 250 },
       constructionSaw:    { path: './sounds/construction-saw.mp3',    gain: 0.6, refDistance: 12, rolloffPower: 3, maxDistance: 250 },
       // Mobs — loop: true = a looping voice on the nearest maxConcurrent sources
-      cartHooves:      { path: './sounds/cart-hooves.mp3',      loop: true, maxConcurrent: 3, gain: 0.6, refDistance: 8,  rolloffPower: 2, maxDistance: 150 },
+      cartHooves:      { path: './sounds/cart-hooves.mp3',      loop: true, maxConcurrent: 3, gain: 0.6, refDistance: 8,  rolloffPower: 2, maxDistance: 150, gate: { mud: [0, 0.4] } }   /* mudWalkHorse/Ox take over when it's muddy */,
       horseWhinny:     { path: './sounds/horse-whinny.mp3',     gain: 0.7, refDistance: 10, rolloffPower: 2, maxDistance: 250 },
       streetcarRun:    { path: './sounds/streetcar-run.mp3',    loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
-      streetcarBell:   { path: './sounds/streetcar-bell.mp3',   gain: 0.7, refDistance: 15, rolloffPower: 1.5, maxDistance: 400 },   // replaces the synth bell if present
+      streetcarBell:   { path: './sounds/streetcar-bell.mp3',   gain: 0.7, refDistance: 15, rolloffPower: 1.5, maxDistance: 400, minGap: 2, duck: 0.2 },   // replaces the synth bell if present
       trainRun:        { path: './sounds/train-run.mp3',        loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 1.5, maxDistance: 600 },
-      trainWhistle:    { path: './sounds/train-whistle.mp3',    gain: 1.0, refDistance: 60, rolloffPower: 1.2, maxDistance: 3000 },
+      trainWhistle:    { path: './sounds/train-whistle.mp3',    gain: 1.0, refDistance: 60, rolloffPower: 1.2, maxDistance: 3000, minGap: 10, duck: 0.5 },
       steamboatEngine: { path: './sounds/steamboat-engine.mp3', loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 2, maxDistance: 500 },
-      steamboatWhistle:{ path: './sounds/steamboat-whistle.mp3',gain: 1.0, refDistance: 80, rolloffPower: 1.2, maxDistance: 3500 },
+      steamboatWhistle:{ path: './sounds/steamboat-whistle.mp3',gain: 1.0, refDistance: 80, rolloffPower: 1.2, maxDistance: 3500, minGap: 10, duck: 0.5 },
       launchEngine:    { path: './sounds/launch-engine.mp3',    loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 10, rolloffPower: 2, maxDistance: 300 },
-      paddleSplash:    { path: './sounds/paddle-splash.mp3',    gain: 0.4, refDistance: 5,  rolloffPower: 3, maxDistance: 120 },
+      paddleSplash:    { path: './sounds/paddle-splash.mp3',    gain: 0.4, refDistance: 5,  rolloffPower: 3, maxDistance: 120, variants: 4 },
       ferryEngine:     { path: './sounds/ferry-engine.mp3',     loop: true, maxConcurrent: 1, gain: 0.6, refDistance: 15, rolloffPower: 2, maxDistance: 400 },
       fireCrackle:     { path: './sounds/fire-crackle.mp3',     loop: true, maxConcurrent: 2, gain: 0.9, refDistance: 25, rolloffPower: 2, maxDistance: 600 },
-      fireBell:        { path: './sounds/fire-bell.mp3',        gain: 0.9, refDistance: 25, rolloffPower: 1.5, maxDistance: 900 },
+      fireBell:        { path: './sounds/fire-bell.mp3',        gain: 0.9, refDistance: 25, rolloffPower: 1.5, maxDistance: 900, duck: 0.3 },
       fireGallop:      { path: './sounds/fire-gallop.mp3',      loop: true, maxConcurrent: 2, gain: 0.8, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
-      fireSirenLoop:   { path: './sounds/fire-siren.mp3',       loop: true, maxConcurrent: 2, gain: 1.0, refDistance: 40, rolloffPower: 1.3, maxDistance: 2500 },
+      fireSirenLoop:   { path: './sounds/fire-siren.mp3',       loop: true, bus: 'main', maxConcurrent: 2, gain: 1.0, refDistance: 40, rolloffPower: 1.3, maxDistance: 2500 },
       firePump:        { path: './sounds/fire-pump.mp3',        loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
-      paradeBand:      { path: './sounds/parade-band.mp3',      loop: true, maxConcurrent: 1, gain: 0.9, refDistance: 25, rolloffPower: 1.5, maxDistance: 900 },
+      paradeBand:      { path: './sounds/parade-band.mp3',      loop: true, bus: 'main', maxConcurrent: 1, gain: 0.9, refDistance: 25, rolloffPower: 1.5, maxDistance: 900 },
       crowdCheer:      { path: './sounds/crowd-cheer.mp3',      loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 1.5, maxDistance: 600 },
       mosquitoes:      { path: './sounds/mosquitoes.mp3',       loop: true, maxConcurrent: 1, gain: 0.5, refDistance: 3,  rolloffPower: 3, maxDistance: 40 },
+
+      // ═══ Wired from the sound wiring map (files optional: a missing file is skipped quietly) ═══
+      // Per hook:  loop/maxConcurrent (nearest sources get a voice) · minGap (s, rate limit) · variants: N (files name.mp3, name-2.mp3 … name-N.mp3, random pick)
+      //   bed: true (non-positional, level set by code) · every:[min,max] + dist:[min,max] (random event around the camera) · duck (0–1: dips ambience under it)
+      //   gate: {key:[min,max] …} on the world state — year, hour, month, dow (0=Sun), snow, ice, green, wet, mud, storm, night, built (0 country … 1 downtown), river.
+      //   A range may be a list of ranges ([[7,12],[13,17]]); hour/month ranges wrap (min>max). Era and hour gates live here, not in code.
+      // — Trains (trainRun/trainWhistle above)
+      trainIdle:        _sfx('vehicle', 'train-idle',        { loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 18, maxDistance: 400 }),
+      trainRails:       _sfx('vehicle', 'train-rails',       { loop: true, maxConcurrent: 2, gain: 0.45, refDistance: 15, maxDistance: 450 }),
+      trainOnboard:     _sfx('bed',     'train-onboard',     { bed: true, gain: 0.6 }),   // level = how close the camera is to a moving train (train.onboardRadius)
+      // — Streetcars (streetcarRun above is the old pass-by-heavy hook: retire it when streetcarCruise is chosen)
+      streetcarCruise:  _sfx('vehicle', 'streetcar-cruise',  { loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 12, maxDistance: 300 }),
+      streetcarIdle:    _sfx('vehicle', 'streetcar-idle',    { loop: true, maxConcurrent: 2, gain: 0.4, refDistance: 10, maxDistance: 200 }),   // not wired: streetcars never stop
+      // — Horses, carts, sleighs
+      harnessJingle:    _sfx('foley',   'harness-jingle',    { loop: true, maxConcurrent: 3, gain: 0.3, refDistance: 6, maxDistance: 120, gate: { snow: [0, 0.5] } }),
+      mudWalkHorse:     _sfx('foley',   'mud-walk-horse',    { loop: true, maxConcurrent: 3, gain: 0.6, refDistance: 8, maxDistance: 150, gate: { mud: [0.4, 1] } }),
+      mudWalkOx:        _sfx('foley',   'mud-walk-ox',       { loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 8, maxDistance: 150, gate: { mud: [0.4, 1] } }),
+      sleighBells:      _sfx('foley',   'sleigh-bells',      { loop: true, maxConcurrent: 3, gain: 0.45, refDistance: 8, maxDistance: 200, gate: { snow: [0.5, 1] } }),
+      // — Motor vehicles (which one plays is picked by year: audio.vehicleEras)
+      carModelTDrive:   _sfx('vehicle', 'car-model-t-drive', { loop: true, maxConcurrent: 3, gain: 0.5 }),
+      carModelTIdle:    _sfx('vehicle', 'car-model-t-idle',  { loop: true, maxConcurrent: 2, gain: 0.4 }),   // not wired: autos never stop
+      car1930s40sDrive: _sfx('vehicle', 'car-1930s-40s-drive', { loop: true, maxConcurrent: 3, gain: 0.5 }),
+      car1930s40sIdle:  _sfx('vehicle', 'car-1930s-40s-idle',  { loop: true, maxConcurrent: 2, gain: 0.4 }),  // not wired
+      car1950sDrive:    _sfx('vehicle', 'car-1950s-drive',   { loop: true, maxConcurrent: 3, gain: 0.5 }),
+      car1950sIdle:     _sfx('vehicle', 'car-1950s-idle',    { loop: true, maxConcurrent: 2, gain: 0.4 }),   // not wired
+      busDieselDrive:   _sfx('vehicle', 'bus-diesel-drive',  { loop: true, maxConcurrent: 2, gain: 0.6 }),   // only if audio.vehicleEras.busShare > 0
+      busDieselIdle:    _sfx('vehicle', 'bus-diesel-idle',   { loop: true, maxConcurrent: 2, gain: 0.5 }),   // not wired
+      carHorn:          _sfx('foley',   'car-horn',          { gain: 0.7, refDistance: 20, rolloffPower: 1.6, maxDistance: 500, minGap: 4, variants: 4, duck: 0.2 }),
+      bicycleBell:      _sfx('foley',   'bicycle-bell',      { gain: 0.5, minGap: 8 }),                       // not wired: no cyclists
+      // — Footsteps of the walker (walk mode), by surface under the camera
+      footstepsPlank:   _sfx('step', 'footsteps-plank',  { gain: 0.5, variants: 4 }),
+      footstepsStone:   _sfx('step', 'footsteps-stone',  { gain: 0.5, variants: 4 }),
+      footstepsGravel:  _sfx('step', 'footsteps-gravel', { gain: 0.5, variants: 4 }),
+      snowFootsteps:    _sfx('step', 'snow-footsteps',   { gain: 0.55, variants: 4 }),
+      mudWalkHuman:     _sfx('step', 'mud-walk-human',   { gain: 0.55, variants: 4 }),
+      // — People
+      kidsPlaying:      _sfx('crowd', 'kids-playing',    { loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 15, maxDistance: 400,
+                                                           }),   // schools gate it to recess/after school (audio.sites.school); the parade plays it ungated
+      woodChop:         _sfx('foley', 'wood-chop',       { gain: 0.7, refDistance: 10, maxDistance: 250, minGap: 1, variants: 3, gate: { hour: [7, 18], dow: [1, 6] } }),
+      newsboyCry:       _sfx('foley', 'newsboy-cry',     { gain: 0.6, refDistance: 14, maxDistance: 200, minGap: 25, variants: 3, every: [25, 70], dist: [12, 70],
+                                                           gate: { hour: [7, 18], year: [1880, 1950], built: [0.5, 1] } }),
+      // — Animals
+      cattleHerd:       _sfx('crowd', 'cattle-herd',     { loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 15, maxDistance: 500 }),
+      cattleMoo:        _sfx('foley', 'cattle-moo',      { gain: 0.7, refDistance: 15, maxDistance: 500, minGap: 8, variants: 3 }),
+      chickens:         _sfx('foley', 'chickens',        { gain: 0.5, refDistance: 8, maxDistance: 200, minGap: 6, variants: 2, gate: { hour: [5, 20] } }),
+      roosterCrow:      _sfx('foley', 'rooster-crow',    { gain: 0.7, refDistance: 20, maxDistance: 700, minGap: 120, variants: 2, every: [60, 160], dist: [60, 300],
+                                                           gate: { hour: [4, 6.5], built: [0, 0.7] } }),   // a dawn event near farms/backyards; farms also call it directly
+      dogsBarking:      _sfx('foley', 'dogs-barking',    { gain: 0.6, refDistance: 12, maxDistance: 400, minGap: 10, variants: 2, every: [25, 80], dist: [40, 250], gate: { built: [0.05, 1] } }),
+      coyotes:          { path: './sounds/coyotes.mp3',  gain: 0.6, refDistance: 80, rolloffPower: 1.2, maxDistance: 1500, minGap: 40, every: [45, 140], dist: [250, 900],
+                          gate: { hour: [20, 5], built: [0, 0.5], snow: [0, 1] } },
+      wolves:           { path: './sounds/wolves.mp3',   gain: 0.6, refDistance: 80, rolloffPower: 1.2, maxDistance: 1800, minGap: 60, every: [60, 200], dist: [400, 1200],
+                          gate: { hour: [21, 4], built: [0, 0.25], year: [1800, 1900] } },
+      birdsCrow:        _sfx('foley', 'birds-crow',      { gain: 0.5, refDistance: 20, maxDistance: 500, minGap: 12, variants: 2, every: [12, 40], dist: [30, 200], gate: { hour: [5, 20], snow: [0, 0.6] } }),
+      birdsGeese:       { path: './sounds/birds-geese.mp3', gain: 0.6, refDistance: 60, rolloffPower: 1.3, maxDistance: 1500, minGap: 60, variants: 2, every: [40, 130], dist: [100, 600],
+                          gate: { month: [[3, 5], [9, 10]], hour: [6, 20] } },
+      birdsGulls:       _sfx('bed', 'birds-gulls',       { bed: true, gain: 0.35, gate: { hour: [5, 21], snow: [0, 0.6] } }),     // level = riverfront × daylight
+      birdsSongbirds:   _sfx('bed', 'birds-songbirds',   { bed: true, gain: 0.35, gate: { snow: [0, 0.2], green: [0.25, 1] } }),  // level = daylight × green × (less in town)
+      crickets:         _sfx('bed', 'crickets',          { bed: true, gain: 0.35, gate: { snow: [0, 0.2], green: [0.5, 1] } }),   // level = night × green × (less in town)
+      // — Places
+      factoryAmbience:  _sfx('crowd', 'factory-ambience', { loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 20, maxDistance: 400, gate: { hour: [[7, 12], [13, 17]], dow: [1, 6] } }),
+      factoryWhistle:   _sfx('signal', 'factory-whistle', { gain: 1.0, maxDistance: 2200, minGap: 30, duck: 0.6, variants: 2 }),
+      lumberMill:       _sfx('crowd', 'lumber-mill',     { loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 20, maxDistance: 450, gate: { hour: [7, 17], dow: [1, 6] } }),
+      windmill:         _sfx('vehicle', 'windmill',      { loop: true, maxConcurrent: 1, gain: 0.5, refDistance: 15, maxDistance: 300 }),
+      wellPump:         _sfx('foley', 'well-pump',       { gain: 0.5, minGap: 20, gate: { hour: [6, 19] } }),
+      gateCreak:        _sfx('foley', 'gate-creak',      { gain: 0.45, minGap: 30, variants: 2 }),
+      doorCreak:        _sfx('foley', 'door-creak',      { gain: 0.45, minGap: 30, variants: 2 }),                  // not wired: no door/entrance logic
+      telegraphKey:     _sfx('foley', 'telegraph-key',   { gain: 0.45, refDistance: 5, maxDistance: 60, minGap: 6, gate: { hour: [7, 20], year: [1860, 1960] } }),
+      blacksmithForge:  _sfx('foley', 'blacksmith-forge', { loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 6, maxDistance: 120, gate: { hour: [7, 18], dow: [1, 6] } }),
+      blacksmithAnvil:  _sfx('foley', 'blacksmith-anvil', { gain: 0.7, refDistance: 10, maxDistance: 250, minGap: 2, variants: 3, gate: { hour: [7, 18], dow: [1, 6] } }),
+      blacksmithQuench: _sfx('foley', 'blacksmith-quench', { gain: 0.6, refDistance: 8, maxDistance: 150, minGap: 30, gate: { hour: [7, 18], dow: [1, 6] } }),
+      tinsmith:         _sfx('foley', 'tinsmith',        { gain: 0.6, minGap: 3, variants: 2, gate: { hour: [7, 18], dow: [1, 6] } }),
+      printingPress:    _sfx('foley', 'printing-press',  { loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 8, maxDistance: 150, gate: { hour: [7, 18], dow: [1, 6] } }),
+      typewriterTyping: _sfx('foley', 'typewriter-typing', { gain: 0.35, refDistance: 5, maxDistance: 60, minGap: 6, gate: { year: [1885, 1999], hour: [8, 18], dow: [1, 6] } }),
+      typewriterBell:   _sfx('foley', 'typewriter-bell', { gain: 0.35, refDistance: 5, maxDistance: 60, minGap: 15, gate: { year: [1885, 1999], hour: [8, 18], dow: [1, 6] } }),
+      cashRegister:     _sfx('foley', 'cash-register',   { gain: 0.5, refDistance: 6, maxDistance: 80, minGap: 10, gate: { year: [1885, 1999], hour: [8, 18], dow: [1, 6] } }),
+      barAmbience:      _sfx('foley', 'bar-ambience',    { loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 6, maxDistance: 120, gate: { hour: [11, 22] } }),
+      saloonPiano:      _sfx('foley', 'saloon-piano',    { loop: true, maxConcurrent: 1, gain: 0.5, refDistance: 6, maxDistance: 120, gate: { hour: [17, 22] } }),
+      barGlassClink:    _sfx('foley', 'bar-glass-clink', { gain: 0.4, refDistance: 6, maxDistance: 100, minGap: 4, variants: 3, gate: { hour: [11, 22] } }),
+      dishesBreak:      _sfx('foley', 'dishes-break',    { gain: 0.6, refDistance: 8, maxDistance: 120, minGap: 90 }),
+      cookingSizzle:    _sfx('foley', 'cooking-sizzle',  { loop: true, maxConcurrent: 2, gain: 0.3, refDistance: 4, maxDistance: 50, gate: { hour: [[6.5, 8.5], [11.5, 13.5], [17, 19.5]] } }),
+      cookingBoil:      _sfx('foley', 'cooking-boil',    { loop: true, maxConcurrent: 2, gain: 0.3, refDistance: 4, maxDistance: 50, gate: { hour: [[6.5, 8.5], [11.5, 13.5], [17, 19.5]] } }),
+      cookingChop:      _sfx('foley', 'cooking-chop',    { gain: 0.3, refDistance: 4, maxDistance: 50, minGap: 3, gate: { hour: [[6.5, 8.5], [11.5, 13.5], [17, 19.5]] } }),
+      sewingMachine:    _sfx('foley', 'sewing-machine',  { loop: true, maxConcurrent: 2, gain: 0.35, refDistance: 4, maxDistance: 50, gate: { hour: [9, 16], year: [1860, 2000] } }),
+      loomWeaving:      _sfx('foley', 'loom-weaving',    { loop: true, maxConcurrent: 2, gain: 0.35, refDistance: 4, maxDistance: 50, gate: { hour: [9, 16], year: [1700, 1900] } }),
+      spinningWheel:    _sfx('foley', 'spinning-wheel',  { loop: true, maxConcurrent: 2, gain: 0.35, refDistance: 4, maxDistance: 50, gate: { hour: [9, 16], year: [1700, 1890] } }),
+      churchBell:       _sfx('signal', 'church-bell',    { gain: 0.9, refDistance: 60, maxDistance: 2500, minGap: 60, duck: 0.6, variants: 2, gate: { dow: [0, 0], hour: [9.5, 11] } }),
+      schoolBell:       _sfx('signal', 'school-bell',    { gain: 0.7, refDistance: 40, maxDistance: 1200, minGap: 30, duck: 0.4, gate: { dow: [1, 5] } }),
+      waterLapping:     _sfx('bed', 'water-lapping',     { bed: true, gain: 0.4 }),                                   // level = riverfront × (quieter when frozen)
+      // — Events
+      buildingFire:     _sfx('crowd', 'building-fire',   { loop: true, maxConcurrent: 2, gain: 0.9, refDistance: 25, rolloffPower: 2, maxDistance: 700 }),   // big flames only (audio.fireLoudFlames)
+      photoFlash:       _sfx('bed', 'photo-flash',       { gain: 0.6, minGap: 1 }),
+      pistolCock:       _sfx('foley', 'pistol-cock',     { gain: 0.6, refDistance: 10, maxDistance: 300 }),           // scripted only: playScriptedShot('pistol', x, y, z)
+      pistolShot:       _sfx('signal', 'pistol-shot',    { gain: 0.9, refDistance: 40, maxDistance: 1500, variants: 2 }),
+      rifleAction:      _sfx('foley', 'rifle-action',    { gain: 0.6, refDistance: 10, maxDistance: 300 }),
+      rifleShot:        _sfx('signal', 'rifle-shot',     { gain: 1.0, refDistance: 50, maxDistance: 2200, variants: 2 }),
+      thunder:          _sfx('signal', 'thunder',        { gain: 1.0, maxDistance: 1e9, variants: 3, duck: 0.5 }),    // replaces the synthesized thunder if the file exists
+      rainstorm:        _sfx('bed', 'rainstorm',         { bed: true, gain: 0.7 }),                                   // replaces the synthesized rain hiss if the file exists
+      rainRoofDrip:     _sfx('foley', 'rain-roof-drip',  { loop: true, maxConcurrent: 3, gain: 0.4, refDistance: 4, maxDistance: 40, gate: { wet: [0.05, 1], storm: [0, 0.3] } }),
+      windWinter:       _sfx('bed', 'wind-winter',       { bed: true, gain: 0.5, gate: { snow: [0.4, 1] } }),
+      iceCracking:      _sfx('foley', 'ice-cracking',    { gain: 0.6, refDistance: 40, rolloffPower: 1.8, maxDistance: 900, minGap: 15, variants: 3, every: [12, 40], dist: [60, 400],
+                                                           gate: { ice: [0.4, 1], river: [0.15, 1] } }),
     },
+    // Global rules for the sfx hooks (wiring rules in the sound map)
+    global: {
+      maxOneShots: 16,        // simultaneous one-shot voices; extra ones are dropped
+      maxLoops: 14,           // simultaneous looping voices across all hooks (nearest/loudest win)
+      duckSeconds: 1.5,       // how long ambience stays ducked under a loud signal (a hook's `duck` = how far it dips, 0–1)
+      duckRecover: 0.8,       // seconds to swell back
+      siteRadius: 450,        // sites (places) farther than this from the camera are ignored
+      tickSeconds: 0.1,       // how often mob/site hooks are gathered
+    },
+    // Motor vehicles: which loop plays for an auto by year (first row containing the year wins).
+    // busShare = share of autos (from the bus year on) that sound like a diesel bus — there is no bus model yet, so 0.
+    vehicleEras: { rows: [[1900, 1927, 'carModelTDrive'], [1928, 1949, 'car1930s40sDrive'], [1950, 2100, 'car1950sDrive']], busFrom: 1950, busShare: 0,
+                   hornChance: 0.08 },   // chance an auto honks when it turns at a junction near the camera (carHorn)
+    // Trains: idle ↔ running crossfade, whistle at departure/arrival, onboard bed near a moving train
+    train: { fadeSeconds: 2.5, whistleOnDepart: 0.7, whistleOnArrive: 0.5, whistleRandomPerSec: 1 / 240, onboardRadius: 14, onboardFade: 22 },
+    // Walk-mode footsteps. Surface under the camera: board walks/docks → plank (until the planks go: sidewalks.businessEnd), later sidewalks → stone,
+    // roadway or yard → gravel; snow cover and mud override. metresPerStep: stride; the sprint stride is longer.
+    footsteps: { metresPerStep: 0.8, sprintMetresPerStep: 1.1, snowAbove: 0.45, mudAbove: 0.4, offRoad: 'footstepsGravel', plankUntilYear: 1920, sidewalkBand: [0.5, 3.2] },
+    // Mud: after rain (roadWet) or in the thaw months, when there's no snow cover
+    mud: { thawMonths: [3, 4], thawLevel: 0.7 },
+    // Fires: the big-flame loop plays above this flame strength; and the roof-fall crack (dockBreak) when a fire's shell collapses
+    fireLoudFlames: 0.5,
+    // Places that make sound. `match` is tested (case-insensitive) against a building's name, first kind to match wins; kind `home` = any unnamed
+    // building of homeArea m². loops = looping hooks (nearest maxConcurrent get voices; hook gates apply); random = hooks fired about N times/second
+    // from the nearest 3 sites; at = hooks fired at those clock hours (every site kind has its own list, nearest 2 ring). A loop/random may be written
+    // {name, gate:{…}} to add a gate for just this kind. Sites exist only while the building stands (born/died).
+    sites: {
+      factory:    { match: 'factory|foundry|manufactur|brewery|packing|\\bworks\\b|\\bmill\\b|\\bplant\\b|cannery|creamery|elevator', loops: ['factoryAmbience'], at: { factoryWhistle: [7, 12, 17] } },
+      sawmill:    { match: 'saw ?mill|lumber|planing|sash and door', loops: ['lumberMill'], random: { woodChop: 0.15 } },
+      blacksmith: { match: 'blacksmith|smithy|\\bforge\\b|farrier|horseshoe', loops: ['blacksmithForge'], random: { blacksmithAnvil: 0.25, blacksmithQuench: 0.015 } },
+      tinsmith:   { match: 'tinsmith|tinner|sheet metal|plumb', random: { tinsmith: 0.15 } },
+      print:      { match: 'printing|printer|press\\b|newspaper|tribune|telegram|free press|publish', loops: ['printingPress'], random: { typewriterTyping: 0.08, typewriterBell: 0.02 } },
+      depot:      { match: 'station|depot|telegraph|c\\.? ?p\\.? ?r\\.?\\b', random: { telegraphKey: 0.1 } },
+      saloon:     { match: 'saloon|hotel|tavern|\\bbar\\b|\\bpub\\b|brewery tap|beer', loops: ['barAmbience', 'saloonPiano'], random: { barGlassClink: 0.12, dishesBreak: 0.003 } },
+      shop:       { match: 'store|shop|grocer|bakery|butcher|market|emporium|merchant|dry goods|hardware', random: { cashRegister: 0.04 } },
+      church:     { match: 'church|cathedral|chapel|presbyterian|methodist|baptist|anglican|parish|synagogue|temple', random: { churchBell: 0.03 } },
+      school:     { match: 'school|college|academy|collegiate|university', loops: [{ name: 'kidsPlaying', gate: { dow: [1, 5], hour: [[10.25, 10.5], [12, 13], [15.25, 16]] } }],
+                    at: { schoolBell: [8.75, 10.25, 10.5, 12, 13, 15.25] } },
+      livery:     { match: 'livery|stable|\\bbarn\\b|feed|horse', random: { horseWhinny: 0.01, dogsBarking: 0.01 } },
+      farm:       { match: 'farm|ranch|dairy', loops: ['cattleHerd'], random: { cattleMoo: 0.03, chickens: 0.05, dogsBarking: 0.02, wellPump: 0.02, gateCreak: 0.01, horseWhinny: 0.01, roosterCrow: 0.01 } },
+      home:       { match: null, homeArea: [30, 300], homeMaxFloors: 3, loops: ['cookingSizzle', 'cookingBoil', 'sewingMachine', 'loomWeaving', 'spinningWheel', 'rainRoofDrip'],
+                    random: { cookingChop: 0.1 } },
+    },
+    // Fixed places not in the building data (farm = the two windmill sites, from CONFIG.windmills.list)
+    extraSites: { windmills: { kind: 'farm', loops: ['windmill'] } },
     ambient: {
       windNoise: {
         lowpassFrequencyHz: 280,

@@ -3519,6 +3519,7 @@ async function buildCity(geojson){
         wallInfos[mat].push({name:props.name||null,floors:props.floors,material:mat,area_m2:props.area_m2,source:props.source_file,feat,cx:mcx,cz:mcz});
       }
       matCounts[mat]++;
+      collectSoundSite(props,mcx,mcz);   // sound sites (CONFIG.audio.sites)
       // Track glass vert start so we can apply buildingBaseY to window Y coords after geometry is built
       const _glassStart=glassVerts.length;
       // Place procedural windows on all wall edges of this building
@@ -6824,15 +6825,25 @@ function initAudio(){
 // camera distance at start: gain × min(1,(ref/d)^rolloffPower), panned left/
 // right by bearing. Files load on first use; a missing file is remembered and
 // skipped (logged once), so hooks can be wired before the sounds exist.
-const _sfxBuf={};   // name → AudioBuffer | 'missing' | Promise
+const _sfxBuf={};   // name → AudioBuffer | 'missing' | Promise (the first/primary variant)
+const _sfxVar={};   // name → [AudioBuffer…] every variant that loaded (CONFIG sfx `variants: N` → name.mp3, name-2.mp3 … name-N.mp3)
+function _sfxPaths(C){
+  if(C.paths) return C.paths;
+  const out=[C.path]; for(let i=2;i<=(C.variants??1);i++) out.push(C.path.replace(/(\.\w+)$/,`-${i}$1`));
+  return out;
+}
 function _sfxLoad(name){
   const C=CONFIG.audio?.sfx?.[name]; if(!C?.path||!audioCtx) return null;
   if(_sfxBuf[name]) return _sfxBuf[name];
-  _sfxBuf[name]=fetch(C.path).then(r=>{if(!r.ok)throw new Error(r.status);return r.arrayBuffer();})
-    .then(a=>audioCtx.decodeAudioData(a)).then(b=>(_sfxBuf[name]=b))
-    .catch(e=>{console.log(`🔈 sfx '${name}': ${C.path} not available (${e.message}) — hook idle`);return(_sfxBuf[name]='missing');});
+  const one=p=>fetch(p).then(r=>{if(!r.ok)throw new Error(r.status);return r.arrayBuffer();}).then(a=>audioCtx.decodeAudioData(a));
+  const paths=_sfxPaths(C);
+  _sfxBuf[name]=one(paths[0]).then(async b=>{
+    const vs=[b]; for(const p of paths.slice(1)){ try{ vs.push(await one(p)); }catch(e){} }   // extra variants are optional
+    _sfxVar[name]=vs; return (_sfxBuf[name]=b);
+  }).catch(e=>{console.log(`🔈 sfx '${name}': ${paths[0]} not available (${e.message}) — hook idle`);return(_sfxBuf[name]='missing');});
   return _sfxBuf[name];
 }
+const _sfxPick=name=>{ const v=_sfxVar[name]; return v?.length?v[Math.floor(Math.random()*v.length)]:_sfxBuf[name]; };
 function sfxGainAt(C,x,y,z){
   const d=Math.max(0.1,Math.hypot(x-camera.position.x,y-camera.position.y,z-camera.position.z));
   if(d>(C.maxDistance??1000)) return 0;
@@ -6843,22 +6854,58 @@ function sfxPanAt(x,z){
   const dx=x-camera.position.x, dz=z-camera.position.z, l=Math.hypot(dx,dz)||1;
   return Math.max(-1,Math.min(1,(-f.z*dx+f.x*dz)/l));   // right of view (−f.z, f.x) = +1
 }
+// World state the gates read (CONFIG sfx `gate`), refreshed by sfxWorldUpdate
+const _sfxW={year:1900,hour:12,month:7,dow:1,snow:0,ice:0,green:1,wet:0,mud:0,storm:0,night:0,built:0.5,river:0};
+function _inRange(v,r){ return r[0]<=r[1]?(v>=r[0]&&v<=r[1]):(v>=r[0]||v<=r[1]); }   // a>b wraps (hours 20→5)
+function sfxGateOpen(G){
+  if(!G) return true;
+  for(const k in G){ const v=_sfxW[k]; if(v===undefined) continue; const r=G[k];
+    if(Array.isArray(r[0])?!r.some(x=>_inRange(v,x)):!_inRange(v,r)) return false; }
+  return true;
+}
+const sfxOpen=name=>sfxGateOpen(CONFIG.audio?.sfx?.[name]?.gate);
+// Ambient bus: loops and beds go through it so loud signals can duck them
+let _ambBus=null, _duckUntil=0;
+function sfxBus(C){
+  if(C?.bus==='main') return audioCtx.destination;
+  if(!_ambBus){ _ambBus=audioCtx.createGain(); _ambBus.connect(audioCtx.destination); }
+  return _ambBus;
+}
+function sfxDuck(amount,g){
+  if(!_ambBus||!(amount>0)) return;
+  const G=CONFIG.audio.global, now=audioCtx.currentTime, to=1-Math.min(0.9,amount*Math.min(1,g*2));
+  if(to>=0.98) return;
+  _ambBus.gain.cancelScheduledValues(now); _ambBus.gain.setTargetAtTime(to,now,0.06);
+  _ambBus.gain.setTargetAtTime(1,now+(G.duckSeconds??1.5),(G.duckRecover??0.8)/3);
+}
+const _sfxLast={}; let _sfxVoices=0;
+// One-shot at a world point (x == null → flat, no distance/pan). opts: gain, rate, delay (s), force (skip gate/rate-limit)
 async function playSfx(name,x,y,z,opts={}){
   try{
     if(!audioCtx||audioCtx.state==='suspended') return;
     const C=CONFIG.audio?.sfx?.[name]; if(!C) return;
+    const wall=performance.now()*0.001;
+    if(!opts.force){ if(!sfxOpen(name)) return; if(C.minGap&&wall-(_sfxLast[name]??-1e9)<C.minGap) return; }
+    if(_sfxVoices>=(CONFIG.audio.global?.maxOneShots??16)) return;
     let b=_sfxLoad(name); if(b instanceof Promise) b=await b;
     if(!b||b==='missing') return;
-    const g=sfxGainAt(C,x,y,z)*(opts.gain??1); if(g<0.002) return;
-    const src=audioCtx.createBufferSource(); src.buffer=b; src.playbackRate.value=opts.rate??(0.94+Math.random()*0.12);
+    const flat=x==null, g=(flat?(C.gain??1):sfxGainAt(C,x,y,z))*(opts.gain??1); if(g<0.002) return;
+    if(C.minGap){ if(wall-(_sfxLast[name]??-1e9)<C.minGap&&!opts.force) return; _sfxLast[name]=wall; }   // re-check after the await: two calls can race
+    const src=audioCtx.createBufferSource(); src.buffer=_sfxPick(name); src.playbackRate.value=opts.rate??(0.94+Math.random()*0.12);
     const gn=audioCtx.createGain(); gn.gain.value=g;
-    const pn=audioCtx.createStereoPanner?audioCtx.createStereoPanner():null;
-    if(pn){ pn.pan.value=sfxPanAt(x,z); src.connect(gn).connect(pn).connect(audioCtx.destination); }
-    else src.connect(gn).connect(audioCtx.destination);
-    src.start();
+    const pn=(!flat&&audioCtx.createStereoPanner)?audioCtx.createStereoPanner():null;
+    const out=C.bus==='ambient'?sfxBus(C):audioCtx.destination;
+    if(pn){ pn.pan.value=sfxPanAt(x,z); src.connect(gn).connect(pn).connect(out); }
+    else src.connect(gn).connect(out);
+    _sfxVoices++; src.onended=()=>{_sfxVoices--;};
+    src.start(audioCtx.currentTime+(opts.delay??0));
+    if(C.duck){ const dl=opts.delay??0; if(dl>0.05) setTimeout(()=>sfxDuck(C.duck,g),dl*1000); else sfxDuck(C.duck,g); }
   }catch(e){}
 }
 window.playSfx=playSfx;
+window._debugSound=(x,z)=>{ try{ if(x!=null){ camera.position.set(x,sampleTerrainY(x,z)+EYE_H,z); _bd.t=-99; } sfxWorldUpdate(); _siteRefresh(); }catch(e){ return 'ERR '+e.message; }
+  return {ctx:audioCtx?.state??null, world:{..._sfxW}, sites:soundSites.length, kinds:Object.fromEntries(Object.entries(_siteNear).map(([k,v])=>[k,v.length])),
+    allKinds:soundSites.reduce((o,s)=>(o[s.kind]=(o[s.kind]||0)+1,o),{}), loops:Object.fromEntries(Object.entries(_loopPools).map(([k,v])=>[k,v.size]).filter(e=>e[1])), beds:Object.keys(_beds), oneShots:_sfxVoices, bufs:Object.fromEntries(Object.entries(_sfxBuf).map(([k,v])=>[k,v instanceof AudioBuffer?'ok':v instanceof Promise?'pending':v])), hookT:_hookT}; };
 
 // ── Locomotive audio ──────────────────────────────────────────────
 // One shared loop buffer (./sounds/locomotive-loop.mp3), played through a small
@@ -7690,6 +7737,7 @@ function buildCartGroup(seed){
   addCartRein(group,handL,headAnchor.clone().add(new THREE.Vector3(-0.05,0,0)));
   addCartRein(group,handR,headAnchor.clone().add(new THREE.Vector3( 0.05,0,0)));
 
+  group.userData.isOx=isOx;   // sound: mudWalkOx vs mudWalkHorse
   group.userData.wheels=wheels;
   group.userData.legs=animal.userData.legs;
   group.userData.rearAnchor=animal.userData.rearAnchor;
@@ -9147,22 +9195,26 @@ function sfxReady(name){
   if(b===undefined){ _sfxLoad(name); return false; }
   return b instanceof AudioBuffer;
 }
+const _loopTotal=()=>{ let n=0; for(const p of Object.values(_loopPools)) n+=p.size; return n; };
 function sfxLoopUpdate(name,sources){
-  const C=CONFIG.audio?.sfx?.[name]; if(!C||!audioCtx||audioCtx.state==='suspended'||!sfxReady(name)) return;
+  const C=CONFIG.audio?.sfx?.[name]; if(!C||!audioCtx||audioCtx.state==='suspended') return;
   const pool=_loopPools[name]??(_loopPools[name]=new Map()), now=audioCtx.currentTime;
   const ranked=[];
-  for(const s of sources){ const g=sfxGainAt(C,s.x,s.y,s.z)*(s.gain??1); if(g>0.002) ranked.push({s,g}); }
+  if(sfxOpen(name)) for(const s of sources){ if(s.gate&&!sfxGateOpen(s.gate)) continue; const g=sfxGainAt(C,s.x,s.y,s.z)*(s.gain??1); if(g>0.002) ranked.push({s,g}); }
+  if(ranked.length&&!sfxReady(name)) ranked.length=0;          // nothing audible → don't even fetch the file (lazy by proximity)
   ranked.sort((a,b)=>b.g-a.g); ranked.length=Math.min(ranked.length,C.maxConcurrent??2);
   const keep=new Set(ranked.map(r=>r.s.id));
   for(const[id,v]of pool) if(!keep.has(id)){ v.g.gain.setTargetAtTime(0,now,0.25); v.src.stop(now+1.2); pool.delete(id); }
+  const cap=CONFIG.audio.global?.maxLoops??14;
   for(const{s,g}of ranked){
     let v=pool.get(s.id);
     if(!v){
-      const src=audioCtx.createBufferSource(); src.buffer=_sfxBuf[name]; src.loop=true;
+      if(_loopTotal()>=cap) continue;                           // global voice cap: nearest sources win (they're ranked first within a hook)
+      const src=audioCtx.createBufferSource(); src.buffer=_sfxPick(name); src.loop=true;
       src.playbackRate.value=0.93+Math.random()*0.14;
       const gn=audioCtx.createGain(); gn.gain.value=0;
       const pn=audioCtx.createStereoPanner();
-      src.connect(gn).connect(pn).connect(audioCtx.destination);
+      src.connect(gn).connect(pn).connect(sfxBus(C));
       src.start(now,Math.random()*src.buffer.duration);
       v={src,g:gn,p:pn}; pool.set(s.id,v);
     }
@@ -9172,45 +9224,174 @@ function sfxLoopUpdate(name,sources){
 function sfxLoopsStopAll(){
   if(!audioCtx) return;
   for(const pool of Object.values(_loopPools)) for(const[id,v]of pool){ v.g.gain.setTargetAtTime(0,audioCtx.currentTime,0.2); v.src.stop(audioCtx.currentTime+1); pool.delete(id); }
+  for(const[n,v]of Object.entries(_beds)){ v.g.gain.setTargetAtTime(0,audioCtx.currentTime,0.2); v.src.stop(audioCtx.currentTime+1); delete _beds[n]; }
 }
-// Every mob's sound hooks, gathered ~10×/s. Loops: cartHooves, streetcarRun,
-// trainRun (in addition to the existing locomotive loop), steamboatEngine,
-// launchEngine, ferryEngine, fireCrackle, fireGallop, fireSirenLoop, firePump.
-// One-shots (random, per nearby source): trainWhistle, steamboatWhistle,
-// horseWhinny, paddleSplash. Streetcar bells use streetcarBell if the file
-// exists, else the synthesized bell. Fires/dock breaks/construction/fire
-// engines fire their own one-shots where they happen.
+// Beds: non-positional looping ambience whose level the code sets (CONFIG sfx `bed: true`). Level × the hook's gain; gate closed → fades out.
+// The voice is created only when the level is audible, and released after ~8 s of silence.
+const _beds={};
+function sfxBedSet(name,level){
+  const C=CONFIG.audio?.sfx?.[name]; if(!C||!audioCtx||audioCtx.state==='suspended') return;
+  const now=audioCtx.currentTime; level=sfxOpen(name)?Math.max(0,level)*(C.gain??1):0;
+  let v=_beds[name];
+  if(!v){
+    if(level<0.004||!sfxReady(name)) return;
+    const src=audioCtx.createBufferSource(); src.buffer=_sfxPick(name); src.loop=true;
+    const gn=audioCtx.createGain(); gn.gain.value=0; src.connect(gn).connect(sfxBus(C)); src.start(now,Math.random()*src.buffer.duration);
+    v=_beds[name]={src,g:gn,quiet:0};
+  }
+  v.g.gain.setTargetAtTime(level,now,C.fade??1.2);
+  if(level<0.004){ v.quiet+=CONFIG.audio.global?.tickSeconds??0.1; if(v.quiet>8){ v.src.stop(now+0.5); delete _beds[name]; } } else v.quiet=0;
+}
+// ── Sound sites: places that make sound (CONFIG.audio.sites) ────────
+// Buildings are classified by name (collectSoundSite, called as each building is built) into kinds — factory, church, saloon… — and unnamed
+// house-sized buildings become `home`. A site exists only while its building stands. Every 0.5 s the sites near the camera are cached;
+// every tick their loops get voices, their random one-shots roll, and their `at` hours ring (factory whistles, school bells).
+const soundSites=[], _siteGrid=new Map(), _siteSeen=new Set(), SITE_CELL=100;
+let _siteKinds=null, _siteNear={}, _siteNearT=0, _siteExtraDone=false;
+const _siteKindList=()=>_siteKinds??(_siteKinds=Object.entries(CONFIG.audio.sites||{}).map(([kind,K])=>{
+  const hooks=[...(K.loops||[]).map(l=>l.name??l),...Object.keys(K.random||{}),...Object.keys(K.at||{})];
+  const r=Math.min(CONFIG.audio.global.siteRadius??450,Math.max(40,...hooks.map(h=>CONFIG.audio.sfx[h]?.maxDistance??100)));
+  return {kind,K,re:K.match?new RegExp(K.match,'i'):null,r2:r*r,r};
+}));
+function _addSite(kind,x,z,born,died,extra){
+  const key=kind+':'+Math.round(x)+','+Math.round(z); if(_siteSeen.has(key)) return; _siteSeen.add(key);
+  const s={kind,x,z,born,died,y:null,...extra}; soundSites.push(s);
+  const k=Math.floor(x/SITE_CELL)+','+Math.floor(z/SITE_CELL); let a=_siteGrid.get(k); if(!a) _siteGrid.set(k,a=[]); a.push(s);
+}
+function collectSoundSite(props,x,z){
+  if(props.type) return;   // fences, walkways, bridges …
+  const nm=props.name||'', born=parseYearOrSentinel(props.born,NO_BORN), died=parseYearOrSentinel(props.died,NO_DIED);
+  for(const{kind,K,re}of _siteKindList()){
+    if(re){ if(nm&&re.test(nm)){ _addSite(kind,x,z,born,died); return; } }
+    else if(!nm&&K.homeArea&&props.area_m2>=K.homeArea[0]&&props.area_m2<=K.homeArea[1]&&(props.floors==null||props.floors<=(K.homeMaxFloors??3))){ _addSite(kind,x,z,born,died); return; }
+  }
+}
+function _siteExtras(){   // fixed places that aren't buildings: the windmills
+  if(_siteExtraDone) return; _siteExtraDone=true;
+  const E=CONFIG.audio.extraSites?.windmills; if(!E||!CONFIG.windmills?.list) return;
+  for(const M of CONFIG.windmills.list){ const[sx,sy]=project(M.lon,M.lat); _addSite(E.kind,sx,-sy,_isoYearFrac(M.from,NO_BORN),_isoYearFrac(M.to,NO_DIED),{loops:E.loops}); }
+}
+function _siteRefresh(){
+  _siteExtras();
+  const cam=camera.position, yr=_sfxW.year, near={}, R=CONFIG.audio.global.siteRadius??450, r=Math.ceil(R/SITE_CELL);
+  const gx=Math.floor(cam.x/SITE_CELL), gz=Math.floor(cam.z/SITE_CELL), kinds=Object.fromEntries(_siteKindList().map(k=>[k.kind,k]));
+  for(let i=-r;i<=r;i++) for(let j=-r;j<=r;j++) for(const s of _siteGrid.get((gx+i)+','+(gz+j))||[]){
+    if(yr<s.born||yr>=s.died) continue;
+    const k=kinds[s.kind]; if(!k) continue;
+    const d2=(s.x-cam.x)**2+(s.z-cam.z)**2; if(d2>k.r2) continue;
+    if(s.y==null) s.y=sampleTerrainY(s.x,s.z);
+    s.d2=d2; (near[s.kind]??(near[s.kind]=[])).push(s);
+  }
+  for(const k in near) near[k].sort((a,b)=>a.d2-b.d2);
+  _siteNear=near;
+}
+
+// ── World state for the gates (CONFIG sfx `gate`) ─────────────────
+const _bd={x:1e9,z:1e9,t:-99}, _hr={prev:null,now:null};
+function sfxWorldUpdate(){
+  const W=_sfxW, S=window._season||{}, G=CONFIG.audio.global, M=CONFIG.audio.mud||{}, cam=camera.position, wall=performance.now()*0.001;
+  W.year=yearFrac(currentViewDate); _hr.prev=_hr.now; W.hour=_hr.now=TOD_START_H+currentTodFraction*TOD_RANGE_H;
+  W.month=currentViewDate.getMonth()+1; W.dow=currentViewDate.getDay();
+  W.snow=S.snow??0; W.ice=S.ice??0; W.green=S.green??1;
+  W.wet=_roadWet; W.storm=_wxK; W.night=_nightness;
+  const thaw=M.thawMonths&&_inRange(W.month,M.thawMonths)?(M.thawLevel??0.7):0;
+  W.mud=Math.max(W.wet,thaw)*(1-Math.min(1,W.snow*1.5));
+  if((cam.x-_bd.x)**2+(cam.z-_bd.z)**2>1600||wall-_bd.t>3){   // how built-up / riverside is it here (camera moved, or every 3 s as dates change)
+    _bd.x=cam.x; _bd.z=cam.z; _bd.t=wall;
+    const R2=(G.builtRadius??250)**2, yr=buildingYearUniform.value; let n=0;
+    for(const d of minimapDots){ if(d.group&&!d.group.visible) continue; if(yr<d.born||yr>=d.died) continue; if((d.x-cam.x)**2+(d.z-cam.z)**2<R2) n++; }
+    W.built=Math.min(1,n/(G.builtFull??90));
+    if(waterMesh&&_demLoaded){
+      const wy=waterMesh.position.y+0.6; let w=0;
+      for(const[rad,cnt]of[[25,6],[70,10]]) for(let k=0;k<cnt;k++){ const a=k/cnt*Math.PI*2; if(sampleTerrainY(cam.x+Math.cos(a)*rad,cam.z+Math.sin(a)*rad)<wy) w++; }
+      W.river=w/16;
+    }
+  }
+}
+const sfxHourCrossed=h=>_hr.prev!=null&&_hr.prev<h&&_hr.now>=h&&_hr.now-_hr.prev<0.5;   // the clock passed h this tick (not a jump)
+
+// ── Walk-mode footsteps ───────────────────────────────────────────
+function footSurface(x,z,y){
+  const F=CONFIG.audio.footsteps, W=_sfxW;
+  if(W.snow>F.snowAbove) return 'snowFootsteps';
+  const plank=W.year<F.plankUntilYear;
+  for(const d of floatingDocks) if(d.mesh.visible&&(d.cx-x)**2+(d.cz-z)**2<36) return 'footstepsPlank';   // on a dock
+  const rd=_nearestRoad(x,z,W.year,30);
+  if(rd){
+    const half=rd.s.w/2, B=F.sidewalkBand;
+    if(rd.d>half+B[0]&&rd.d<half+B[1]) return plank?'footstepsPlank':'footstepsStone';   // the board walk / sidewalk beside the road
+    if(rd.d<=half) return W.mud>F.mudAbove?'mudWalkHuman':F.offRoad;
+  }
+  return W.mud>F.mudAbove?'mudWalkHuman':F.offRoad;
+}
+const _stp={x:0,z:0,acc:0,t:0,init:false};
+function tickFootsteps(dt){
+  if(!audioCtx||!fpsMode||!fpsGrounded||falling){ _stp.init=false; return; }
+  const c=camera.position, F=CONFIG.audio.footsteps;
+  if(!_stp.init){ _stp.x=c.x; _stp.z=c.z; _stp.init=true; return; }
+  const d=Math.hypot(c.x-_stp.x,c.z-_stp.z); _stp.x=c.x; _stp.z=c.z; _stp.t+=dt;
+  if(d>4||d<1e-4){ if(d<1e-4&&_stp.t>0.5) _stp.acc=0; return; }   // teleported / standing still
+  _stp.acc+=d;
+  if(_stp.acc<(sprinting?F.sprintMetresPerStep:F.metresPerStep)||_stp.t<(F.minStepSeconds??0.3)) return;   // walk speed here is ~9 m/s: cap the cadence
+  _stp.acc=0; _stp.t=0;
+  const gy=c.y-EYE_H;
+  playSfx(footSurface(c.x,c.z,gy),c.x,gy,c.z,{rate:0.92+Math.random()*0.16});
+}
+
+// ── Every mob's sound hooks, gathered ~10×/s ───────────────────────
+// Mobs: trains (run/rails/idle crossfaded by speed, onboard bed, whistles at departure/arrival), streetcars, carts (hooves ↔ mud; harness ↔ sleigh bells by
+// snow), autos (loop by era, horn at junctions), steamboats, launches, ferries (whistle on leaving a landing), fires (crackle + big-flame loop + roof-fall
+// crack), fire engines, parade (band, crowd, kids). Places: audio.sites. World: beds (songbirds, crickets, gulls, lapping, winter wind, rain) and
+// random events around the camera (coyotes, geese, ice … — any sfx entry with `every`). Gates/rate limits are applied inside playSfx/sfxLoopUpdate.
 let _hookT=0;
-const _hv=new THREE.Vector3();
+const _hv=new THREE.Vector3(), _evT={}, autoSnd=[], _fireCollapsed=new WeakSet();
 function tickSoundHooks(dt){
   if(!audioCtx||audioCtx.state==='suspended') return;
   _hookT-=dt; if(_hookT>0) return;
-  const step=0.1; _hookT=step;
-  const cam=camera.position, near=(x,z,r)=>(x-cam.x)**2+(z-cam.z)**2<r*r;
+  const G=CONFIG.audio.global, step=G.tickSeconds??0.1; _hookT=step;
+  sfxWorldUpdate();
+  const W=_sfxW, cam=camera.position, near=(x,z,r)=>(x-cam.x)**2+(z-cam.z)**2<r*r;
   const S=CONFIG.audio.sfx, rnd=(p)=>Math.random()<p*step;   // p = chance per second
-  // Carts (horse/ox)
-  const carts=[];
+  // Carts (horse/ox): hooves (muddy → mud-walk), harness jingle (snow → sleigh bells)
+  const carts=[], cartMudH=[], cartMudO=[];
   for(const c of cartMeshes) if(c.mesh.visible&&near(c.mesh.position.x,c.mesh.position.z,S.cartHooves?.maxDistance??150)){
-    const p=c.mesh.position; carts.push({id:c,x:p.x,y:p.y,z:p.z});
-    if(rnd(1/240)) playSfx('horseWhinny',p.x,p.y+1.5,p.z);
+    const p=c.mesh.position, ox=c.mesh.userData.isOx, src={id:c,x:p.x,y:p.y,z:p.z};
+    carts.push(src); (ox?cartMudO:cartMudH).push(src);
+    if(!ox&&rnd(1/240)) playSfx('horseWhinny',p.x,p.y+1.5,p.z);
   }
-  sfxLoopUpdate('cartHooves',carts);
-  // Streetcars
+  sfxLoopUpdate('cartHooves',carts); sfxLoopUpdate('mudWalkHorse',cartMudH); sfxLoopUpdate('mudWalkOx',cartMudO);
+  sfxLoopUpdate('harnessJingle',cartMudH); sfxLoopUpdate('sleighBells',carts);
+  // Streetcars (streetcarRun = the old hook, streetcarCruise = the new one; either file works)
   const cars=[];
   for(const c of streetcarMeshes) if(c.mesh.visible){ const p=c.mesh.position; cars.push({id:c,x:p.x,y:p.y,z:p.z}); }
-  sfxLoopUpdate('streetcarRun',cars);
-  // Trains
-  const trains=[];
+  sfxLoopUpdate('streetcarRun',cars); sfxLoopUpdate('streetcarCruise',cars);
+  // Trains: speed-smoothed so idle ↔ running crossfade; whistle when one pulls out or comes in
+  const TR=CONFIG.audio.train, trRun=[], trIdle=[], trRails=[];
+  let onboard=0;
   for(const t of trainConsists) if(t.loco?.visible){
-    t.loco.getWorldPosition(_hv); trains.push({id:t,x:_hv.x,y:_hv.y,z:_hv.z});
-    if(rnd(1/90)&&near(_hv.x,_hv.z,2000)) playSfx('trainWhistle',_hv.x,_hv.y+4,_hv.z);
+    t.loco.getWorldPosition(_hv);
+    const x=_hv.x, y=_hv.y, z=_hv.z, tgt=t.moving?1:0;
+    t._sv=(t._sv??tgt)+(tgt-(t._sv??tgt))*Math.min(1,step/(TR.fadeSeconds??2.5));
+    if(t._wasMoving!==undefined&&t._wasMoving!==!!t.moving&&near(x,z,2500)&&Math.random()<(t.moving?TR.whistleOnDepart:TR.whistleOnArrive)) playSfx('trainWhistle',x,y+4,z);
+    t._wasMoving=!!t.moving;
+    const sv=t._sv, id=t;
+    trRun.push({id,x,y,z,gain:sv}); trRails.push({id,x,y,z,gain:sv}); trIdle.push({id,x,y,z,gain:1-sv});
+    if(rnd(TR.whistleRandomPerSec??1/240)&&near(x,z,2000)) playSfx('trainWhistle',x,y+4,z);
+    if(sv>0.15){   // onboard: the camera is on or beside the train
+      let d=Math.hypot(x-cam.x,y-cam.y,z-cam.z);
+      for(const c of t.cars) if(c.visible) d=Math.min(d,Math.hypot(c.position.x-cam.x,c.position.y-cam.y,c.position.z-cam.z));
+      onboard=Math.max(onboard,sv*Math.max(0,Math.min(1,(TR.onboardFade-d)/(TR.onboardFade-TR.onboardRadius))));
+    }
   }
-  sfxLoopUpdate('trainRun',trains);
-  // Steamboats (roaming + docked is silent)
+  sfxLoopUpdate('trainRun',trRun); sfxLoopUpdate('trainRails',trRails); sfxLoopUpdate('trainIdle',trIdle);
+  sfxBedSet('trainOnboard',onboard);
+  // Steamboats (roaming + docked is silent); whistle when one appears (arrives) or leaves
   const boats=[];
-  for(const sl of sbSlots) if(sl.boat){
-    const p=sl.boat.group.position; boats.push({id:sl,x:p.x,y:p.y,z:p.z});
-    if(rnd(1/100)&&near(p.x,p.z,2500)) playSfx('steamboatWhistle',p.x,p.y+12,p.z);
+  for(const sl of sbSlots){
+    const has=!!sl.boat, p=sl.boat?.group.position??sl.lastP;
+    if(sl._had!==undefined&&sl._had!==has&&p&&near(p.x,p.z,3500)) playSfx('steamboatWhistle',p.x,(p.y??0)+12,p.z);
+    sl._had=has;
+    if(has){ boats.push({id:sl,x:p.x,y:p.y,z:p.z}); if(rnd(1/100)&&near(p.x,p.z,2500)) playSfx('steamboatWhistle',p.x,p.y+12,p.z); }
   }
   sfxLoopUpdate('steamboatEngine',boats);
   // Small craft
@@ -9221,10 +9402,23 @@ function tickSoundHooks(dt){
     else if(rnd(0.5)&&near(p.x,p.z,120)) playSfx('paddleSplash',p.x,p.y,p.z);
   }
   sfxLoopUpdate('launchEngine',launches);
-  // Ferries (the steam one)
-  sfxLoopUpdate('ferryEngine',(ferries||[]).filter(f=>f.group?.visible&&f.F.kind==='steam').map(f=>({id:f,x:f.group.position.x,y:f.group.position.y+2,z:f.group.position.z})));
-  // Fires
+  // Ferries (the steam one): engine loop; whistle as it leaves a landing
+  const fer=[], FT=CONFIG.ferryTiming;
+  for(const f of ferries||[]) if(f.group?.visible&&f.F.kind==='steam'){
+    const p=f.group.position; fer.push({id:f,x:p.x,y:p.y+2,z:p.z});
+    const u=f.phase*2*(FT.crossSeconds+FT.dwellSeconds), D=FT.dwellSeconds, X=FT.crossSeconds, seg=u<D?0:u<D+X?1:u<2*D+X?2:3;
+    if(f._seg!==undefined&&f._seg!==seg&&(seg===1||seg===3)&&near(p.x,p.z,2500)) playSfx('steamboatWhistle',p.x,p.y+6,p.z);
+    f._seg=seg;
+  }
+  sfxLoopUpdate('ferryEngine',fer);
+  // Fires: crackle, the big-flame loop, and the crack when the shell falls in
+  const FL=CONFIG.audio.fireLoudFlames??0.5;
   sfxLoopUpdate('fireCrackle',activeFireSpots.filter(s=>s.flames>0.05).map(s=>({id:s.f,x:s.x,y:s.y,z:s.z,gain:s.flames})));
+  sfxLoopUpdate('buildingFire',activeFireSpots.filter(s=>s.flames>FL).map(s=>({id:s.f,x:s.x,y:s.y,z:s.z,gain:s.flames})));
+  for(const s of activeFireSpots){
+    if(!s.f.survive&&s.q>0.2&&!_fireCollapsed.has(s.f)){ _fireCollapsed.add(s.f); playSfx('dockBreak',s.x,s.y,s.z,{gain:1.2}); }
+    else if(s.q<0.1) _fireCollapsed.delete(s.f);
+  }
   // Fire engines (see tickFireEngines)
   const gallop=[],siren=[],pump=[];
   for(const e of fireEngineList()){
@@ -9232,10 +9426,63 @@ function tickSoundHooks(dt){
     if(e.moving) (e.horse?gallop:e.siren?siren:[]).push(src);
     else if(!e.leaving) pump.push(src);
   }
+  sfxLoopUpdate('fireGallop',gallop); sfxLoopUpdate('fireSirenLoop',siren); sfxLoopUpdate('firePump',pump);
+  // Parade: band at the head, cheering + kids along the route, a horse now and then
   sfxLoopUpdate('paradeBand',parade?.head?[{id:'band',...parade.head}]:[]);
   sfxLoopUpdate('crowdCheer',parade?parade.crowdAnchors:[]);
-  sfxLoopUpdate('fireGallop',gallop); sfxLoopUpdate('fireSirenLoop',siren); sfxLoopUpdate('firePump',pump);
+  sfxLoopUpdate('kidsPlaying',[...(parade?parade.crowdAnchors:[]),...(_kidsSites())]);
+  if(parade?.head&&rnd(1/60)&&near(parade.head.x,parade.head.z,250)) playSfx('horseWhinny',parade.head.x,parade.head.y+1.5,parade.head.z);
+  // Autos: loop by era (autoSnd is filled by tickAutos)
+  const E=CONFIG.audio.vehicleEras, byHook={};
+  for(const[a,b,h]of E.rows) byHook[h]=[];
+  if(E.busShare>0) byHook.busDieselDrive=[];
+  const row=E.rows.find(r=>W.year>=r[0]&&W.year<r[1]+1);
+  for(const a of autoSnd){
+    const h=(E.busShare>0&&W.year>=E.busFrom&&a.rnd2<E.busShare)?'busDieselDrive':row?.[2];
+    if(h) byHook[h].push(a);
+  }
+  for(const h in byHook) sfxLoopUpdate(h,byHook[h]);
+  // Places
+  _siteNearT-=step; if(_siteNearT<=0){ _siteNearT=0.5; _siteRefresh(); }
+  const loopSrc={};
+  for(const{kind,K}of _siteKindList()){
+    const list=_siteNear[kind]; if(!list) continue;
+    for(const L of K.loops||[]){ const nm=L.name??L, arr=loopSrc[nm]??(loopSrc[nm]=[]); for(const s of list) arr.push({id:s,x:s.x,y:s.y+2,z:s.z,gate:L.gate}); }
+    for(const s of list) for(const nm of s.loops||[]) (loopSrc[nm]??(loopSrc[nm]=[])).push({id:s,x:s.x,y:s.y+6,z:s.z});
+    for(const[h,p]of Object.entries(K.random||{})) if(rnd(p)){
+      const R2=(S[h]?.maxDistance??150)**2, c=list.filter(s=>s.d2<R2).slice(0,3);
+      if(c.length){ const s=c[Math.floor(Math.random()*c.length)]; playSfx(h,s.x,s.y+1.5,s.z); }
+    }
+    for(const[h,hours]of Object.entries(K.at||{})) for(const hr of hours) if(sfxHourCrossed(hr))
+      list.slice(0,2).forEach((s,i)=>playSfx(h,s.x,s.y+8,s.z,{delay:i*0.6+Math.random()*0.5}));
+  }
+  for(const nm of _siteLoopHooks()) sfxLoopUpdate(nm,loopSrc[nm]||[]);
+  // Beds (non-positional) — level by time, season, place and weather
+  const day=1-W.night, town=W.built, water=Math.min(1,W.river*2.5), rain=(_lastStorm&&_lastStorm.type!=='blizzard')?_wxK:0;
+  sfxBedSet('birdsSongbirds',day*(1-0.6*town)*(0.4+0.6*W.green));
+  sfxBedSet('crickets',W.night*(1-0.7*town));
+  sfxBedSet('birdsGulls',water*day);
+  sfxBedSet('waterLapping',water*(1-0.85*W.ice));
+  sfxBedSet('windWinter',Math.min(1,Math.max(0,(W.snow-0.3)/0.5))*(0.5+0.5*(1-town)));
+  sfxBedSet('rainstorm',rain);
+  // Random events around the camera (coyotes, geese, crows, dogs, newsboys, ice cracks … any sfx entry with `every`)
+  for(const nm of _evHooks()){
+    const C=S[nm]; _evT[nm]=(_evT[nm]??(C.every[0]+Math.random()*(C.every[1]-C.every[0])))-step;
+    if(_evT[nm]>0) continue;
+    _evT[nm]=C.every[0]+Math.random()*(C.every[1]-C.every[0]);
+    if(!sfxOpen(nm)) continue;
+    const a=Math.random()*Math.PI*2, d=C.dist[0]+Math.random()*(C.dist[1]-C.dist[0]), x=cam.x+Math.cos(a)*d, z=cam.z+Math.sin(a)*d;
+    playSfx(nm,x,sampleTerrainY(x,z)+1.5,z);
+  }
 }
+const _kidsSites=()=>(_siteNear.school||[]).map(s=>({id:s,x:s.x,y:s.y+2,z:s.z,gate:CONFIG.audio.sites.school.loops.find(l=>l.name==='kidsPlaying')?.gate}));
+let _siteLoopSet=null, _evSet=null;
+const _siteLoopHooks=()=>_siteLoopSet??(_siteLoopSet=[...new Set([
+  ...Object.values(CONFIG.audio.sites).flatMap(K=>(K.loops||[]).map(l=>l.name??l)),
+  ...Object.values(CONFIG.audio.extraSites||{}).flatMap(E=>E.loops||[])].filter(h=>h!=='kidsPlaying'))]);
+const _evHooks=()=>_evSet??(_evSet=Object.keys(CONFIG.audio.sfx).filter(n=>CONFIG.audio.sfx[n].every&&CONFIG.audio.sfx[n].dist));
+// Scripted gunfire (story events only, never ambient): playScriptedShot('pistol'|'rifle', x, y, z) — action click, then the shot
+window.playScriptedShot=(kind,x,y,z)=>{ const[a,b]=kind==='rifle'?['rifleAction','rifleShot']:['pistolCock','pistolShot']; playSfx(a,x,y,z,{force:true}); playSfx(b,x,y,z,{force:true,delay:0.9}); };
 
 // ── Fire engines (CONFIG.fireEngines) ──────────────────────────────
 // When a fire starts (activeFireSpots, filled by tickFires), 1–3 engines
@@ -9828,7 +10075,7 @@ function tickAutos(dt){
   while(autos.cars.length<want) autos.cars.push({seg:-1,rnd:Math.random(),rnd2:Math.random(),styleYr:-1});
   autos.cars.length=Math.min(autos.cars.length,want);
   const cam=camera.position, far2=(A.spawnRadiusM*1.4)**2, {ends,key}=autos.graph;
-  let n=0;
+  let n=0; autoSnd.length=0;
   for(const car of autos.cars){
     if(Math.floor(yr/5)!==car.styleYr){ car.styleYr=Math.floor(yr/5); _autoStyle(car,yr); }
     if(car.seg<0||!roadSegs[car.seg]){ if(!_autoPlace(car,yr,true)) continue; }
@@ -9839,6 +10086,7 @@ function tickAutos(dt){
     if(car.t>1||car.t<0){
       // at the junction: pick a connected segment that exists this year
       const ex=car.t>1?s.x2:s.x1, ez=car.t>1?s.z2:s.z1, opts=(ends.get(key(ex,ez))||[]).filter(o=>o.i!==car.seg&&yr>=roadSegs[o.i].span[0]&&yr<roadSegs[o.i].span[1]);
+      if(opts.length>1&&(ex-cam.x)**2+(ez-cam.z)**2<250000&&Math.random()<(CONFIG.audio.vehicleEras?.hornChance??0)) playSfx('carHorn',ex,1.5,ez);   // honk at a junction
       if(opts.length){ const o=opts[Math.floor(Math.random()*opts.length)]; car.seg=o.i; car.dir=o.e===0?1:-1; car.t=o.e===0?0:1; s=roadSegs[car.seg]; }
       else { car.dir*=-1; car.t=Math.max(0,Math.min(1,car.t)); }   // dead end: turn round
     }
@@ -9848,6 +10096,7 @@ function tickAutos(dt){
     if((x-cam.x)**2+(z-cam.z)**2>far2){ car.seg=-1; continue; }          // drifted away: respawn near the camera
     if(parade&&parade.segs.some(([a,b])=>{const dx=b.x-a.x,dz=b.z-a.z,LL=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/LL));return (x-a.x-dx*t)**2+(z-a.z-dz*t)**2<(CONFIG.parades.trafficClearM??25)**2;})) continue;
     const yaw=Math.atan2(ux,uz), y=vehicleY(x,z,0,0,yaw);
+    if((x-cam.x)**2+(z-cam.z)**2<160000) autoSnd.push({id:car,x,y:y+0.8,z,rnd2:car.rnd2});   // sound sources within 400 m
     _auQ.setFromAxisAngle(_auU,yaw);
     _auM.compose(_auP.set(x,y+0.35,z),_auQ,_auS.set(car.w,car.h,car.len)); mb.setMatrixAt(n,_auM); mb.setColorAt(n,_auC.setHex(car.col));
     _auM.compose(_auP.set(x-ux*car.len*0.1,y+0.35+car.h,z-uz*car.len*0.1),_auQ,_auS.set(car.w*0.92,car.ch,car.cl)); mc.setMatrixAt(n,_auM); mc.setColorAt(n,_auC.setHex(car.col).multiplyScalar(0.8));
@@ -10033,6 +10282,7 @@ function pcLoadOverlayImg(im,v){
 }
 // Jump to a card's viewpoint (and its date, if configured); optionally overlay its image
 function pcGo(v,overlay=false){
+  playSfx('photoFlash',null,0,0);   // the historic-photo moment
   const C=CONFIG.postcards, az=v.az*Math.PI/180, el=v.el*Math.PI/180, dir=new THREE.Vector3(Math.sin(az)*Math.cos(el),Math.sin(el),-Math.cos(az)*Math.cos(el));
   const gy=sampleTerrainY(v.x,v.z)+v.h;
   if(PC.savedFov==null) PC.savedFov=camera.fov;
@@ -10814,6 +11064,7 @@ function startLoop(){
     _t(tickGrounds);
     _t(tickCreekTerrain);
     _t(tickSoundHooks,dt);
+    _t(tickFootsteps,dt);
     _t(applySeason);
     _t(tickWeather,dt);
     _t(tickFloes,dt);
@@ -11208,6 +11459,7 @@ function _buildBolt(){
 }
 function _thunder(dist,gain){
   if(!audioCtx) return;
+  if(sfxReady('thunder')){ playSfx('thunder',null,0,0,{gain:gain*Math.min(1,500/dist),delay:dist/343,rate:dist<900?1:0.85,force:true}); return; }   // real recording, delayed by distance/343 m/s
   const sr=audioCtx.sampleRate, len=Math.floor(sr*5), buf=audioCtx.createBuffer(1,len,sr), d=buf.getChannelData(0);
   let last=0; for(let i=0;i<len;i++){ last=(last+0.05*(Math.random()*2-1))/1.05; d[i]=last*6; }
   const src=audioCtx.createBufferSource(); src.buffer=buf;
@@ -11293,7 +11545,7 @@ function tickWeather(dt){
       src.connect(bp).connect(g).connect(audioCtx.destination); src.start();
       _rainNoise=g;
     }
-    _rainNoise.gain.setTargetAtTime(st&&!blizzard?C.thunderstorm.rainGain*k:0,now,0.5);
+    _rainNoise.gain.setTargetAtTime(st&&!blizzard&&!sfxReady('rainstorm')?C.thunderstorm.rainGain*k:0,now,0.5);   // the rainstorm recording (a bed) replaces the synthesized hiss
   }
   if(!st){   // storm over: hand the sky back to setTimeOfDay's clear values
     _stormWind.x=_stormWind.z=_stormWind.k=0;
