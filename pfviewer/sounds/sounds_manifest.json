@@ -1,0 +1,130 @@
+{
+  "files": [
+    "cart-hooves.mp3",
+    "construction-hammer-2.mp3",
+    "construction-hammer-3.mp3",
+    "construction-hammer.mp3",
+    "construction-saw-2.mp3",
+    "construction-saw-3.mp3",
+    "construction-saw.mp3",
+    "crowd-cheer.mp3",
+    "dock-break-2.mp3",
+    "dock-break.mp3",
+    "ferry-engine.mp3",
+    "fire-bell-2.mp3",
+    "fire-bell.mp3",
+    "fire-crackle.mp3",
+    "fire-gallop.mp3",
+    "fire-pump.mp3",
+    "fire-siren.mp3",
+    "horse-whinny-2.mp3",
+    "horse-whinny-3.mp3",
+    "horse-whinny.mp3",
+    "launch-engine.mp3",
+    "mosquitoes.mp3",
+    "paddle-splash-2.mp3",
+    "paddle-splash-3.mp3",
+    "paddle-splash.mp3",
+    "parade-band.mp3",
+    "steamboat-engine.mp3",
+    "steamboat-whistle-2.mp3",
+    "steamboat-whistle-3.mp3",
+    "steamboat-whistle.mp3",
+    "streetcar-bell-2.mp3",
+    "streetcar-bell-3.mp3",
+    "streetcar-bell.mp3",
+    "streetcar-run.mp3",
+    "train-run.mp3",
+    "train-whistle-2.mp3",
+    "train-whistle-3.mp3",
+    "train-whistle.mp3",
+    "wind-bed.mp3"
+  ],
+  "hooks": {
+    "cartHooves": [
+      "cart-hooves.mp3"
+    ],
+    "constructionHammer": [
+      "construction-hammer.mp3",
+      "construction-hammer-2.mp3",
+      "construction-hammer-3.mp3"
+    ],
+    "constructionSaw": [
+      "construction-saw.mp3",
+      "construction-saw-2.mp3",
+      "construction-saw-3.mp3"
+    ],
+    "crowdCheer": [
+      "crowd-cheer.mp3"
+    ],
+    "dockBreak": [
+      "dock-break.mp3",
+      "dock-break-2.mp3"
+    ],
+    "ferryEngine": [
+      "ferry-engine.mp3"
+    ],
+    "fireBell": [
+      "fire-bell.mp3",
+      "fire-bell-2.mp3"
+    ],
+    "fireCrackle": [
+      "fire-crackle.mp3"
+    ],
+    "fireGallop": [
+      "fire-gallop.mp3"
+    ],
+    "firePump": [
+      "fire-pump.mp3"
+    ],
+    "fireSirenLoop": [
+      "fire-siren.mp3"
+    ],
+    "horseWhinny": [
+      "horse-whinny.mp3",
+      "horse-whinny-2.mp3",
+      "horse-whinny-3.mp3"
+    ],
+    "launchEngine": [
+      "launch-engine.mp3"
+    ],
+    "mosquitoes": [
+      "mosquitoes.mp3"
+    ],
+    "paddleSplash": [
+      "paddle-splash.mp3",
+      "paddle-splash-2.mp3",
+      "paddle-splash-3.mp3"
+    ],
+    "paradeBand": [
+      "parade-band.mp3"
+    ],
+    "steamboatEngine": [
+      "steamboat-engine.mp3"
+    ],
+    "steamboatWhistle": [
+      "steamboat-whistle.mp3",
+      "steamboat-whistle-2.mp3",
+      "steamboat-whistle-3.mp3"
+    ],
+    "streetcarBell": [
+      "streetcar-bell.mp3",
+      "streetcar-bell-2.mp3",
+      "streetcar-bell-3.mp3"
+    ],
+    "streetcarRun": [
+      "streetcar-run.mp3"
+    ],
+    "trainRun": [
+      "train-run.mp3"
+    ],
+    "trainWhistle": [
+      "train-whistle.mp3",
+      "train-whistle-2.mp3",
+      "train-whistle-3.mp3"
+    ],
+    "windBed": [
+      "wind-bed.mp3"
+    ]
+  }
+}
