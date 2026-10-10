@@ -43,6 +43,7 @@ export const CONFIG = {
       './data/pastforward_2026_fort_douglas.geojson',    // Fort Douglas (1813-1826/52): PLACEHOLDER footprints (tools/fort_douglas.py)
       './data/pastforward_2026_mcphillips1910.geojson',   // 1910 McPhillips map outside the Goad sheets (Mike's digitization; tools/mcphillips1910_ingest.py)
       './data/pastforward_2026_stb1880.geojson',          // St Boniface buildings from the 1880 bird's-eye view (tools/stb1880_ingest.py; deduped against the master)
+      './data/pastforward_2026_ogilvie_stack.geojson',    // Ogilvie Flour Mill smoke stack 1897–2005 (Mike's digitization; demolished by implosion — fire animation, fire_days)
       './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
       './data/pastforward_2026_seine_bridges.geojson',    // timber bridges over the Seine at Provencher, the railway and Marion (tools/seine_bridges.py)
       './data/pastforward_2026_legislature_osm.geojson',   // Legislative Building + dome, Government House, outbuildings, drives/paths — OSM (ODbL)
@@ -326,7 +327,7 @@ export const CONFIG = {
     // Feature properties kept in memory after load (everything else in the
     // data files is dropped at load — add a name here if new code needs it)
     keepProps: ['id','uid','pf_uid','name','address','material','floors','type','roof_type','area_m2',
-                'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','replaced_by','fires',
+                'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','fire_days','taper_top','smoke_stack','replaced_by','fires',
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
@@ -416,6 +417,13 @@ export const CONFIG = {
       unknown:         { count:[0,1], radius:[0.18,0.25], height:[1.2,2.5], color:0x302820, type:'light' },
       log:             { count:[1,1], radius:[0.14,0.18], height:[0.8,1.5], color:0x382810, type:'light' },
     },
+    // Stack styles: footprint under pipeMaxArea (huts, log cabins) keeps the plain stovepipe; heavy-industry buildings over tubeMinAreaDark m², or
+    // multi-storey ones (tubeMinFloors, tubeMinArea) get a round tapering brick tube whose height/radius grow with floors and footprint; everything else
+    // a rectangular brick stack (width = rectW0 + rectWPerSqrtArea·√area, depth = width·rectAspect) rising rectExtraH above the roof clearance.
+    brick: { pipeMaxArea: 30, tubeMinAreaDark: 300, tubeMinFloors: 3, tubeMinArea: 500,
+      colors: [0x8E4A36, 0x9A5240, 0x7C3F2E, 0x6E3A2C, 0x84503C],
+      rectW0: 0.4, rectWPerSqrtArea: 0.025, rectMaxW: 1.1, rectAspect: 0.7, rectExtraH: 0.5,
+      tubeBaseH: 3.5, tubePerFloor: 0.75, tubePerSqrtArea: 0.075, tubeMaxH: 12, tubeR0: 0.5, tubeRPerSqrtArea: 0.04, tubeMinR: 0.7, tubeMaxR: 2.0, tubeTopRatio: 0.7 },
     // Minimum floors before a chimney is placed.
     minFloors: 0.5,
     // Offset chimneys from building centroid by up to this fraction of √(area_m2).
@@ -1122,13 +1130,62 @@ export const CONFIG = {
   sidewalks: { enabled: true, radiusM: 28, minBuildings: 3, businessBuildings: 9, eraStart: 1873, residentialFrom: 1882, delayYears: 1,
     businessEnd: [1898, 1920], residentialEnd: [1920, 1935], concrete: true, concreteEverywhere: true,   // concrete everywhere once the planks go (off on phones: fewer quads)
    
-    width: 1.7, gapM: 0.35, lift: 0.16, minRoadWidth: 8, excludeTypes: ['LANE', 'PATH', 'TRAIL', 'HWY', 'RD'],
+    width: 1.7, gapM: 0.35, lift: 0.16, bizInset: 3.4,   // business streets: walks sit bizInset m closer to the street centre (buildings stand right at the kerb line)
+ minRoadWidth: 8, excludeTypes: ['LANE', 'PATH', 'TRAIL', 'HWY', 'RD'],
     // streets that had board walks early (Main's small stretches by 1871, the city's own from 1874) even where the buildings beside them are only dated later:
     streetStarts: { Main: 1872, Portage: 1874, 'Notre Dame': 1875, Water: 1875, McDermot: 1875, Bannatyne: 1875, Princess: 1876, Albert: 1876, Ross: 1877, William: 1877, Market: 1876 },
     plankColor: 0x7A6A55, stoneColor: 0xA9A59B },
 
+  // ── Shop / office signs (prototype: generic trades; later fed from Henderson-directory occupants) ──
+  // Signs are drawn at runtime into ONE canvas atlas (slots of slotPx, shared by every sign with the same text/style/colours, least-recently-used
+  // eviction) and shown as ONE instanced mesh, so a few hundred cost a single draw call. Only buildings within radiusM of the camera get signs.
+  // A building gets a sign (share, weighted up for big footprints) and, if it has floors, a few gilt window lettering signs (windowShare/windowMax).
+  // What it says is picked deterministically from `occupants` (filtered by year y, footprint a, floors f) and changes every turnoverYears.
+  signs: {
+    enabled: true, radiusM: 70, maxAltitudeM: 90, max: 300, minAreaM2: 25, share: 0.32, windowShare: 0.35, windowMax: 3, turnoverYears: 12,
+    wallHeightM: 0.6, windowHeightM: 0.34, doorHeightM: 4.65, atlasPx: [2048, 1024], slotPx: [256, 64],
+    exclude: /church|cathedral|school|convent|hospital|cemetery|station|elevator|mill\b|works|factory|synagogue|temple|college|university|armou?ry|gaol|jail/i,
+    byName: [[/stable|livery/i, 'STABLE', 'wall'], [/blacksmith|smithy|forge/i, '', 'anvil'], [/hotel|house\b/i, 'HOTEL', 'wall'], [/bank/i, 'BANK', 'wall'], [/drug|apothec|pharmac/i, 'DRUGS', 'wall']],
+    // t = lettering, s = style: 'wall' (painted board over the door) | 'window' (gilt lettering on glass) | 'anvil' | 'horseshoe' (icon boards)
+    occupants: [
+      { t: 'STABLE', s: 'wall', y: [1870, 1940], a: [50, 1200], f: [1, 2] },
+      { t: 'LIVERY & FEED', s: 'wall', y: [1870, 1930], a: [100, 1200], f: [1, 2] },
+      { t: 'GENERAL STORE', s: 'wall', y: [1870, 1940], f: [1, 2] },
+      { t: 'FURNITURE', s: 'wall', y: [1880, 1990], a: [80, 2500] },
+      { t: 'SECOND HAND', s: 'wall', a: [20, 300], f: [1, 2] },
+      { t: 'TAILOR', s: 'wall', a: [20, 260] },
+      { t: 'DRESSMAKER', s: 'wall', a: [20, 260] },
+      { t: '', s: 'anvil', y: [1870, 1935], a: [30, 500], f: [1, 1] },
+      { t: '', s: 'horseshoe', y: [1870, 1935], a: [30, 500], f: [1, 1] },
+      { t: 'REAL ESTATE', s: 'wall', y: [1880, 1990] },
+      { t: 'TICKETS', s: 'wall', y: [1880, 1970], a: [20, 400] },
+      { t: 'APOTHECARY', s: 'wall', y: [1870, 1915] },
+      { t: 'PHARMACY', s: 'wall', y: [1905, 1990] },
+      { t: 'DRUGS', s: 'wall', y: [1900, 1990] },
+      { t: 'LAUNDRY', s: 'wall', y: [1885, 1990], a: [30, 600] },
+      { t: 'PHOTOS', s: 'wall', y: [1880, 1960], a: [30, 600] },
+      { t: 'BAKERY', s: 'wall', a: [30, 500] },
+      { t: 'BUTCHER', s: 'wall', a: [30, 500] },
+      { t: 'BARBER', s: 'wall', a: [15, 250] },
+      { t: 'HARDWARE', s: 'wall', y: [1875, 1990] },
+      { t: 'GROCERIES', s: 'wall', y: [1885, 1990] },
+      { t: 'BOOTS & SHOES', s: 'wall', y: [1880, 1990], a: [20, 400] },
+      { t: 'MILLINERY', s: 'wall', y: [1885, 1945], a: [20, 400] },
+      { t: 'JEWELLER', s: 'wall', y: [1880, 1990], a: [20, 400] },
+      { t: 'TOBACCO', s: 'wall', y: [1885, 1990], a: [15, 300] },
+      { t: 'RESTAURANT', s: 'wall', y: [1890, 1990], a: [60, 900] },
+      { t: 'LAWYER', s: 'window', f: [2, 12] }, { t: 'DOCTOR', s: 'window', f: [2, 12] }, { t: 'DENTIST', s: 'window', y: [1885, 1990], f: [2, 12] },
+      { t: 'REAL ESTATE', s: 'window', y: [1880, 1990], f: [2, 12] }, { t: 'INSURANCE', s: 'window', y: [1885, 1990], f: [2, 12] },
+      { t: 'NOTARY', s: 'window', f: [2, 12] }, { t: 'ARCHITECT', s: 'window', y: [1880, 1990], f: [3, 12] }, { t: 'ACCOUNTANT', s: 'window', y: [1885, 1990], f: [2, 12] },
+      { t: 'TAILOR', s: 'window', f: [2, 6] }, { t: 'DRESSMAKER', s: 'window', f: [2, 6] }, { t: 'PHOTOS', s: 'window', y: [1880, 1960], f: [2, 6] },
+      { t: 'TICKETS', s: 'window', y: [1880, 1970], f: [2, 12] }, { t: 'AGENTS', s: 'window', f: [2, 12] }, { t: 'MILLINERY', s: 'window', y: [1885, 1945], f: [2, 6] },
+    ],
+  },
+
   // ── Marshes (the ellipses on the 1881 map) ───────────────────────────
-  cemetery: { treesFile: './data/cemetery_trees.json', treeSpreadYears: 55, treeJitterYears: 8, treeTauYears: 60, treeMinScale: 0.5, treeScalePerRating: 0.9, grassColor: 0x40692A, moundLength: 2, moundWidth: 0.9, moundHeight: 0.22, moundYears: 0.5, moundSoil: 0x4A3828, minGroundY: -3.5, fullYear: 1990, fillPower: 0.8, rowGapM: 3.2, stoneGapM: 1.5 },   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
+  cemetery: { treesFile: './data/cemetery_trees.json', treeSpreadYears: 55, treeJitterYears: 8, treeTauYears: 60, treeMinScale: 0.5, treeScalePerRating: 0.9, grassColor: 0x4A6330, fence: { height: 1.8, spacing: 2.4, fadeNear: 70, fadeFar: 150, color: 0x16161A },   // black iron fence round the grounds (a texture card per ~2.4 m, dithered out with distance)
+    gate: { halfWidthM: 3.2, pierSize: 0.8, pierHeight: 2.7, pierColor: 0xB9AA84, capColor: 0x8A8068 },   // stone piers at the east entrance (where the path meets the east edge)
+    moundLength: 2, moundWidth: 0.9, moundHeight: 0.22, moundYears: 0.5, moundSoil: 0x4A3828, minGroundY: -3.5, fullYear: 1990, fillPower: 0.8, rowGapM: 3.2, stoneGapM: 1.5 },   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
   marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
 
   // ── Tipis at the Forks ──────────────────────────────────────────────
@@ -1607,6 +1664,7 @@ export const CONFIG = {
     sidewalks: { concreteEverywhere: false },
     mosquitoes: { perAnchor: 24, maxAnchors: 1200, cloud: { puffs: 3, size: 4.5, opacity: 0.2, maxPx: 100, fade: [40, 200], color: 0x1A1816 } },
     earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
+    signs: { radiusM: 45, max: 120, atlasPx: [1024, 512] },
     terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
     // Only buildings within 3 km. Small details and real window glass only near the camera:
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
@@ -1650,6 +1708,7 @@ export const CONFIG = {
   fpsControls: {
     mouseLookSensitivity: 0.0016,
     touchLookSensitivity: 0.004,
+    pinchMetresPerPx: 0.12,   // walk mode: metres moved along the view direction per pixel of pinch/spread
     pitchClampRadians: 1.48,
     minCameraY: 1.0,
   },

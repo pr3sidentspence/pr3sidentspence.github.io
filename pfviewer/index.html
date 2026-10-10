@@ -38,6 +38,8 @@ canvas{display:block;position:fixed;inset:0;}
 #controls-hint b{color:#7a6040;}
 #fps-hint{display:none;color:#5a4030;}
 #stat-bar{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;}
+#input-btn{position:fixed;bottom:9px;right:110px;font-size:0.7rem;color:#7a6040;opacity:0.6;z-index:31;cursor:pointer;pointer-events:auto;user-select:none;padding:3px 6px;border:1px solid #2a1e0e;border-radius:6px;background:rgba(9,8,10,0.6);}
+#input-btn:hover{opacity:1;}
 #build-ts{position:fixed;bottom:12px;right:14px;font-size:0.6rem;color:#2a1e0e;letter-spacing:0.08em;opacity:0.5;z-index:5;cursor:pointer;pointer-events:auto;}
 #info-panel{position:fixed;bottom:60px;right:18px;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;display:none;z-index:11;}
 .info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
@@ -116,6 +118,69 @@ body.fps-touch #legend{display:none !important;}   /* would cover the walk/sprin
   #compass{top:116px;left:10px;width:46px;height:46px;}
   #cam-readout{top:168px;bottom:auto;left:10px;}
 }
+/* Slide-away panels (phones / touch mode): a small tab on the panel's free edge slides it off-screen and back */
+.pf-slide-tab{display:none;position:absolute;width:44px;height:22px;line-height:20px;text-align:center;font-size:0.8rem;color:#C8A05A;background:rgba(9,8,10,0.9);border:1px solid #3a2810;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent;pointer-events:auto;touch-action:manipulation;}
+.pf-slide-tab.bottom{top:-22px;left:50%;margin-left:-22px;border-radius:8px 8px 0 0;border-bottom:0;}   /* panel hangs from the bottom: tab on top, slides down */
+.pf-slide-tab.top{bottom:-22px;left:50%;margin-left:-22px;border-radius:0 0 8px 8px;border-top:0;}       /* panel hangs from the top: tab below, slides up */
+.pf-slide-tab.right{left:-22px;top:50%;margin-top:-22px;width:22px;height:44px;line-height:44px;border-radius:8px 0 0 8px;border-right:0;}   /* side panel: tab on its left, slides right */
+@media (max-width:900px),(pointer:coarse){ .pf-slide-tab{display:block;} }
+body.touch-ui .pf-slide-tab{display:block;}
+.pf-slidable{transition:translate .22s ease;}
+.pf-slidable > *:not(.pf-slide-tab){transition:visibility 0s .22s;}
+/* away: the panel slides toward its edge, then only the tab is left (the panel's own box fades so it can't cover the tabs of its neighbours) */
+.pf-slidable.pf-away{background:transparent !important;border-color:transparent !important;box-shadow:none !important;pointer-events:none !important;}
+.pf-slidable.pf-away > *:not(.pf-slide-tab){visibility:hidden;}
+.pf-slidable.pf-away[data-edge=bottom]{translate:0 40%;} .pf-slidable.pf-away[data-edge=top]{translate:0 -40%;} .pf-slidable.pf-away[data-edge=right]{translate:40% 0;}
+/* Landscape on a short screen: the bars move into side drawers (left: date / time / flood / layers; right: postcard overlay + list) whose
+   tabs sit on the screen edges. JS (pfLayout) reparents the panels in and out. */
+.pf-drawer{display:none;position:fixed;top:0;bottom:0;width:250px;z-index:40;pointer-events:none;transition:translate .22s ease;}
+body.pf-land .pf-drawer.has{display:block;}
+.pf-drawer.l{left:0;} .pf-drawer.r{right:0;}
+.pf-drawer{background:rgba(9,8,10,0.5);}
+.pf-drawer.l{border-right:1px solid #3a2810;} .pf-drawer.r{border-left:1px solid #3a2810;}   /* the tinted tray ends at a divider edge; the tab sticks out past it */
+.pf-drawer.l.away{translate:-100% 0;} .pf-drawer.r.away{translate:100% 0;}
+.pf-drawer-body{height:100%;overflow-y:auto;overflow-x:hidden;padding:6px;display:flex;flex-direction:column;gap:6px;pointer-events:none;scrollbar-width:none;}   /* no visible scrollbar (it showed as a grey line beside the tab); still scrolls by touch */
+.pf-drawer-body::-webkit-scrollbar{display:none;}
+.pf-drawer-body > *{pointer-events:auto;}
+.pf-edge-tab{position:absolute;top:50%;margin-top:-28px;width:24px;height:56px;line-height:54px;text-align:center;font-size:1rem;color:#C8A05A;background:rgba(9,8,10,0.5);border:1px solid #3a2810;cursor:pointer;user-select:none;pointer-events:auto;touch-action:manipulation;-webkit-tap-highlight-color:transparent;}
+.pf-drawer.l .pf-edge-tab{left:100%;border-left:0;border-radius:0 10px 10px 0;} .pf-drawer.r .pf-edge-tab{right:100%;border-right:0;border-radius:10px 0 0 10px;}
+.pf-drawer-body > *{position:static !important;transform:none !important;translate:none !important;width:auto !important;max-width:none !important;left:auto !important;right:auto !important;top:auto !important;bottom:auto !important;margin:0 !important;flex:none;}
+.pf-drawer-body > * > .pf-slide-tab{display:none !important;}
+#pf-drawer-l #date-control{width:100% !important;min-width:0;padding:8px 10px 10px !important;gap:6px !important;}   /* two IDs: beats the phone @media rules that size #date-control to the viewport */
+#pf-drawer-l #date-control button[id^=timeline]{min-width:28px !important;height:28px !important;padding:0 7px !important;}
+#pf-drawer-l #date-control > div:last-child > span{display:none;}   /* the 1850 / 1960 end labels */
+#pf-drawer-l #date-control > div:last-child{gap:6px !important;}
+#pf-drawer-l #date-slider{min-width:0;}
+#pf-drawer-l #date-control > div:first-child{flex-wrap:wrap;gap:6px !important;justify-content:flex-start !important;}
+#pf-drawer-l #date-display{min-width:0 !important;flex:1 0 100%;font-size:0.9rem !important;}
+#pf-drawer-l #date-picker{max-width:none !important;}
+#pf-drawer-l #flood-control{padding:8px 10px !important;gap:8px !important;}
+#pf-drawer-l #flood-slider{width:100px !important;flex:1;}
+/* time of day: a vertical slider (midnight at the top) under the timeline, label beneath */
+#pf-drawer-l #tod-control{width:58px !important;align-self:flex-start;flex-direction:column;align-items:center;padding:8px 4px !important;gap:6px !important;}
+#pf-drawer-l #tod-control{flex:0 1 200px;min-height:110px;}   /* takes what's left under the timeline bar, never more */
+#pf-drawer-l #tod-slider{writing-mode:vertical-lr;width:28px !important;height:auto !important;flex:1 1 0;min-height:50px;}
+#pf-drawer-l #tod-label{min-width:0 !important;text-align:center !important;font-size:0.72rem !important;}
+#pf-drawer-l #layer-bar{flex-wrap:wrap;}
+#pf-drawer-r #pc-panel{height:calc(100vh - 14px);}
+#pf-drawer-r #pc-ovbar{justify-content:flex-start;padding:8px 10px;}
+#pf-drawer-r #pc-ovbar input[type=range]{width:100px !important;}
+/* landscape: a smaller map, shifted in so the right tray's tab (screen edge, mid-height) stays visible beside it */
+body.pf-land #minimap-wrap{right:38px !important;width:150px !important;height:150px !important;}
+body.pf-land #minimap{width:150px !important;height:150px !important;}
+/* landscape is short: scale the UI down (~15%), and keep the right-hand button column (walk / zoom) clear of the right tray */
+body.pf-land .pf-drawer-body{zoom:0.85;}
+body.pf-land .pf-drawer.r{right:96px;}
+body.pf-land .pf-drawer.r.away{translate:calc(100% + 96px) 0;}
+body.pf-land #walk-btn{width:50px;height:50px;font-size:1.2rem;right:34px;bottom:150px;}
+body.pf-land #orbit-zoom{right:34px;bottom:20px;gap:6px;}
+body.pf-land .zoom-btn{width:44px;height:44px;font-size:1.4rem;}
+body.pf-land .ud-btn{width:44px;height:44px;}
+body.pf-land #ud-btns{right:34px;bottom:20px;gap:6px;}
+body.pf-land #sprint-btn,body.pf-land #ar-btn{width:44px;height:44px;}
+body.pf-land #sprint-btn{bottom:140px;} body.pf-land #ar-btn{bottom:190px;}
+body.pf-land #compass{top:8px;left:50%;margin-left:-23px;}
+body.pf-land #cam-readout{top:8px;bottom:auto;left:calc(50% + 34px);}
 /* Advanced/debug controls: hidden unless Ctrl+A toggles body.advanced.
    !important beats the inline display the loaders set when they show them. */
 body:not(.advanced) #layer-bar,
@@ -184,6 +249,7 @@ body:not(.advanced) #cam-readout{display:none !important;}
     </span>
   </div>
   <div id="stat-bar"></div>
+  <div id="input-btn" title="Controls: auto (follow the device) → touch → mouse + keyboard. Reloads the page."></div>
   <div id="build-ts">v4 · 2026-06-07 00:04 UTC</div>
   <div id="bldg-tooltip" style="display:none;position:fixed;pointer-events:none;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:5px;padding:5px 10px;font-size:0.68rem;color:#C8A05A;letter-spacing:0.08em;z-index:20;white-space:nowrap;"></div>
   <div id="minimap-wrap" style="display:none;position:fixed;bottom:70px;right:14px;width:200px;height:200px;border-radius:6px;overflow:hidden;z-index:10;pointer-events:auto;">
@@ -308,7 +374,49 @@ body:not(.advanced) #cam-readout{display:none !important;}
 })();
 </script>
 <script type="module">
-const isMobile=('ontouchstart' in window)||(navigator.maxTouchPoints>0);
+const isMobile=('ontouchstart' in window)||(navigator.maxTouchPoints>0);   // the device: drives the low-memory profile only
+// Input scheme (walk-mode controls): auto = follow the device; ?input=touch|mouse or the ⌨/👆 button (bottom right) overrides it, remembered in localStorage.
+const _inputPref=(()=>{ const q=new URLSearchParams(location.search).get('input'); if(q==='touch'||q==='mouse'||q==='auto'){ try{ q==='auto'?localStorage.removeItem('pfviewer.input'):localStorage.setItem('pfviewer.input',q); }catch(e){} return q; }
+  try{ return localStorage.getItem('pfviewer.input')||'auto'; }catch(e){ return 'auto'; } })();
+const isTouchUI=_inputPref==='touch'?true:_inputPref==='mouse'?false:isMobile;
+document.body.classList.toggle('touch-ui',isTouchUI);
+// Give a floating panel a tab that slides it out of the way (edge = the screen edge it hangs from). Tabs only show on narrow / touch screens (CSS).
+function makeSlidable(el,edge){
+  if(!el||el._pfSlide) return; el._pfSlide=true;
+  el.classList.add('pf-slidable'); el.dataset.edge=edge;
+  const t=document.createElement('div'); t.className='pf-slide-tab '+edge; t.textContent=edge==='right'?'›':edge==='top'?'⌃':'⌄';
+  t.addEventListener('click',e=>{ e.stopPropagation(); const away=el.classList.toggle('pf-away'); t.textContent=edge==='right'?(away?'‹':'›'):edge==='top'?(away?'⌄':'⌃'):(away?'⌃':'⌄'); });
+  el.appendChild(t);
+}
+for(const[id,edge]of[['date-control','top'],['layer-bar','top'],['tod-control','bottom'],['flood-control','bottom']]) makeSlidable(document.getElementById(id),edge);
+// ── Landscape side drawers (see .pf-drawer CSS) ──
+const _LAND=matchMedia('(orientation:landscape) and (max-height:560px)');
+const _drawer={};
+for(const side of['l','r']){
+  const d=document.createElement('div'); d.id='pf-drawer-'+side; d.className='pf-drawer '+side;
+  const body=document.createElement('div'); body.className='pf-drawer-body'; d.appendChild(body);
+  const t=document.createElement('div'); t.className='pf-edge-tab'; d.appendChild(t);
+  const sync=()=>{ t.textContent=(side==='l')===d.classList.contains('away')?'›':'‹'; };
+  t.addEventListener('click',()=>{ d.classList.toggle('away'); sync(); if(side==='l'&&!d.classList.contains('away')&&minimapVisible) toggleMinimap(); }); sync();
+  document.body.appendChild(d); _drawer[side]={d,body,sync};
+}
+let _wasFpsTouch=false;
+function pfLayout(){
+  const land=_LAND.matches; document.body.classList.toggle('pf-land',land);
+  for(const[id,side]of[['date-control','l'],['layer-bar','l'],['tod-control','l'],['flood-control','l'],['pc-ovbar','r'],['pc-panel','r']]){
+    const el=document.getElementById(id); if(!el) continue;
+    if(land){ el.classList.remove('pf-away'); if(el.parentNode!==_drawer[side].body) _drawer[side].body.appendChild(el); }
+    else if(el.parentNode!==document.body) document.body.appendChild(el);
+  }
+  // a drawer only exists while something in it is showing; the left one tucks away during touch walk mode (it would cover the joystick)
+  const fpsT=document.body.classList.contains('fps-touch');
+  if(fpsT!==_wasFpsTouch){ _wasFpsTouch=fpsT; _drawer.l.d.classList.toggle('away',fpsT&&land); _drawer.l.sync(); }
+  for(const side of['l','r']) _drawer[side].d.classList.toggle('has',land&&[..._drawer[side].body.children].some(c=>getComputedStyle(c).display!=='none'));
+}
+_LAND.addEventListener('change',pfLayout); setInterval(pfLayout,400); pfLayout();
+{ const b=document.getElementById('input-btn'), L={auto:'auto',touch:'👆 touch',mouse:'⌨ mouse'};
+  b.textContent='controls: '+L[_inputPref];
+  b.addEventListener('click',()=>{ const next={auto:'touch',touch:'mouse',mouse:'auto'}[_inputPref]; const u=new URL(location.href); u.searchParams.set('input',next); location.href=u.toString(); }); }
 
 import * as THREE from 'three';
 import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
@@ -691,7 +799,10 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
     if(uCemHas>.5){   // mown, watered cemetery lawn: lusher and more even than the surrounding prairie, from the year it opened
       vec2 cuv=(wp-uCemMin)/uCemSize;
       float lawn=texture2D(uCemTex,cuv).r*step(0.,cuv.x)*step(cuv.x,1.)*step(0.,cuv.y)*step(cuv.y,1.)*smoothstep(uCemFrom,uCemFrom+3.,uGcYear);
-      g=mix(g,uCemGreen*(.95+.1*nFine*(1.-smoothstep(40.,220.,camD))+.06*(nSm-.5)),lawn);
+      // not flat paint: mottled at 15 m and 60 m, with sun-bleached yellow-green patches, and 30% of the prairie ground still showing through
+      vec3 lawnC=uCemGreen*(.9+.1*nFine*(1.-smoothstep(40.,220.,camD))+.3*(nSm-.5)+.22*(nMid-.5));
+      lawnC=mix(lawnC,lawnC*vec3(1.2,1.1,.78),smoothstep(.42,.72,nMid*.6+nSm*.4)*.55);
+      g=mix(g,mix(g,lawnC,.7),lawn);
     }
     diffuseColor.rgb=mix(diffuseColor.rgb,g,uGcStrength);
   }
@@ -1354,6 +1465,8 @@ function sampleTerrainY(wx, wz){
 // data's own resolution, so there's no benefit to finer chunks.
 const ROAD_SAMPLE_STEP = 10;
 
+const _goodCam={p:new THREE.Vector3(),t:new THREE.Vector3(),yaw:0,pitch:0};   // last finite camera pose (see the sanity check in the frame loop)
+
 // ── Orbit controls ─────────────────────────────────────────────────
 const orbit=new OrbitControls(camera,renderer.domElement);
 orbit.enableDamping=true;orbit.dampingFactor=CONFIG.orbitControls.dampingFactor;
@@ -1373,7 +1486,10 @@ renderer.domElement.addEventListener('wheel',e=>{
   let d=e.deltaY;
   if(e.deltaMode===1)d*=10;if(e.deltaMode===2)d*=300;
   const capped=Math.sign(d)*Math.min(Math.abs(d),120);
-  const factor=Math.pow(0.998,-capped*0.5);
+  orbitZoomBy(Math.pow(0.998,-capped*0.5));
+},{passive:false});
+// factor < 1 moves the camera in along the line of sight to the orbit target (pushing the target on once it's close), > 1 backs out
+function orbitZoomBy(factor){
   const offset=camera.position.clone().sub(orbit.target);
   const oldLen=offset.length();
   const newLen=oldLen*factor;
@@ -1387,9 +1503,18 @@ renderer.domElement.addEventListener('wheel',e=>{
     camera.position.copy(orbit.target).addScaledVector(offset.normalize(),newLen);
   }
   camera.position.y=Math.max(CONFIG.fpsControls.minCameraY, camera.position.y);  // never go underground
+  orbit.target.y=Math.min(orbit.target.y,maxAltitudeM());   // zooming in on a look-up view pushes the target on — don't let it climb out of the world
   clampOrbitAltitude();
   orbit.update();
-},{passive:false});
+}
+// Pinch / spread with two fingers zooms the orbit view (OrbitControls' own dolly is off — the wheel handler above replaces it); two-finger drag still pans
+{ let last=0; const el=renderer.domElement, span=e=>Math.hypot(e.touches[0].clientX-e.touches[1].clientX,e.touches[0].clientY-e.touches[1].clientY);
+  el.addEventListener('touchstart',e=>{ last=e.touches.length===2?span(e):0; },{passive:true});
+  el.addEventListener('touchmove',e=>{
+    if(e.touches.length!==2||!orbit.enabled||fpsMode){ last=0; return; }
+    const d=span(e); if(last>8&&d>8) orbitZoomBy(Math.min(1.25,Math.max(0.8,last/d))); last=d;
+  },{passive:true});
+  for(const ev of['touchend','touchcancel']) el.addEventListener(ev,e=>{ last=e.touches.length===2?span(e):0; },{passive:true}); }
 
 // ── FPS ────────────────────────────────────────────────────────────
 let fpsMode=false,yaw=Math.PI,pitch=0,sprinting=false;
@@ -1631,7 +1756,7 @@ function wallBumpUV(mat){
   mat.onBeforeCompile=(sh,r)=>{ if(prev) prev(sh,r);
     sh.vertexShader=sh.vertexShader.replace('#include <uv_vertex>',`#include <uv_vertex>
 #ifdef USE_BUMPMAP
-  vBumpMapUv=(bumpMapTransform*vec3(dot(position.xz-vec2(-1400.,-1400.),vec2(-normal.z,normal.x)),position.y,1.)).xy;
+  vBumpMapUv=(bumpMapTransform*vec3(abs(normal.y)>0.7?(position.xz-vec2(-1400.,-1400.)):vec2(dot(position.xz-vec2(-1400.,-1400.),vec2(-normal.z,normal.x)),position.y),1.)).xy;   // top faces (parapet caps): plan x/z
 #endif`); };
   mat.customProgramCacheKey=()=>(k0?k0():'')+'|wallBumpUV'; return mat;
 }
@@ -1785,7 +1910,7 @@ function computeBuildInfo(props, mat, floors, area, baseY, topY, wallH){
   if(C&&died<NO_DIED-1){
     const fire=props.died_by==='fire'||/fire|burn/i.test(props.died_cause||'')
       ||(C.randomFireShare>0&&seededRand(simpleHash(String(props.uid??props.id??''))%100000)<C.randomFireShare);
-    demo=fire?-(C.fireDays/365):C.demolitionMonths/12;
+    demo=fire?-((props.fire_days>0?props.fire_days:C.fireDays)/365):C.demolitionMonths/12;   // fire_days: per-building override (a quick implosion)
   }
   const info={born,died,build:[baseY,topY,dur,demo]};
   buildInfoByProps.set(props,info);
@@ -2317,10 +2442,11 @@ function buildCurvedRoof(ring,roofBaseY,type,heightM){
 }
 // A ridge roof's gable-end triangles belong to the walls: same material and colour as the rest of the building.
 function pushRoofGables(rg,wallArr,bldgCol,baseY){
-  const g=rg?.userData?.gable; if(!g||!g.length) return;
+  const g=rg?.userData?.gable; if(!g||!g.length) return 0;
   const gg=new THREE.BufferGeometry(); gg.setAttribute('position',new THREE.Float32BufferAttribute(g,3)); gg.computeVertexNormals();
   gg.setAttribute('uv',new THREE.BufferAttribute(new Float32Array(g.length/3*2),2));
   gg.translate(0,baseY,0); applyVertexColour(gg,bldgCol); wallArr.push(gg);
+  return g.length/9;   // triangles added to the wall geometry — the caller must widen this building's wallCums entry (hover lookup)
 }
 function roofColor(hex){
   const r=(hex>>16)&0xff,g=(hex>>8)&0xff,b=hex&0xff,avg=(r+g+b)/3;
@@ -3454,7 +3580,7 @@ async function buildCity(geojson){
           const innerRing=shapeInner.map(([x,y])=>[x,-y]); // shapeY → worldZ
           const elevRidgeH=upperH*0.9;
           const rg=buildRoofGeometry(innerRing,height+0.05,elevRidgeH);
-          if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
+          if(rg){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);_elevTris+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
 
           // Register for minimap
           matCounts[mat]++;
@@ -3485,6 +3611,13 @@ async function buildCity(geojson){
       try{wallGeom=new THREE.ExtrudeGeometry(shape,{depth:height-baseH,bevelEnabled:false});}
       catch(err){console.warn('earcut failed id:',props.id,err.message);continue;}
       wallGeom.rotateX(-Math.PI/2);
+      if(Array.isArray(props.taper_top)&&props.taper_top.length===2){   // tapering stack: walls narrow linearly from the footprint to taper_top = [east-west m, north-south m] at the roof line
+        const pa=wallGeom.attributes.position; let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9,yTop=0;
+        for(let k=0;k<pa.count;k++){x0=Math.min(x0,pa.getX(k));x1=Math.max(x1,pa.getX(k));z0=Math.min(z0,pa.getZ(k));z1=Math.max(z1,pa.getZ(k));yTop=Math.max(yTop,pa.getY(k));}
+        const cx=(x0+x1)/2, cz=(z0+z1)/2, sx=props.taper_top[0]/Math.max(0.01,x1-x0), sz=props.taper_top[1]/Math.max(0.01,z1-z0);
+        for(let k=0;k<pa.count;k++){ const t=yTop>0?pa.getY(k)/yTop:0; pa.setX(k,cx+(pa.getX(k)-cx)*(1+(sx-1)*t)); pa.setZ(k,cz+(pa.getZ(k)-cz)*(1+(sz-1)*t)); }
+        pa.needsUpdate=true; wallGeom.computeVertexNormals();
+      }
       if(baseH>0) wallGeom.translate(0,baseH,0);   // upper-storey volume (base_floors) sits on the storeys below
       wallGeom=dropBottomCap(wallGeom);            // the base is never seen
       const tris=wallGeom.index?wallGeom.index.count/3:wallGeom.attributes.position.count/3;
@@ -3520,6 +3653,11 @@ async function buildCity(geojson){
       }
       matCounts[mat]++;
       collectSoundSite(props,mcx,mcz);   // sound sites (CONFIG.audio.sites)
+      if(!isLumberYard&&!isWalkway) collectSignSite(props,outer,mcx,mcz,buildingBaseY,height,floors);   // shop / office signs (CONFIG.signs)
+      if(props.smoke_stack&&!isLumberYard&&!isWalkway) addChimneyEmitter({   // a works' own stack (e.g. the Ogilvie mill): smokes all day, all year, from its top
+        wx:mcx+(CONFIG.scene?.buildingOffsetX??0), wy:buildingBaseY+height, wz:mcz+(CONFIG.scene?.buildingOffsetZ??0),
+        type:'dark', rate:props.smoke_stack===true?0.22:+props.smoke_stack, timer:Math.random()*0.2, constant:true, year, group,
+        born:_isoYearFrac(props.born,NO_BORN), died:_isoYearFrac(props.died,NO_DIED)});
       // Track glass vert start so we can apply buildingBaseY to window Y coords after geometry is built
       const _glassStart=glassVerts.length;
       // Place procedural windows on all wall edges of this building
@@ -3651,7 +3789,7 @@ async function buildCity(geojson){
         const rg=(roofTypeOverride==='wings'||outer.length>14)&&roofTypeOverride!=='mansard'
           ?buildWingRoof(ring,height+0.05,props.roof_height??null)
           :buildRoofGeometry(ring,height+0.05,props.roof_height??null);
-        if(rg){ rg.translate(0,buildingBaseY,0); pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY); rg.computeBoundingBox(); _roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));
+        if(rg){ rg.translate(0,buildingBaseY,0); wallCums[mat][wallCums[mat].length-1]+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY); rg.computeBoundingBox(); _roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));
           if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }   // e.g. copper
           else roofGeos[mat].push(rg); }
       }
@@ -3663,7 +3801,7 @@ async function buildCity(geojson){
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const churchRidgeH=height*0.8;
         const rg=buildRoofGeometry(ring,height+0.05,churchRidgeH);
-        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
+        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);wallCums[mat][wallCums[mat].length-1]+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
       }
 
       // ── Brick flat-roof details ──────────────────────────────────
@@ -3751,6 +3889,7 @@ async function buildCity(geojson){
           const sCfg=CHIM.smoke[sType];
           const baseRate=sCfg.rateBase[0]+(sCfg.rateBase[1]-sCfg.rateBase[0])*((h0&0xff)/255);
 
+          let _chimAng;
           for(let ci=0;ci<count;ci++){
             const hc=simpleHash(uid+'c'+ci);
             const ang=(hc/0xFFFFFFFF)*Math.PI*2;
@@ -3759,14 +3898,42 @@ async function buildCity(geojson){
             const offZ=Math.sin(ang)*r;
             const cx3=mcx+offX, cz3=mcz+offZ;
 
-            // Shaft geometry — 8-sided cylinder for performance
-            const cGeom=new THREE.CylinderGeometry(chimRT,chimRB,chimH,8,1);
-            cGeom.translate(cx3,buildingBaseY+height+chimH*0.5,cz3);
-            applyVertexColour(cGeom,chimDef.color);
-            chimneyStackGeos.push(cGeom);
+            // Shaft geometry (CONFIG.chimneys.brick): stovepipe only on tiny huts; houses/shops get a rectangular brick stack with a cap
+            // (long side along the building's longest wall); big works and large multi-storey buildings a round tapering brick tube.
+            let stackH=chimH, cGeom;
+            const B=CHIM.brick, bArea=props.area_m2||100;
+            const style=!B?'pipe':(mat==='log'||bArea<B.pipeMaxArea)?'pipe'
+              :((sType==='dark'&&bArea>=B.tubeMinAreaDark)||(floors>=B.tubeMinFloors&&bArea>=B.tubeMinArea))?'tube':'rect';
+            if(style==='pipe'){
+              cGeom=new THREE.CylinderGeometry(chimRT,chimRB,chimH,8,1);
+              cGeom.translate(cx3,buildingBaseY+height+chimH*0.5,cz3);
+              applyVertexColour(cGeom,chimDef.color);
+              chimneyStackGeos.push(cGeom);
+            }else{
+              const bcol=B.colors[hc%B.colors.length];
+              if(style==='tube'){
+                stackH=Math.min(B.tubeMaxH,B.tubeBaseH+floors*B.tubePerFloor+Math.sqrt(bArea)*B.tubePerSqrtArea)*(0.85+((hc>>8&0xff)/255)*0.3);
+                const rB=Math.max(B.tubeMinR,Math.min(B.tubeMaxR,B.tubeR0+Math.sqrt(bArea)*B.tubeRPerSqrtArea));
+                cGeom=new THREE.CylinderGeometry(rB*B.tubeTopRatio,rB,stackH,12,1);
+                cGeom.translate(cx3,buildingBaseY+height+stackH*0.5,cz3);
+                applyVertexColour(cGeom,bcol); chimneyStackGeos.push(cGeom);
+                const lip=new THREE.CylinderGeometry(rB*B.tubeTopRatio*1.12,rB*B.tubeTopRatio*1.05,0.5,12,1);   // corbelled top
+                lip.translate(cx3,buildingBaseY+height+stackH-0.25,cz3); applyVertexColour(lip,bcol); chimneyStackGeos.push(lip);
+              }else{
+                if(_chimAng===undefined){   // direction of the longest wall (world x,z)
+                  _chimAng=0; let bestL=0;
+                  for(let q=0;q<outer.length-1;q++){ const[ax,ay]=project(outer[q][0],outer[q][1]),[bx,by]=project(outer[q+1][0],outer[q+1][1]); const L=Math.hypot(bx-ax,by-ay); if(L>bestL){bestL=L;_chimAng=Math.atan2(-(by-ay),bx-ax);} }
+                }
+                const w=Math.min(B.rectMaxW,B.rectW0+Math.sqrt(bArea)*B.rectWPerSqrtArea), d=w*B.rectAspect;
+                stackH=chimH+B.rectExtraH;
+                const shaft=new THREE.BoxGeometry(w,stackH,d); shaft.translate(0,stackH/2,0);
+                const cap=new THREE.BoxGeometry(w+0.16,0.14,d+0.16); cap.translate(0,stackH-0.07,0);
+                for(const g of[shaft,cap]){ g.rotateY(-_chimAng); g.translate(cx3,buildingBaseY+height,cz3); applyVertexColour(g,bcol); chimneyStackGeos.push(g); }
+              }
+            }
 
             // Emit position: top of this stack (apply same registration offset as the building group)
-            const topY=buildingBaseY+height+chimH;
+            const topY=buildingBaseY+height+stackH;
             addChimneyEmitter({
               wx:cx3+(CONFIG.scene?.buildingOffsetX??0), wy:topY, wz:cz3+(CONFIG.scene?.buildingOffsetZ??0),
               type:sType,
@@ -4185,6 +4352,7 @@ async function buildCity(geojson){
       side:THREE.DoubleSide,
     });
     tagMaterialForLifespan(pMat,0,true);
+    wallBumpUV(pMat); (wallMatsAll.brick??=[]).push(pMat); if(_wallBumpTex.brick) _putBump(pMat,'brick',_wallBumpTex.brick);   // same brick relief as the walls below it
     const pDepth=makeLifespanDepthMaterial(true);
     for(const{geom,x,z}of mergeByTile(parapetGeos,parapetKeys)){
       releaseAfterUpload(geom);
@@ -4201,6 +4369,7 @@ async function buildCity(geojson){
       side:THREE.DoubleSide,
     });
     tagMaterialForLifespan(spMat,0,true);
+    wallBumpUV(spMat); (wallMatsAll.stone??=[]).push(spMat); if(_wallBumpTex.stone) _putBump(spMat,'stone',_wallBumpTex.stone);   // same stone relief as the walls below it
     const spDepth=makeLifespanDepthMaterial(true);
     for(const{geom,x,z}of mergeByTile(stoneParapetGeos,stoneParapetKeys)){
       releaseAfterUpload(geom);
@@ -4638,7 +4807,7 @@ function buildSidewalks(segs,centGrid,CELL){
       if(!wantPlank&&!wantStone) continue;
       if(roadCutAt(mx,mz,sg.name)) continue;
       for(const side of [-1,1]){
-        const off=sg.w/2+SW.gapM+half, cx=mx+nx*side*off, cz=mz+nz*side*off;
+        const off=sg.w/2+SW.gapM+half-(biz?SW.bizInset:0), cx=mx+nx*side*off, cz=mz+nz*side*off;
         if(sampleTerrainY(cx,cz)<waterMin||nearOtherRoad(cx,cz,sg.name)) continue;
         const L=step/2+0.15, P=[[cx-dx*L+nx*half,cz-dz*L+nz*half],[cx+dx*L+nx*half,cz+dz*L+nz*half],[cx+dx*L-nx*half,cz+dz*L-nz*half],[cx-dx*L-nx*half,cz-dz*L-nz*half]];
         const Y=P.map(q=>surfaceY(q[0],q[1],dx,dz)+SW.lift);
@@ -5398,11 +5567,11 @@ function buildRiverTrees(){
   // ── Cemetery trees (CONFIG.cemetery, data/cemetery_trees.json): planted from the opening year, the bigger the present-day
   //    rating the earlier; each grows 1-exp(-age/tau) toward a rating-sized crown (t.plant/t.gr, see updateTreeBuildings) ──
   if(cemTrees&&CONFIG.cemetery&&!OFF.has('cemetery')){
-    const C=CONFIG.cemetery, f0=cemetery?.founded??1901, minY=C.minGroundY??-3.5; let nc=0;
+    const C=CONFIG.cemetery, f0=cemetery?.founded??1901, minY=C.minGroundY??-3.5; let nc=0; const rMax=Math.max(0.01,...cemTrees.map(t=>t.r));   // the best-rated tree goes in at the opening
     for(const ct of cemTrees){
       const[sx,sy]=project(ct.lon,ct.lat), x=sx, z=-sy, y=sampleTerrainY(x,z); if(y<minY) continue;
       let pick=rnd()*wTot, sp=T.species[0]; for(const s of T.species){if((pick-=s.weight)<=0){sp=s;break;}}
-      const plant=f0+(1-ct.r)*(C.treeSpreadYears??55)+(rnd()-0.5)*(C.treeJitterYears??8);
+      const plant=f0+(1-ct.r/rMax)*(C.treeSpreadYears??55)+(rnd()-0.5)*(C.treeJitterYears??8);
       placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc:(C.treeMinScale??0.5)+(C.treeScalePerRating??0.9)*ct.r,sy:0.9+0.2*rnd(),sp:sp.name,phase:rnd()*0.5,aPhase:rnd()*0.4,hide:null,plant:Math.max(f0,plant),
                              col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
       nc++;
@@ -5780,13 +5949,15 @@ function toggleMinimap(){
   minimapVisible=!minimapVisible;
   if(minimapWrap)minimapWrap.style.display=minimapVisible?'block':'none';
   if(minimapBtn)minimapBtn.style.color=minimapVisible?'#C8A05A':'#8a7040';
+  if(minimapVisible&&_LAND.matches&&!_drawer.l.d.classList.contains('away')){ _drawer.l.d.classList.add('away'); _drawer.l.sync(); }   // landscape: the map and the left tray share the screen — one at a time
 }
 if(minimapCanvas){
   minimapCanvas.addEventListener('click',e=>{
     if(fpsMode)return;
     const r=minimapCanvas.getBoundingClientRect();
-    const wx=(e.clientX-r.left-MAP_SIZE/2)/(MAP_SIZE*0.5)*MAP_RANGE;
-    const wz=(e.clientY-r.top-MAP_SIZE/2)/(MAP_SIZE*0.5)*MAP_RANGE;
+    const k=MAP_SIZE/r.width;   // the canvas is shrunk by CSS in landscape
+    const wx=((e.clientX-r.left)*k-MAP_SIZE/2)/(MAP_SIZE*0.5)*MAP_RANGE;
+    const wz=((e.clientY-r.top)*k-MAP_SIZE/2)/(MAP_SIZE*0.5)*MAP_RANGE;
     orbit.target.set(wx,0,wz);camera.position.set(wx,Math.max(80,camera.position.y),wz-200);orbit.update();
   });
 }
@@ -6312,9 +6483,9 @@ function enterFPS(){
     camera.position.y=Math.max(camera.position.y,_entryFloor);
   }
 
-  if(!isMobile){renderer.domElement.requestPointerLock();}
+  if(!isTouchUI){renderer.domElement.requestPointerLock();}
   else{showTouchControls();}
-  document.getElementById('crosshair').style.display=isMobile?'none':'flex';
+  document.getElementById('crosshair').style.display=isTouchUI?'none':'flex';
   document.getElementById('mode-badge').textContent='Walk Mode';
   document.getElementById('fps-hint').style.display='block';
   document.getElementById('info-panel').style.display='none';setHoverHighlight(null);
@@ -6323,7 +6494,7 @@ function exitFPS(){
   fpsMode=false;falling=false;fallVelocity=0;
   sprinting=false; sprintBtn?.classList.remove('active');   // sprint doesn't carry over to the next walk
   arStop();
-  if(!isMobile){document.exitPointerLock();}
+  if(!isTouchUI){document.exitPointerLock();}
   else{hideTouchControls();}
   // Orbit around the point you were looking at, along the FULL view direction
   // (pitch included) — flattening it to horizontal made the view jump up by
@@ -6344,7 +6515,7 @@ function exitFPS(){
   document.getElementById('fps-hint').style.display='none';
   document.getElementById('pointer-lock-hint').style.display='none';
 }
-if(!isMobile)document.addEventListener('pointerlockchange',()=>{
+if(!isTouchUI)document.addEventListener('pointerlockchange',()=>{
   if(document.pointerLockElement===renderer.domElement){
     document.getElementById('pointer-lock-hint').style.display='none';
   }else if(fpsMode){
@@ -6355,7 +6526,7 @@ if(!isMobile)document.addEventListener('pointerlockchange',()=>{
 // without pointer lock — browsers require a real user gesture for that, so
 // the request made at load time silently fails. This retries it on the
 // first actual click, which is what the on-screen hint tells you to do.
-if(!isMobile)renderer.domElement.addEventListener('click',()=>{
+if(!isTouchUI)renderer.domElement.addEventListener('click',()=>{
   if(fpsMode&&document.pointerLockElement!==renderer.domElement){
     renderer.domElement.requestPointerLock();
   }
@@ -6398,11 +6569,11 @@ function applyCameraFromURL(){
 
   fpsMode=true; orbit.enabled=false;
   fpsGrounded=alt<=EYE_H+0.5;
-  document.getElementById('crosshair').style.display=isMobile?'none':'flex';
+  document.getElementById('crosshair').style.display=isTouchUI?'none':'flex';
   document.getElementById('mode-badge').textContent='Walk Mode';
   document.getElementById('fps-hint').style.display='block';
   document.getElementById('info-panel').style.display='none';setHoverHighlight(null);
-  if(isMobile) showTouchControls();
+  if(isTouchUI) showTouchControls();
   else{
     try{renderer.domElement.requestPointerLock();}catch(e){}
     // Fails silently — no user gesture at load time — so mouse-look isn't
@@ -6482,7 +6653,7 @@ function copyCameraToClipboard(){
 // ── Mobile touch controls (runtime) ─────────────────────────────────────────
 const joyVec={x:0,y:0};
 let udUp=false,udDown=false;
-let joyTouchId=null,lookTouchId=null;
+let joyTouchId=null,lookTouchId=null,pinchTouchId=null,pinchX=0,pinchY=0,pinchSpan=0;
 let joyOriX=0,joyOriY=0,lookLastX=0,lookLastY=0;
 const JOY_R=40;
 
@@ -6506,18 +6677,17 @@ function hideTouchControls(){
   walkBtn.classList.remove('active'); document.body.classList.remove('fps-touch');
   touchOverlay.style.display='none';
   joyVec.x=0;joyVec.y=0;
-  joyTouchId=null;lookTouchId=null;
+  joyTouchId=null;lookTouchId=null;pinchTouchId=null;
   setKnobPos(0,0);
   document.getElementById('orbit-zoom').style.display='flex';
 }
 
-if(isMobile){
+if(isTouchUI){
   walkBtn.style.display='flex';
   document.getElementById('orbit-zoom').style.display='flex';
-  walkBtn.addEventListener('touchend',e=>{
-    e.preventDefault();
-    if(!fpsMode)enterFPS();else exitFPS();
-  },{passive:false});
+  const toggleWalk=()=>{ if(!fpsMode)enterFPS();else exitFPS(); };
+  walkBtn.addEventListener('touchend',e=>{ e.preventDefault(); toggleWalk(); },{passive:false});
+  walkBtn.addEventListener('click',toggleWalk);   // touch mode driven by a mouse (a real tap's click is suppressed by the preventDefault above)
 }
 
 touchOverlay.addEventListener('touchstart',e=>{
@@ -6530,6 +6700,9 @@ touchOverlay.addEventListener('touchstart',e=>{
       joyTouchId=t.identifier;joyOriX=t.clientX;joyOriY=t.clientY;
     }else if(!inJoy&&lookTouchId===null){
       lookTouchId=t.identifier;lookLastX=t.clientX;lookLastY=t.clientY;
+    }else if(!inJoy&&pinchTouchId===null){   // a second finger in the look area: pinch = move along the line of sight
+      pinchTouchId=t.identifier;pinchX=t.clientX;pinchY=t.clientY;
+      pinchSpan=Math.hypot(pinchX-lookLastX,pinchY-lookLastY);
     }
   }
 },{passive:false});
@@ -6543,6 +6716,9 @@ touchOverlay.addEventListener('touchmove',e=>{
       const c=Math.min(len,JOY_R),nx=len>1?dx/len:0,ny=len>1?dy/len:0;
       joyVec.x=nx*(c/JOY_R);joyVec.y=-ny*(c/JOY_R);
       setKnobPos(nx*c,ny*c);
+    }else if(t.identifier===pinchTouchId){ pinchX=t.clientX;pinchY=t.clientY;
+    }else if(t.identifier===lookTouchId&&pinchTouchId!==null){   // two fingers down: it's a pinch, not a look
+      lookLastX=t.clientX;lookLastY=t.clientY;
     }else if(t.identifier===lookTouchId&&ar.on){
       ar.yawOff-=(t.clientX-lookLastX)*CONFIG.fpsControls.touchLookSensitivity;   // align the model with the real street
       lookLastX=t.clientX;lookLastY=t.clientY;
@@ -6553,23 +6729,34 @@ touchOverlay.addEventListener('touchmove',e=>{
       lookLastX=t.clientX;lookLastY=t.clientY;
     }
   }
+  if(pinchTouchId!==null&&lookTouchId!==null){   // spread = move forward along the line of sight, pinch = back
+    const sp=Math.hypot(pinchX-lookLastX,pinchY-lookLastY), d=sp-pinchSpan; pinchSpan=sp;
+    const dir=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion), m=Math.max(-25,Math.min(25,d*CONFIG.fpsControls.pinchMetresPerPx));   // capped per event: one glitchy touch sample can't throw you across the map
+    camera.position.addScaledVector(dir,m);
+    if(dir.y*m>0.001) fpsGrounded=false;   // heading upward lifts you off the ground; terrain-following re-attaches you coming down
+  }
 },{passive:false});
 
 touchOverlay.addEventListener('touchend',e=>{
   e.preventDefault();
   for(const t of e.changedTouches){
     if(t.identifier===joyTouchId){joyTouchId=null;joyVec.x=0;joyVec.y=0;setKnobPos(0,0);}
-    else if(t.identifier===lookTouchId){lookTouchId=null;}
+    else if(t.identifier===pinchTouchId){pinchTouchId=null;}
+    else if(t.identifier===lookTouchId){
+      lookTouchId=pinchTouchId; lookLastX=pinchX; lookLastY=pinchY; pinchTouchId=null;   // the remaining finger carries on as the look finger
+    }
   }
 },{passive:false});
 touchOverlay.addEventListener('touchcancel',()=>{
-  joyTouchId=null;lookTouchId=null;joyVec.x=0;joyVec.y=0;setKnobPos(0,0);
+  joyTouchId=null;lookTouchId=null;pinchTouchId=null;joyVec.x=0;joyVec.y=0;setKnobPos(0,0);
 });
 
 function holdBtn(el,setter){
   el.addEventListener('touchstart',e=>{e.preventDefault();setter(true);},{passive:false});
   el.addEventListener('touchend',e=>{e.preventDefault();setter(false);},{passive:false});
   el.addEventListener('touchcancel',()=>setter(false));
+  el.addEventListener('mousedown',()=>setter(true));
+  for(const ev of['mouseup','mouseleave']) el.addEventListener(ev,()=>setter(false));
 }
 holdBtn(btnUp,v=>{udUp=v;});
 holdBtn(btnDn,v=>{udDown=v;});
@@ -6595,6 +6782,12 @@ document.getElementById('btn-zoom-in').addEventListener('touchstart',e=>{
   e.preventDefault();startZoom(()=>orbitDolly(DOLLY_IN));},{passive:false});
 document.getElementById('btn-zoom-out').addEventListener('touchstart',e=>{
   e.preventDefault();startZoom(()=>orbitDolly(DOLLY_OUT));},{passive:false});
+document.getElementById('btn-zoom-in').addEventListener('mousedown',()=>startZoom(()=>orbitDolly(DOLLY_IN)));
+document.getElementById('btn-zoom-out').addEventListener('mousedown',()=>startZoom(()=>orbitDolly(DOLLY_OUT)));
+['mouseup','mouseleave'].forEach(ev=>{
+  document.getElementById('btn-zoom-in').addEventListener(ev,stopZoom);
+  document.getElementById('btn-zoom-out').addEventListener(ev,stopZoom);
+});
 ['touchend','touchcancel'].forEach(ev=>{
   document.getElementById('btn-zoom-in').addEventListener(ev,stopZoom);
   document.getElementById('btn-zoom-out').addEventListener(ev,stopZoom);
@@ -6773,7 +6966,10 @@ document.addEventListener('mousemove',e=>{
     }else{tip.style.display='none';}
   }
 });
-renderer.domElement.addEventListener('click',initAudio,{once:true});
+// Browsers only let audio start from a real gesture. A phone's first touch is usually a drag, a pinch or the walk button (touchend, preventDefault'd → no click),
+// so the old one-time canvas click never fired and the context was never created or resumed. Any touch-end / pointer-up / click / key now unlocks it.
+function unlockAudio(){ initAudio(); if(audioCtx&&audioCtx.state!=='running') audioCtx.resume().catch(()=>{}); }
+for(const ev of['touchend','pointerup','click','keydown']) window.addEventListener(ev,unlockAudio,{capture:true,passive:true});
 
 // ── Audio ──────────────────────────────────────────────────────────
 let audioCtx=null;
@@ -7096,6 +7292,21 @@ function initDateControl(){
   slider.addEventListener('input',()=>{
     setCurrentViewDate(quarterUnitToDate(parseInt(slider.value,10)),'quarter');
   });
+
+  // Hover tooltip: the date a click at the pointer would jump to (the range input snaps to the nearest quarter; its thumb is ~16 px wide, so the track is inset by half of that)
+  const tip=document.createElement('div');
+  tip.style.cssText='position:fixed;display:none;pointer-events:none;z-index:50;padding:3px 8px;border-radius:4px;background:rgba(20,24,32,0.92);color:#E8D8B0;border:1px solid #6A5A3A;font:12px Georgia,serif;white-space:nowrap;transform:translate(-50%,-100%)';
+  document.body.appendChild(tip);
+  const showTip=e=>{
+    const r=slider.getBoundingClientRect(), th=16, span=Math.max(1,r.width-th);
+    const f=Math.max(0,Math.min(1,(e.clientX-r.left-th/2)/span));
+    const unit=Math.round(f*(parseInt(slider.max,10)-parseInt(slider.min,10)))+parseInt(slider.min,10);
+    tip.textContent=formatDateLabel(quarterUnitToDate(unit),'quarter');
+    tip.style.left=e.clientX+'px'; tip.style.top=(r.top-6)+'px'; tip.style.display='block';
+  };
+  slider.addEventListener('pointermove',showTip);
+  slider.addEventListener('pointerleave',()=>{ tip.style.display='none'; });
+  slider.addEventListener('pointerdown',showTip);
 
   const picker=document.getElementById('date-picker');
   picker.min=`${TIMELINE_MIN_YEAR}-01-01`; picker.max=`${TIMELINE_MAX_YEAR}-12-31`;
@@ -8609,7 +8820,7 @@ function tickChimneySmoke(dt){
     e.timer-=dt;
     if(e.timer>0) continue;
     const sCfg=CHIM.smoke[e.type];
-    e.timer=e.rate*(0.7+seededRand(performance.now()*0.0007+e.wx)*0.6)/chimneyTodMult;
+    e.timer=e.rate*(0.7+seededRand(performance.now()*0.0007+e.wx)*0.6)/(e.constant?1:chimneyTodMult);
     if(e.timer<0.05) e.timer=0.05;
 
     // Claim a pool slot
@@ -9258,6 +9469,126 @@ function _addSite(kind,x,z,born,died,extra){
   const s={kind,x,z,born,died,y:null,...extra}; soundSites.push(s);
   const k=Math.floor(x/SITE_CELL)+','+Math.floor(z/SITE_CELL); let a=_siteGrid.get(k); if(!a) _siteGrid.set(k,a=[]); a.push(s);
 }
+// ── Shop / office signs (CONFIG.signs) ──────────────────────────────
+// Buildings register here as they are built (collectSignSite); tickSigns() shows the signs of the registered buildings near the camera as one
+// instanced mesh whose faces sample a runtime canvas atlas (one slot per distinct text/style/colour, least-recently-used eviction).
+const _signRecs=[], _signGrid=new Map(), _signSeen=new Set(), SIGN_CELL=100;
+function collectSignSite(props,outer,mcx,mcz,baseY,height,floors){
+  const S=CONFIG.signs; if(!S?.enabled||OFF.has('signs')||props.type) return;
+  const area=props.area_m2||0, nm=props.name||''; if(area<S.minAreaM2||!(floors>=0.5)||(nm&&S.exclude.test(nm))) return;
+  const uid=String(props.uid||props.pf_uid||props.id||('?'+mcx.toFixed(1)+','+mcz.toFixed(1)));
+  if(_signSeen.has(uid)) return;   // a feature can pass through more than once (layers, chunks)
+  const h=simpleHash(uid+'sg')/4294967296, h2=simpleHash(uid+'sw')/4294967296;
+  const named=nm?S.byName.find(([re])=>re.test(nm)):null;
+  const ground=!!named||h<Math.min(0.9,S.share*(0.6+area/600)), win=floors>=2&&h2<S.windowShare;
+  if(!ground&&!win) return;
+  _signSeen.add(uid);
+  const ox=CONFIG.scene?.buildingOffsetX??0, oz=CONFIG.scene?.buildingOffsetZ??0, ring=[];
+  for(let j=0;j<outer.length-1&&j<48;j++){ const[sx,sy]=project(outer[j][0],outer[j][1]); ring.push([sx+ox,-sy+oz]); }
+  const rec={uid,x:mcx+ox,z:mcz+oz,ring,baseY,h:height,floors,area,ground,win,named,hash:simpleHash(uid),edge:undefined,
+    born:parseYearOrSentinel(props.born,NO_BORN),died:parseYearOrSentinel(props.died,NO_DIED)};
+  _signRecs.push(rec);
+  const k=Math.floor(rec.x/SIGN_CELL)+','+Math.floor(rec.z/SIGN_CELL); let c=_signGrid.get(k); if(!c) _signGrid.set(k,c=[]); c.push(rec);
+}
+// The wall that gets the signs: the one facing the nearest street (else the longest), as an outward-normal edge.
+function _signEdge(rec){
+  const R=rec.ring, yr=rec.born>NO_BORN+1&&rec.born<NO_DIED-1?rec.born+1:1900;
+  const rd=_nearestRoad(rec.x,rec.z,yr,90)||_nearestRoad(rec.x,rec.z,1900,90); let dx=0,dz=0;
+  if(rd){ dx=rd.qx-rec.x; dz=rd.qz-rec.z; const l=Math.hypot(dx,dz)||1; dx/=l; dz/=l; }
+  let best=null, bs=-1e9;
+  for(let i=0;i<R.length;i++){ const a=R[i], b=R[(i+1)%R.length], L=Math.hypot(b[0]-a[0],b[1]-a[1]); if(L<2.5) continue;
+    let nx=-(b[1]-a[1])/L, nz=(b[0]-a[0])/L; if(nx*(a[0]-rec.x)+nz*(a[1]-rec.z)<0){ nx=-nx; nz=-nz; }
+    const sc=(rd?nx*dx+nz*dz:0)*3+Math.min(L,12)*0.05; if(sc>bs){ bs=sc; best={ax:a[0],az:a[1],bx:b[0],bz:b[1],nx,nz,len:L}; } }
+  return rec.edge=best;
+}
+const _inR=(v,r)=>!r||(v>=r[0]&&v<=r[1]);
+function _signPick(rec,year,win,salt){
+  const S=CONFIG.signs; if(!win&&rec.named) return {t:rec.named[1],s:rec.named[2]};
+  const pool=S.occupants.filter(o=>(o.s==='window')===win&&_inR(year,o.y)&&_inR(rec.area,o.a)&&_inR(Math.floor(rec.floors),o.f));
+  return pool.length?pool[simpleHash(rec.uid+'|'+Math.floor(year/S.turnoverYears)+'|'+salt)%pool.length]:null;
+}
+// ── atlas ──
+const _SIGN_PAL=[['#243A2C','#EADFC2','#C9B27A'],['#F0E6CC','#7A1E1E','#7A1E1E'],['#1F2B46','#F2D58A','#F2D58A'],['#5A3A22','#EAD9A8','#C9A55A'],['#E6E1D3','#25221E','#25221E'],['#3A1F1F','#E8D8B8','#C9A55A']];
+const _sigA={cv:null,ctx:null,tex:null,slots:[],map:new Map(),n:0,cols:0,sw:256,sh:64,W:0,H:0,tick:0,dirty:false}, _sigS={t:0,x:1e9,z:1e9,yf:0,n:-1,dirty:true,shown:0};
+let _signMesh=null;
+function _signInit(){
+  const S=CONFIG.signs, A=_sigA; [A.W,A.H]=S.atlasPx; [A.sw,A.sh]=S.slotPx; A.cols=Math.floor(A.W/A.sw); A.n=A.cols*Math.floor(A.H/A.sh);
+  A.cv=document.createElement('canvas'); A.cv.width=A.W; A.cv.height=A.H; A.ctx=A.cv.getContext('2d');
+  A.tex=new THREE.CanvasTexture(A.cv); A.tex.colorSpace=THREE.SRGBColorSpace; A.tex.anisotropy=4;
+  const mat=new THREE.MeshLambertMaterial({map:A.tex,alphaTest:0.4,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2});
+  mat.onBeforeCompile=sh=>{ sh.vertexShader='attribute vec4 aUvRect;\n'+sh.vertexShader.replace('#include <uv_vertex>','#include <uv_vertex>\n#ifdef USE_MAP\n  vMapUv=uv*aUvRect.zw+aUvRect.xy;   // this sign\'s slot in the atlas\n#endif'); };
+  mat.customProgramCacheKey=()=>'signAtlas1';
+  const g=new THREE.PlaneGeometry(1,1), rect=new THREE.InstancedBufferAttribute(new Float32Array(S.max*4),4); rect.setUsage(THREE.DynamicDrawUsage); g.setAttribute('aUvRect',rect);
+  _signMesh=new THREE.InstancedMesh(g,mat,S.max); _signMesh.count=0; _signMesh.frustumCulled=false; _signMesh.name='signs'; _signMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(_signMesh);
+}
+function _signFit(ctx,text,maxW,maxPx,weight='bold'){ let px=maxPx; for(;px>13;px-=2){ ctx.font=`${weight} ${px}px Georgia, serif`; if(ctx.measureText(text).width<=maxW) break; } return px; }
+function _signDraw(ctx,def,pal,W,H){   // draws into (0,0,W,H); returns the width used
+  const P=_SIGN_PAL[pal%_SIGN_PAL.length]; ctx.textAlign='center'; ctx.textBaseline='middle';
+  if(def.s==='wall'){
+    ctx.fillStyle=P[0]; ctx.fillRect(0,0,W,H); ctx.strokeStyle=P[2]; ctx.lineWidth=3; ctx.strokeRect(4,4,W-8,H-8);
+    _signFit(ctx,def.t,W-26,40); ctx.fillStyle=P[1]; if('letterSpacing' in ctx) ctx.letterSpacing='2px'; ctx.fillText(def.t,W/2,H/2+2); if('letterSpacing' in ctx) ctx.letterSpacing='0px'; return W;
+  }
+  if(def.s==='window'){   // gilt lettering straight on the glass
+    _signFit(ctx,def.t,W-14,38); ctx.lineJoin='round'; ctx.lineWidth=5; ctx.strokeStyle='#2A1C06'; ctx.strokeText(def.t,W/2,H/2+2); ctx.fillStyle='#E0B84E'; ctx.fillText(def.t,W/2,H/2+2); return W;
+  }
+  // icon boards (64 × 64)
+  ctx.fillStyle=P[0]; ctx.fillRect(0,0,H,H); ctx.strokeStyle=P[2]; ctx.lineWidth=3; ctx.strokeRect(3,3,H-6,H-6);
+  const ink=P[0]==='#E6E1D3'||P[0]==='#F0E6CC'?'#1B1B1B':P[1];
+  ctx.fillStyle=ink; ctx.strokeStyle=ink;
+  if(def.s==='anvil'){
+    ctx.beginPath(); ctx.moveTo(12,22); ctx.lineTo(52,22); ctx.lineTo(52,28); ctx.lineTo(42,31); ctx.lineTo(42,40); ctx.lineTo(48,48); ctx.lineTo(18,48); ctx.lineTo(24,40); ctx.lineTo(24,31); ctx.lineTo(12,29); ctx.lineTo(4,24); ctx.closePath(); ctx.fill();
+    ctx.lineWidth=3.5; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(34,17); ctx.lineTo(50,5); ctx.stroke();   // hammer
+    ctx.beginPath(); ctx.moveTo(42,1); ctx.lineTo(55,9); ctx.lineTo(51,14); ctx.lineTo(38,6); ctx.closePath(); ctx.fill();
+  }else{   // horseshoe, open end up
+    ctx.lineWidth=8; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(18,12); ctx.lineTo(18,32); ctx.arc(32,32,14,Math.PI,0,true); ctx.lineTo(46,12); ctx.stroke();
+    ctx.fillStyle=P[0]; for(const[x,y]of[[18,18],[18,28],[22,40],[32,46],[42,40],[46,28],[46,18]]){ ctx.beginPath(); ctx.arc(x,y,1.6,0,Math.PI*2); ctx.fill(); }
+  }
+  return H;
+}
+function _signSlot(def,pal){
+  const A=_sigA, key=def.s+'|'+def.t+'|'+(def.s==='window'?0:pal); let sl=A.map.get(key);
+  if(sl){ sl.use=A.tick; return sl; }
+  let i=A.slots.length<A.n?A.slots.length:-1;
+  if(i<0){ let old=null; for(const t of A.slots) if(t.use<A.tick&&(!old||t.use<old.use)) old=t; if(!old) return null; A.map.delete(old.key); i=old.i; }
+  const px=(i%A.cols)*A.sw, py=Math.floor(i/A.cols)*A.sh, ctx=A.ctx;
+  ctx.save(); ctx.beginPath(); ctx.rect(px,py,A.sw,A.sh); ctx.clip(); ctx.clearRect(px,py,A.sw,A.sh); ctx.translate(px,py);
+  const w=_signDraw(ctx,def,pal,A.sw,A.sh); ctx.restore(); A.dirty=true;
+  sl={i,key,use:A.tick,w,u:(px+1)/A.W,v:1-(py+A.sh-1)/A.H,du:(w-2)/A.W,dv:(A.sh-2)/A.H}; A.slots[i]=sl; A.map.set(key,sl); return sl;
+}
+function tickSigns(){
+  const S=CONFIG.signs; if(!S?.enabled||OFF.has('signs')) return;
+  const now=performance.now(); if(now-_sigS.t<400) return; _sigS.t=now;
+  if(!_signRecs.length) return;
+  if(!_signMesh) _signInit();
+  const cam=camera.position, yf=yearFrac(currentViewDate);
+  if(cam.y-sampleTerrainY(cam.x,cam.z)>S.maxAltitudeM){ if(_signMesh.count){ _signMesh.count=0; _sigS.dirty=true; } return; }   // high overview: no signs
+  if(!(_sigS.dirty||Math.hypot(cam.x-_sigS.x,cam.z-_sigS.z)>10||Math.abs(yf-_sigS.yf)>0.2||_sigS.n!==_signRecs.length)) return;
+  _sigS.x=cam.x; _sigS.z=cam.z; _sigS.yf=yf; _sigS.n=_signRecs.length; _sigS.dirty=false;
+  const A=_sigA, R=S.radiusM, R2=R*R, gx=Math.floor(cam.x/SIGN_CELL), gz=Math.floor(cam.z/SIGN_CELL), r=Math.ceil(R/SIGN_CELL), near=[];
+  for(let i=-r;i<=r;i++) for(let j=-r;j<=r;j++) for(const rec of _signGrid.get((gx+i)+','+(gz+j))||[]){
+    if(yf<rec.born||yf>=rec.died) continue; const d2=(rec.x-cam.x)**2+(rec.z-cam.z)**2; if(d2<=R2) near.push([d2,rec]);
+  }
+  near.sort((a,b)=>a[0]-b[0]); A.tick++;
+  const rect=_signMesh.geometry.attributes.aUvRect, m4=new THREE.Matrix4(), q=new THREE.Quaternion(), up=new THREE.Vector3(0,1,0), pos=new THREE.Vector3(), sc=new THREE.Vector3(); let n=0;
+  const put=(rec,e,u,y,def,Hs,salt)=>{
+    if(n>=S.max) return; const pal=simpleHash(rec.uid+def.t)%_SIGN_PAL.length, sl=_signSlot(def,pal); if(!sl) return;
+    const Wd=Math.min(Hs*(sl.w/A.sh),e.len*0.92), px=e.ax+(e.bx-e.ax)*u+e.nx*0.05, pz=e.az+(e.bz-e.az)*u+e.nz*0.05;
+    q.setFromAxisAngle(up,Math.atan2(e.nx,e.nz)); m4.compose(pos.set(px,y,pz),q,sc.set(Wd,Hs,1)); _signMesh.setMatrixAt(n,m4); rect.setXYZW(n,sl.u,sl.v,sl.du,sl.dv); n++;
+  };
+  for(const[,rec]of near){
+    const e=rec.edge!==undefined?rec.edge:_signEdge(rec); if(!e) continue;
+    if(rec.ground){ const def=_signPick(rec,yf,false,'g'); if(def) put(rec,e,0.5,rec.baseY+Math.min(S.doorHeightM,rec.h*0.75),def,S.wallHeightM*(def.s==='wall'?1:1.15),'g'); }
+    const F=Math.floor(rec.floors);
+    if(rec.win&&F>=2){ const k=1+rec.hash%S.windowMax;
+      for(let w=0;w<k;w++){ const def=_signPick(rec,yf,true,'w'+w); if(!def) continue; const f=1+((rec.hash>>(3+w*2))&0xff)%(F-1), y=rec.baseY+f*FLOOR_H+1.25;
+        if(y+S.windowHeightM<rec.baseY+rec.h) put(rec,e,0.2+0.6*(w+0.5)/k,y,def,S.windowHeightM,'w'+w); } }
+    if(n>=S.max) break;
+  }
+  _signMesh.count=n; _signMesh.instanceMatrix.needsUpdate=true; rect.needsUpdate=true; _sigS.shown=n;
+  if(A.dirty){ A.tex.needsUpdate=true; A.dirty=false; }
+}
+window._debugSigns=()=>({records:_signRecs.length,shown:_sigS.shown,slotsUsed:_sigA.slots.length,slotsTotal:_sigA.n,sample:_signRecs.slice(0,3).map(r=>({uid:r.uid,x:r.x|0,z:r.z|0,ground:r.ground,win:r.win,floors:r.floors}))});
+
 function collectSoundSite(props,x,z){
   if(props.type) return;   // fences, walkways, bridges …
   const nm=props.name||'', born=parseYearOrSentinel(props.born,NO_BORN), died=parseYearOrSentinel(props.died,NO_DIED);
@@ -9855,6 +10186,12 @@ function tickMosquitoes(dt){
 // 1871, poles on the major streets from 1882 (telephone exchange 1881,
 // electric light 1882–83), every street from 1900.
 let poleSet=null;   // {poles:InstancedMesh, wires:LineSegments, cx, cz, key}
+function _inOtherRoad(x,z,name,pad){   // is (x,z) on the roadway of a street other than `name`?
+  const gx=Math.floor(x/RSEG_CELL), gz=Math.floor(z/RSEG_CELL);
+  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const q of _roadSegGrid.get((gx+i)+','+(gz+j))||[]){
+    if(q.name===name) continue; const dx=q.x2-q.x1, dz=q.z2-q.z1, L2=dx*dx+dz*dz||1, t=Math.max(0,Math.min(1,((x-q.x1)*dx+(z-q.z1)*dz)/L2));
+    if(Math.hypot(x-q.x1-dx*t,z-q.z1-dz*t)<q.w/2+pad) return true; }
+  return false; }
 function _poleGeo(arms){
   const U=CONFIG.utilityPoles, parts=[];
   const pole=new THREE.CylinderGeometry(0.1,0.14,U.height,6); pole.translate(0,U.height/2,0); parts.push(pole);
@@ -9890,7 +10227,13 @@ function tickUtilityPoles(){
     const px=-dz/len, pz=dx/len, off=s.w/2+U.kerbOffset;
     const n=Math.max(1,Math.round(len/U.spacing)), list=[];
     for(let i=0;i<=n;i++){
-      const x=s.x1+dx*i/n+px*off, z=s.z1+dz*i/n+pz*off;
+      let x=s.x1+dx*i/n+px*off, z=s.z1+dz*i/n+pz*off;
+      // a pole at a junction would stand in the cross street: slide it along its own street until it's clear of every other road
+      if(_inOtherRoad(x,z,s.name,0.6)){
+        let ok=false;
+        for(const d of [3,-3,6,-6,9,-9,12,-12]){ const sx=x+dx/len*d, sz=z+dz/len*d; if(!_inOtherRoad(sx,sz,s.name,0.6)){ x=sx; z=sz; ok=true; break; } }
+        if(!ok) continue;
+      }
       const k=`${Math.round(x/4)},${Math.round(z/4)}`;   // shared corner poles once
       const y=sampleTerrainY(x,z);
       list.push({x,y,z});
@@ -10214,7 +10557,7 @@ function _pcUI(){
     +'<span class="btn" id="pc-save" title="remember this camera (position, heading, pitch, FoV) for this card">💾 save fit</span>'
     +'<span class="btn" id="pc-export" title="copy all saved fits as JSON (for FastForward)">⧉ export</span>'
     +'<span class="btn" id="pc-close">✕ close</span>';
-  PC.el={badge,panel,ov,bar};
+  PC.el={badge,panel,ov,bar}; makeSlidable(panel,'right'); makeSlidable(bar,'bottom'); pfLayout();
   badge.addEventListener('click',()=>pcPanel(!PC.open));
   document.getElementById('pc-op').addEventListener('input',e=>{ov.style.opacity=e.target.value;});
   const setFov=f=>{ camera.fov=f; camera.updateProjectionMatrix(); document.getElementById('pc-fovv').textContent=(+f).toFixed(1).replace(/\.0$/,''); document.getElementById('pc-fov').value=f; };
@@ -10788,6 +11131,85 @@ function _groundPatch(polys,color,born,died,lift,st,skip){
   const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color,vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
   const m=new THREE.Mesh(g,mat); m.receiveShadow=true; scene.add(m); return m;
 }
+// ── Elmwood: black iron fence round the grounds + limestone gate piers at the east entrance (CONFIG.cemetery.fence / .gate) ──
+// The fence is one alpha-tested texture card per ~2.4 m (bars, rails, a post at each end) — about 1,400 quads for the whole 3.4 km — and
+// is dithered out between fadeNear and fadeFar metres from the camera. Edges shared between two plots are skipped (they're not the border).
+let _cemFenceTexCache=null;
+function _cemFenceTex(){
+  if(_cemFenceTexCache) return _cemFenceTexCache;
+  const W=512,H=384,c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d'); g.fillStyle='#fff';
+  const ppm=W/2.4;   // px per metre (the card is 2.4 m × 1.8 m)
+  for(let x=14;x<W-6;x+=ppm*0.15){ g.fillRect(x,22,5,H-22); g.beginPath(); g.moveTo(x-3,22); g.lineTo(x+2.5,4); g.lineTo(x+8,22); g.fill(); }   // bars with spear tips
+  g.fillRect(0,100,W,9); g.fillRect(0,H-60,W,9);   // two rails
+  g.fillRect(0,14,15,H-14); g.beginPath(); g.arc(7.5,12,9,0,Math.PI*2); g.fill();   // the post (left edge) with a ball finial
+  const t=new THREE.CanvasTexture(c); t.wrapS=THREE.RepeatWrapping; t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4; return _cemFenceTexCache=t;
+}
+function _cemFenceAndGate(plots,pathRing,founded,tooLow){
+  const F=CONFIG.cemetery.fence, G=CONFIG.cemetery.gate, out=[]; if(!F&&!G) return out;
+  const bornY=_isoYearFrac(founded,NO_BORN), EPS=0.3, pieces=[];
+  // boundary pieces: walk each plot's outer ring, keep the pieces whose outside is not another plot
+  plots.forEach((P,i)=>{ const R=P.o;
+    for(let a=0;a<R.length;a++){ const A=R[a], B=R[(a+1)%R.length], L=Math.hypot(B.x-A.x,B.z-A.z); if(L<0.05) continue;
+      const n=Math.max(1,Math.ceil(L/(F?.spacing??2.4))), nx=-(B.z-A.z)/L, nz=(B.x-A.x)/L;
+      for(let k=0;k<n;k++){
+        const t0=k/n, t1=(k+1)/n, p0={x:A.x+(B.x-A.x)*t0,z:A.z+(B.z-A.z)*t0}, p1={x:A.x+(B.x-A.x)*t1,z:A.z+(B.z-A.z)*t1}, mx=(p0.x+p1.x)/2, mz=(p0.z+p1.z)/2;
+        const inner=pointInPolygon(mx+nx*EPS,mz+nz*EPS,R)?1:-1;   // which side of the piece is inside this plot
+        const ox=mx-inner*nx*EPS, oz=mz-inner*nz*EPS;              // a point just outside
+        if(plots.some((Q,j)=>j!==i&&pointInPolygon(ox,oz,Q.o))) continue;   // internal edge between two plots
+        if(tooLow&&(tooLow(p0.x,p0.z)||tooLow(p1.x,p1.z))) continue;        // down the river bank
+        pieces.push({p0,p1,len:L/n,mx,mz,tx:(B.x-A.x)/L,tz:(B.z-A.z)/L,outX:-inner*nx,outZ:-inner*nz});
+      } }
+  });
+  // the entrance: the east-most point of the path network, and the boundary piece nearest it
+  let E=pathRing[0]; for(const q of pathRing) if(q.x>E.x) E=q;
+  let gate=null, gd=1e9; for(const q of pieces){ const d=Math.hypot(q.mx-E.x,q.mz-E.z); if(d<gd){gd=d;gate=q;} }
+  const gx=gate?gate.mx:E.x, gz=gate?gate.mz:E.z, hw=G?.halfWidthM??3.2;
+  // fence ribbon
+  if(F){
+    const pos=[],uv=[],idx=[]; let v=0;
+    for(const q of pieces){
+      if(gate&&Math.hypot(q.mx-gx,q.mz-gz)<hw+q.len*0.5) continue;   // the gateway
+      const y0=sampleTerrainY(q.p0.x,q.p0.z)-0.05, y1=sampleTerrainY(q.p1.x,q.p1.z)-0.05, u1=q.len/(F.spacing??2.4);
+      pos.push(q.p0.x,y0,q.p0.z, q.p1.x,y1,q.p1.z, q.p1.x,y1+F.height,q.p1.z, q.p0.x,y0+F.height,q.p0.z);
+      uv.push(0,0, u1,0, u1,1, 0,1); idx.push(v,v+1,v+2, v,v+2,v+3); v+=4;
+    }
+    if(v){
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+      g.setAttribute('normal',new THREE.Float32BufferAttribute(new Float32Array(v*3).map((_,i)=>i%3===1?1:0),3)); g.setIndex(idx);   // all normals up: an even tone from both sides
+      tagLifespan(g,bornY,NO_DIED);
+      const mat=new THREE.MeshLambertMaterial({color:F.color??0x16161A,map:_cemFenceTex(),alphaTest:0.45,side:THREE.DoubleSide});
+      tagMaterialForLifespan(mat); const prev=mat.onBeforeCompile;
+      const fu={uFenceNear:{value:F.fadeNear??70},uFenceFar:{value:F.fadeFar??150}};
+      mat.onBeforeCompile=sh=>{ prev(sh); Object.assign(sh.uniforms,fu);
+        sh.vertexShader='varying float vFenceD;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vFenceD=distance((modelMatrix*vec4(transformed,1.0)).xyz,cameraPosition);');
+        sh.fragmentShader='varying float vFenceD;\nuniform float uFenceNear,uFenceFar;\n'+sh.fragmentShader.replace('#include <color_fragment>',`#include <color_fragment>
+  if(1.-smoothstep(uFenceNear,uFenceFar,vFenceD)<fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(.06711056,.00583715))))) discard;   // dithered fade-out`); };
+      const prevKey=mat.customProgramCacheKey; mat.customProgramCacheKey=()=>prevKey()+'|cemFence';
+      const m=new THREE.Mesh(g,mat); m.frustumCulled=false; m.name='cemeteryFence'; scene.add(m); out.push(m);
+    }
+  }
+  // gate piers, either side of the opening, with a small name plate on the road face
+  if(G&&gate){
+    const S=G.pierSize??0.8, H=G.pierHeight??2.7, yaw=Math.atan2(gate.tx,gate.tz);
+    const sc=document.createElement('canvas'); sc.width=64; sc.height=256; { const g=sc.getContext('2d'); g.fillStyle='#fff'; g.fillRect(0,0,64,256); g.strokeStyle='#bbb'; g.lineWidth=2; for(let y=0;y<256;y+=256/9){ g.beginPath(); g.moveTo(0,y); g.lineTo(64,y); g.stroke(); }
+      g.beginPath(); g.moveTo(32,0); g.lineTo(32,256); g.globalAlpha=0.25; g.stroke(); }
+    const st=new THREE.CanvasTexture(sc); st.colorSpace=THREE.SRGBColorSpace;
+    const pc=document.createElement('canvas'); pc.width=256; pc.height=64; { const g=pc.getContext('2d'); g.fillStyle='#D8D2BE'; g.fillRect(0,0,256,64); g.fillStyle='#2A2620'; g.font='bold 21px Georgia,serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText('ELMWOOD',128,20); g.fillText('CEMETERY',128,45); }
+    const pt=new THREE.CanvasTexture(pc); pt.colorSpace=THREE.SRGBColorSpace;
+    const pierMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:G.pierColor??0xB9AA84,map:st})), capMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:G.capColor??0x8A8068})), plateMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({map:pt}));
+    for(const side of[-1,1]){
+      const x=gx+gate.tx*hw*side, z=gz+gate.tz*hw*side, y=sampleTerrainY(x,z)-0.3;
+      const add=(geo,mat,ox,oy,oz,ry)=>{ tagLifespan(geo,bornY,NO_DIED); const m=new THREE.Mesh(geo,mat); m.position.set(x+ox,y+oy,z+oz); m.rotation.y=ry; m.castShadow=true; m.receiveShadow=true; scene.add(m); out.push(m); };
+      add(new THREE.BoxGeometry(S,H+0.3,S),pierMat,0,(H+0.3)/2,0,yaw);
+      add(new THREE.BoxGeometry(S+0.22,0.22,S+0.22),capMat,0,H+0.3+0.11,0,yaw);
+      add(new THREE.ConeGeometry((S+0.22)*0.62,0.32,4),capMat,0,H+0.3+0.22+0.16,0,yaw+Math.PI/4);
+      const pl=new THREE.PlaneGeometry(S*0.78,S*0.78*0.25), ry=Math.atan2(gate.outX,gate.outZ);   // faces the road (outward)
+      add(pl,plateMat,gate.outX*(S/2+0.012),H*0.72,gate.outZ*(S/2+0.012),ry);
+    }
+    console.log(`🏛️ Elmwood gate piers at the east entrance (${gd.toFixed(1)} m from the path's east tip); fence pieces ${pieces.length}`);
+  }
+  return out;
+}
 function tickGrounds(){
   if(!_demLoaded||!(earlyYards.length||cemetery)) return;
   const C=CONFIG.cemetery||{};
@@ -10809,6 +11231,7 @@ function tickGrounds(){
           pts.push({x:px,z:pz,o:rnd(),r:(rnd()-0.5)*0.05,h:0.7+rnd()*0.5,s:0.9+rnd()*0.3});
         }
       }
+      if(!OFF.has('fences')) for(const m of _cemFenceAndGate(plots,toWz(cemetery.paths[0][0]),founded,tooLow)) groundMeshes.push(m);
       pts.sort((a,b)=>a.o-b.o);
       { // lawn coverage mask (2 m cells over the plots' bounding box; linear filtering softens the edge)
         let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const P of plots) for(const q of P.o){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
@@ -10984,6 +11407,11 @@ function startLoop(){
     }
     try{
     const dt=Math.max(0,Math.min((now-lastTime)*0.001,0.1));lastTime=now;   // ≥0: first rAF stamp can predate lastTime after a long load
+    {   // camera sanity: a NaN/Infinity anywhere in the pose makes everything after it NaN (all sky, no control) — put the last good pose back and say so
+      const fin=Number.isFinite(camera.position.x+camera.position.y+camera.position.z+yaw+pitch+orbit.target.x+orbit.target.y+orbit.target.z);
+      if(fin){ _goodCam.p.copy(camera.position); _goodCam.t.copy(orbit.target); _goodCam.yaw=yaw; _goodCam.pitch=pitch; }
+      else{ camera.position.copy(_goodCam.p); orbit.target.copy(_goodCam.t); yaw=_goodCam.yaw; pitch=_goodCam.pitch; joyVec.x=joyVec.y=0; window.pfDiag?.add('warn','camera pose went non-finite — restored the last good one'); if(!fpsMode) orbit.update(); }
+    }
     if(fpsMode){
       arTick(dt);
       const qYaw=new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0,1,0),yaw);
@@ -11057,6 +11485,7 @@ function startLoop(){
     _t(tickMosquitoes,dt);
     _t(tickUtilityPoles);
     _t(tickPostcards);
+    _t(tickSigns);
     _t(()=>{ if(!shantiesBuilt) initShanties(); });
     _t(tickOxbow);
     _t(tickTipis,dt);
@@ -11623,6 +12052,7 @@ function updateTreeBuildings(){
   }
   if(changed) updateTreeSeason(_treeLeaf,_treeAut);
 }
+window._debugCemTrees=()=>{ const out=[]; for(const e of riverTreeMeshes){ if(!e.crown||!e.list) continue; for(const t of e.list) if(t.plant!=null) out.push({x:Math.round(t.x),z:Math.round(t.z),y:+t.y.toFixed(1),plant:Math.round(t.plant),sc:+t.sc.toFixed(2),gr:t.gr,hid:!!t.hid}); } return {yf:yearFrac(currentViewDate),leaf:_treeLeaf,n:out.length,sample:out.slice(0,8)}; };
 function updateTreeSeason(leaf,autumn){
   _treeLeaf=leaf; _treeAut=autumn;
   const late=_sc.c.set(SEASON.lateAutumnColor);
