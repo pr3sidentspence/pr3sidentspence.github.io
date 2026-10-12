@@ -1331,7 +1331,23 @@ export const CONFIG = {
     file: './data/storms.json',
     rampHours: 6,
     offPeak: 0.75,
-    snowAfterDays: 5,          // a blizzard leaves snow cover this long (melting) even out of season
+    snowAfterDays: 5,          // (legacy — the snowpack below replaced it)
+    // Snow left by blizzards, and the drifts of the bad ones (see snowpackAt). Metres.
+    snowpack: {
+      settle: 0.8,             // fresh-snow cm x 0.01 x this = metres on the ground (it settles / blows into drifts)
+      persist: 0.55,           // share that stays until spring melt; the rest is cleared (shovelled, blown off, trampled)
+      clearHalfDays: 4,        // half-life of the cleared share
+      meltDays: 14,            // an out-of-season (April / early November) blizzard's snow melts away over this
+      lastDays: 150,           // storms older than this are ignored
+      baseDepthM: 0.15,        // ordinary winter cover on the ground x the seasonal snow channel
+      maxDepthM: 1.2,
+      coverAtM: 0.1,           // the ground counts as snow-covered from this depth (colours the ground, roofs and roads)
+      refCm: 70,               // a blizzard of this many cm counts as "worst" (badness = max(intensity, cm / refCm))
+      driftMin: 0.85,          // badness needed to bank drifts: 1881, 1909 Dec, 1935, 1964 Mar/Apr, 1965 Feb
+      driftMaxM: 3.6,          // drift height at the worst (a first floor); houses are buried up to their eaves, taller buildings to the first floor
+      driftHalfDays: 7,        // the dug-out share of a drift goes with this half-life
+      driftPersist: 0.35,      // share of a drift that stays until the spring melt
+    },          // a blizzard leaves snow cover this long (melting) even out of season
     roadWet: { darken: 0.45, drySeconds: 25 },   // thunderstorm rain darkens the roads by this much; they dry over ~drySeconds after
     fadeSeconds: 0.1,          // time constant of the storm fade in/out (~3× this to settle)
     fogHalfHeight: 180,        // storm fog halves at this camera height above ground (so zoomed-out views don't white/black out)

@@ -631,7 +631,9 @@ const _stormWind={x:0,z:0,k:0};   // m/s, set by tickWeather — smoke puffs blo
 function seasonState(d){
   const doy=viewDayOfYear(d), S={doy};
   for(const ch in _seasonKeys) S[ch]=Math.max(0,Math.min(1,_seasonChannel(_seasonKeys[ch],doy)));
-  if(stormList.length) S.snow=Math.max(S.snow,stormSnowCover(d));   // a blizzard's snow, even out of season
+  const P=snowpackAt(d, S.snow);   // metres on the ground / drift height against the walls (blizzards + the season)
+  S.depth=P.depth; S.drift=P.drift;
+  if(stormList.length) S.snow=Math.max(S.snow,Math.min(1,P.storm/(CONFIG.storms?.snowpack?.coverAtM??0.1)));   // a blizzard's snow, even out of season
   return S;
 }
 let currentTodFraction=CONFIG.start.timeOfDay;
@@ -1560,6 +1562,25 @@ const wallMeshes     = {};   // matKey → THREE.Mesh (for DecalGeometry project
 // matching depth material (see makeLifespanDepthMaterial), or a hidden
 // building would still cast a phantom shadow.
 const buildingYearUniform = { value: 1906 };
+// Snow against the walls (CONFIG.storms.snowpack, set in applySeason): depth on the ground and the height of the blizzard drifts on the lee (south) side
+const snowWallUniforms = { uSnowDepth: { value: 0 }, uDriftH: { value: 0 } };
+// top of the snow against a wall fragment: ground depth plus the drift (houses: up to the eaves; taller buildings: the first floor), ragged along the wall
+const SNOW_WALL_FN = `
+uniform float uSnowDepth, uDriftH;
+varying vec3 vSnowPos, vSnowN;
+varying float vSnowSeed;
+float snowTop(){
+  vec3 n = normalize(vSnowN);
+  float bh = vBuild.y - vBuild.x;
+  float lee = smoothstep(0.35, 0.95, clamp(dot(n.xz, vec2(0.30, 0.954)) * 0.5 + 0.5, 0.0, 1.0));
+  float cap = bh < 9.0 ? bh * 0.85 : ${'FLOOR_H_'};
+  float drift = min(uDriftH, cap) * mix(0.3, 1.0, lee);
+  float a = dot(vSnowPos.xz, vec2(-n.z, n.x)) * 0.6 + vSnowSeed * 3.1, f = fract(a), i = floor(a);
+  float h0 = fract(sin(i * 12.9898) * 43758.5453), h1 = fract(sin((i + 1.0) * 12.9898) * 43758.5453);
+  float r = mix(h0, h1, f * f * (3.0 - 2.0 * f));
+  return (uSnowDepth * 0.9 + drift) * (0.7 + 0.6 * r);
+}
+`;
 const NO_BORN = -99999, NO_DIED = 99999; // sentinels meaning "no born/died constraint"
 
 function parseYearOrSentinel(v, sentinel){
@@ -1651,7 +1672,7 @@ function tagBuildingIdx(geom, idx){
 const windowPaintUniforms={ uWinNight:{value:0}, uWinGlass:{value:new THREE.Color()}, uWinGlow:{value:new THREE.Color()},
   uWinFade:{value:new THREE.Vector2(1200,1600)},
   uWinLate:{value:0} };   // 0..1 share of upper-floor lights switched off by now (CONFIG.nightLights, set in setTimeOfDay)
-function _lifespanShaderFor(kind, table=false, paint=false, stripes=false){
+function _lifespanShaderFor(kind, table=false, paint=false, stripes=false, snow=0){
   return shader=>{
     shader.uniforms.buildingYear = buildingYearUniform;
     if(paint) Object.assign(shader.uniforms,windowPaintUniforms);
@@ -1666,18 +1687,20 @@ function _lifespanShaderFor(kind, table=false, paint=false, stripes=false){
         + (stripes ? ` vStripe = texelFetch(uBldTable, ivec2((bi + 2) % ${BLD_TEX_W}, (bi + 2) / ${BLD_TEX_W}), 0); vStripeBase = bt1.w;` : '')
       : 'vLifespan = aLifespan; vBuild = aBuild;';
     if(table) shader.uniforms.uBldTable = bldTableUniform;
-    shader.vertexShader = head + (paint ? 'varying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' : '')
+    if(snow) Object.assign(shader.uniforms, snowWallUniforms);
+    shader.vertexShader = head + (snow ? 'varying vec3 vSnowPos, vSnowN;\nvarying float vSnowSeed;\n' : '') + (paint ? 'varying float vWinFlag, vWinSeed;\nvarying vec3 vWinPos, vWinN;\n' : '')
       + (stripes ? 'varying vec4 vStripe;\nvarying float vStripeBase, vStripeNy;\n' : '') + shader.vertexShader
       .replace('void main() {', 'void main() {\n  ' + fetch)
       .replace('#include <project_vertex>', '#include <project_vertex>\n  vBldY = (modelMatrix * vec4(transformed, 1.0)).y;'
         + (paint ? '\n  vWinPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWinN = normalize(mat3(modelMatrix) * objectNormal);' : '')
-        + (stripes ? '\n  vStripeNy = normalize(mat3(modelMatrix) * objectNormal).y;' : ''));
+        + (stripes ? '\n  vStripeNy = normalize(mat3(modelMatrix) * objectNormal).y;' : '')
+        + (snow ? '\n  vSnowPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vSnowN = normalize(mat3(modelMatrix) * objectNormal); vSnowSeed = aBldIdx;' : ''));
     shader.fragmentShader = `#define BLD_KIND ${kind}
 uniform float buildingYear;
 varying vec2 vLifespan;
 varying vec4 vBuild;
 varying float vBldY;
-` + shader.fragmentShader
+` + (snow ? SNOW_WALL_FN.replace('FLOOR_H_', FLOOR_H.toFixed(2)) : '') + shader.fragmentShader
       .replace('void main() {', `void main() {
   float bldChar = 0.0;
   {
@@ -1746,6 +1769,21 @@ varying float vBldY;
       winLit = mix(step(h, litShare) * stayOn, litShare * mix(1.0 - uWinLate, 1.0, ground), smoothstep(0.35, 0.9, px));
       diffuseColor.rgb = mix(diffuseColor.rgb, uWinGlass, winMask);
     }
+  }` : '')
+        + (snow === 1 ? `
+  {   // snow banked against the walls: the base course everywhere, the drift on the lee side (covers windows too)
+    vec3 sn = normalize(vSnowN);
+    if ((uSnowDepth > 0.001 || uDriftH > 0.001) && abs(sn.y) < 0.5) {
+      float yy = vSnowPos.y - vBuild.x, top = snowTop();
+      float cov = 1.0 - smoothstep(top - 0.1, top + 0.04, yy);
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.92, 0.94, 0.97), cov * 0.96);
+      ${paint ? 'winMask *= 1.0 - cov;' : ''}
+    }
+  }` : '')
+        + (snow === 2 ? `
+  {   // glass below the snow line is buried
+    vec3 sn = normalize(vSnowN);
+    if ((uSnowDepth > 0.001 || uDriftH > 0.001) && abs(sn.y) < 0.5 && vSnowPos.y - vBuild.x < snowTop() - 0.05) discard;
   }` : ''))
       + '';
     if(stripes) shader.fragmentShader = 'varying vec4 vStripe;\nvarying float vStripeBase, vStripeNy;\n' + shader.fragmentShader;
@@ -1757,10 +1795,10 @@ const _installLifespanShader=_lifespanShaderFor(0);
 // table=true: the mesh's geometry carries aBldIdx (building table) instead of
 // per-vertex aLifespan/aBuild — used for all building pieces.
 // walls=true (table mode): painted distant windows + hand-set stripes.
-function tagMaterialForLifespan(mat, kind=0, table=false, walls=false){
-  const paint=walls&&!OFF.has('paint'), stripes=walls&&table;
-  mat.onBeforeCompile = _lifespanShaderFor(kind, table, paint, stripes);
-  mat.customProgramCacheKey = () => 'lifespan'+kind+(table?'t':'')+(paint?'w':'')+(stripes?'s':'');
+function tagMaterialForLifespan(mat, kind=0, table=false, walls=false, glass=false){
+  const paint=walls&&!OFF.has('paint'), stripes=walls&&table, snow=OFF.has('snowwalls')?0:(glass&&table?2:(walls&&table?1:0));
+  mat.onBeforeCompile = _lifespanShaderFor(kind, table, paint, stripes, snow);
+  mat.customProgramCacheKey = () => 'lifespan'+kind+(table?'t':'')+(paint?'w':'')+(stripes?'s':'')+(snow?'n'+snow:'');
   return mat;
 }
 // Wall bump UVs from the wall itself. The extruded walls' own UVs are raw world x/z (a different axis on each triangle of a
@@ -3117,7 +3155,7 @@ const glassMat=new THREE.MeshPhongMaterial({
   side:THREE.DoubleSide,
   polygonOffset:true, polygonOffsetFactor:-2, polygonOffsetUnits:-2,
 });
-tagMaterialForLifespan(glassMat,0,true); // shared across all layers/rebuilds — tagged once here, not per buildCity() call
+tagMaterialForLifespan(glassMat,0,true,false,true); // shared across all layers/rebuilds — tagged once here, not per buildCity() call
 // Night: each pane (hashed by position + storey) lit or dark like the painted
 // windows, upper floors going out through the night; ground floor stays lit.
 {
@@ -11343,6 +11381,7 @@ function tickAnimals(dt){
   const m=_anM, q=_anQ, p=_anP, sv=_anS, up=_anUp;
   for(const sp of _AN_SP){
     const g=_an.groups[sp], recs=g.recs, spd=A.speed[sp], idle=A.idleSeconds[sp];
+    const sink=Math.min(0.45,(season.depth||0)*0.5)*(sp==='chicken'||sp==='cat'?0.5:1);   // wading in the snow
     for(let i=0;i<recs.length;i++){
       const r=recs[i];
       if(r.st===0){
@@ -11365,7 +11404,7 @@ function tickAnimals(dt){
       }
       if((r.x-r.yx)**2+(r.z-r.yz)**2>0.0625){ r.y=sampleTerrainY(r.x,r.z); r.yx=r.x; r.yz=r.z; }
       const bob=r.st===1?Math.abs(Math.sin(r.gait))*(sp==='chicken'?0.03:0.04):0;
-      q.setFromAxisAngle(up,r.yaw); p.set(r.x,r.y+bob,r.z); sv.setScalar(r.sc);
+      q.setFromAxisAngle(up,r.yaw); p.set(r.x,r.y+bob-sink,r.z); sv.setScalar(r.sc);
       m.compose(p,q,sv); g.mesh.setMatrixAt(i,m);
     }
     g.mesh.instanceMatrix.needsUpdate=true;
@@ -11985,6 +12024,7 @@ const _changed=(key,v,eps)=>{if(_applied[key]!==undefined&&Math.abs(_applied[key
 function applySeason(force){
   const S=season=window._season=seasonState(currentViewDate);
   if(force) _applied={};
+  snowWallUniforms.uSnowDepth.value=S.depth; snowWallUniforms.uDriftH.value=S.drift;
   winterMode=S.snow>0.5;   // legacy flag (button label, anything still reading it)
 
   // Summer moisture (drought ↔ wet year) — only matters while things are green
@@ -12123,6 +12163,32 @@ function stormAt(d){
   }
   return null;
 }
+// Snowpack from the blizzards (data/storms.json) on top of the seasonal cover: each blizzard lays `cm` of snow (parsed from its note, else from its
+// intensity) that builds through the storm; the share `persist` stays (until the seasonal snow goes in spring, or melts over meltDays out of season),
+// the rest is cleared — shovelled, blown off, trampled — with half-life clearHalfDays. A blizzard that is bad enough (max of intensity and cm/refCm
+// >= driftMin) also banks drifts against the lee walls, `driftMaxM` at the worst, cleared more slowly (driftHalfDays), driftPersist of it staying.
+// Returns {depth (m, seasonal base + storms), storm (m from storms alone), drift (m)}.
+const _stormCm=s=>{ const m=/(\d+(?:\.\d+)?)\s*cm/.exec(s.note||''); return m?+m[1]:(s.intensity||0.5)*35; };
+function snowpackAt(d, seasonalSnow){
+  const P=CONFIG.storms?.snowpack; if(!P) return {depth:0,storm:0,drift:0};
+  const t=d.getTime(); let storm=0, drift=0;
+  for(const s of stormList){
+    if(s.type!=='blizzard'||t<s.t0) continue;
+    const dd=(t-s.t1)/DAY_MS; if(dd>P.lastDays) continue;
+    const cm=_stormCm(s), amount=cm*0.01*P.settle, bad=Math.max(s.intensity||0,cm/P.refCm);
+    const build=Math.max(0,Math.min(1,(t-s.t0)/Math.max(DAY_MS*0.5,s.t1-s.t0)));
+    const after=Math.max(0,dd);
+    const melt=Math.max(0,1-after/P.meltDays), spring=after>1?Math.max(0,Math.min(1,_seasonChannel(_seasonKeys.snow,viewDayOfYear(new Date(t))))):1;
+    const gate=Math.max(melt,spring);
+    storm+=amount*build*gate*((1-P.persist)*Math.pow(0.5,after/P.clearHalfDays)+P.persist);
+    if(bad>=P.driftMin){
+      const sev=Math.min(1,(bad-P.driftMin)/Math.max(0.01,1-P.driftMin)), H=P.driftMaxM*(0.6+0.4*sev);
+      drift+=H*build*gate*((1-P.driftPersist)*Math.pow(0.5,after/P.driftHalfDays)+P.driftPersist);
+    }
+  }
+  return {depth:Math.min(P.maxDepthM,(seasonalSnow||0)*P.baseDepthM+storm),storm:Math.min(P.maxDepthM,storm),drift:Math.min(P.driftMaxM,drift)};
+}
+window._debugSnow=iso=>{ const d=parseLocalISODate(iso), S=seasonState(d); return {snow:+S.snow.toFixed(2),depth:+S.depth.toFixed(2),drift:+S.drift.toFixed(2)}; };
 function stormSnowCover(d){
   const t=d.getTime(), keep=(CONFIG.storms?.snowAfterDays??5)*DAY_MS;
   let c=0;
