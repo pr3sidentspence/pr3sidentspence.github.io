@@ -925,6 +925,84 @@ export const CONFIG = {
     colors: [0x6A6058, 0x5A4E42, 0x7A6E60, 0x4A4440, 0x6E5A44, 0x3A3632],
   },
 
+  // ── Domestic animals ────────────────────────────────────────────────
+  // Horses, cows, pigs, chickens, dogs, cats. Only the animals near the camera exist (cells of 80 m, generated on demand, deterministic).
+  // Where they live:
+  //  • households: every dwelling-sized building (unnamed / "dwg" / street-address names, >= minDwellingM2) holds `household` people;
+  //    animals per building = perCapita(species, year) x household x classWeights[class][species]. Each candidate animal has a fixed
+  //    random threshold, so the count rises and falls with the curve and a given animal comes and goes consistently.
+  //  • stables (name match): one horse per m2PerHorse of floor, scaled by `occupancy` (the motor age empties them); dairies likewise with cows.
+  //  • shops: now and then a horse tied at the kerb (hitched).
+  //  • sites: fenced/marked areas stocked by area (the log pen west of Upper Fort Garry, the stock yards, the abattoir), by month of the year.
+  // Who is outdoors depends on the hour, snow and storms (`outdoors`): hens roost at night, cows are stabled in winter, and so on.
+  // THE RATES ARE ESTIMATES, not census figures (no Winnipeg livestock counts found): shaped from general Prairie/Canadian urban history —
+  // horses peak 1900-1920 and collapse after 1925; the family cow and pig leave town by about 1910; chickens and pets stay.
+  animals: {
+    enabled: true,
+    household: 5,                 // people per dwelling-sized building (Winnipeg 1881: 4.6, 1901: 4.9 by building count in the data)
+    minDwellingM2: 30,            // smaller unnamed buildings are sheds / outhouses: no animals
+    radius:  { horse: 320, cow: 420, pig: 260, dog: 230, cat: 150, chicken: 130 },   // m from the camera
+    max:     { horse: 260, cow: 260, pig: 120, dog: 160, cat: 160, chicken: 420 },   // simultaneous per species (nearest win)
+    cellM: 80,
+    speed:   { horse: 0.9, cow: 0.55, pig: 0.6, dog: 1.3, cat: 0.8, chicken: 0.5 },  // m/s walking
+    idleSeconds: { horse: [6, 25], cow: [8, 35], pig: [5, 20], dog: [3, 18], cat: [6, 40], chicken: [1, 5] },
+    wander:  { horse: 10, cow: 14, pig: 6, dog: 14, cat: 12, chicken: 7 },           // m around home (households)
+    perCapita: {                  // per person, [year, rate] keyframes (linear between)
+      horse:   [[1850, 0.30], [1875, 0.20], [1890, 0.06], [1912, 0.035], [1925, 0.02], [1940, 0.005], [1960, 0]],   // household-owned (draymen, doctors, buggies); stables add theirs
+      cow:     [[1850, 0.35], [1875, 0.25], [1890, 0.10], [1905, 0.03], [1915, 0.008], [1930, 0.002], [1960, 0]],
+      pig:     [[1850, 0.30], [1875, 0.15], [1895, 0.04], [1910, 0.008], [1930, 0]],
+      chicken: [[1850, 1.00], [1880, 0.80], [1900, 0.50], [1920, 0.35], [1940, 0.25], [1960, 0.10]],
+      dog:     [[1850, 0.20], [1880, 0.14], [1900, 0.11], [1930, 0.10], [1960, 0.10]],
+      cat:     [[1850, 0.10], [1880, 0.12], [1900, 0.13], [1930, 0.15], [1960, 0.17]],
+    },
+    classWeights: {               // x the per-capita rate (people per building x weight)
+      dwelling:   { horse: 1, cow: 1, pig: 1, chicken: 1, dog: 1, cat: 1 },
+      shop:       { chicken: 0.1, dog: 0.3, cat: 0.6 },
+      industrial: { dog: 0.2, cat: 0.5 },
+      stable:     { chicken: 0.3, dog: 0.6, cat: 1 },
+      dairy:      { chicken: 0.5, dog: 1, cat: 1 },
+    },
+    classMatch: {                 // building name (case-insensitive regex) -> class; unnamed / "dwg" / address names = dwelling
+      shed:       'w\\.?c\\.?$|stairs|shed|privy|outhouse|garage|chimney|^tank|platform|coal',
+      stable:     'stable|livery|\\bbarn\\b|cartage|dray|express|feed|riding',
+      dairy:      'dairy|creamery',
+      industrial: 'mill|factory|works|foundry|lumber|elevator|warehouse|brewery|packing|iron|storage|plant|yard',
+    },
+    stable: {
+      m2PerHorse: 20, maxPerBuilding: 40, m2PerCow: 10,
+      occupancy: [[1850, 1], [1915, 1], [1925, 0.7], [1935, 0.4], [1945, 0.2], [1955, 0.08], [1960, 0.04]],   // share of stalls filled (milk and bread horses lasted into the 1950s)
+    },
+    // A family cow in a house's backyard stable / carriage house: a small plain "stable" (nameMatch, under maxM2) with a dwelling within houseWithinM holds one with this probability by year. Stables inside commercial buildings ("restaurant and stable", liveries, hotels) hold horses only.
+    backyardCow: { maxM2: 120, nameMatch: '^\\s*(stables?|carriage house|barn)\\s*$', houseWithinM: 35, curve: [[1850, 0.6], [1900, 0.45], [1915, 0.3], [1930, 0.15], [1938, 0.08], [1946, 0.02], [1952, 0]] },   // estimate: some homes kept a cow into the 1930s
+    hitched: { chance: 0.10, years: [1850, 1930] },    // share of shops with a horse tied at the kerb
+    outdoors: {                   // share outdoors, by species: day / night / in snow (x) / in a storm (x)
+      horse:   { day: 0.55, night: 0.04, snow: 0.8, storm: 0.3 },
+      cow:     { day: 0.9,  night: 0.12, snow: 0.2, storm: 0.3 },
+      pig:     { day: 0.9,  night: 0.2,  snow: 0.4, storm: 0.3 },
+      dog:     { day: 0.8,  night: 0.25, snow: 0.6, storm: 0.2 },
+      cat:     { day: 0.4,  night: 0.6,  snow: 0.4, storm: 0.1 },
+      chicken: { day: 1.0,  night: 0,    snow: 0.15, storm: 0.15 },
+    },
+    dayHours: [6, 19],
+    // Marked areas. Shape: a fence feature by name (fenceMatch) or a data/early_yards.json entry by name (yardMatch).
+    // m2Each = area per animal; mix = species shares; monthly = share of capacity present Jan..Dec; from/to override the feature's own dates.
+    sites: [
+      { name: 'Pen west of Upper Fort Garry', fenceMatch: 'livestock', mix: { cow: 0.55, horse: 0.35, pig: 0.10 }, m2Each: 130, maxN: 90 },
+      { name: 'Stock yards', yardMatch: '^stock yards', mix: { cow: 0.80, pig: 0.12, horse: 0.08 }, m2Each: 22, maxN: 450,
+        monthly: [0.35, 0.35, 0.35, 0.4, 0.5, 0.55, 0.65, 0.8, 1, 1, 0.85, 0.5] },    // fall run: cattle shipped in Sept-Nov
+      { name: 'Abattoir', yardMatch: 'abb?att?oir|slaughter', mix: { cow: 0.5, pig: 0.5 }, m2Each: 35, maxN: 60, monthly: [0.6, 0.6, 0.6, 0.7, 0.7, 0.7, 0.7, 0.8, 1, 1, 0.9, 0.7] },
+      // more: { name, poly: [[lon, lat], ...] | circle: { lon, lat, r }, from: 1900, to: 1930, mix, m2Each, maxN, monthly }
+    ],
+    colors: {                     // coat colours (picked per animal)
+      horse:   [0x7A4A2A, 0x9A5A2A, 0x2A2420, 0xA8A49A, 0x5A3A22, 0x8A6A44],
+      cow:     [0x3A2F28, 0x8A4A2A, 0xD8D0C0, 0x5A3A28, 0xB89A78],
+      pig:     [0xD8A090, 0xC08878, 0xE0B8A8, 0x4A3A34],
+      dog:     [0x8A6A44, 0x2A2420, 0xD8D0C0, 0x6A5030, 0x9A8A70],
+      cat:     [0x5A5048, 0x2A2420, 0xC89A60, 0xD8D0C0, 0x8A8078],
+      chicken: [0xB8683A, 0xE8E0D0, 0x5A3A28, 0x2A2420, 0xC8A060],
+    },
+  },
+
   // ── Automobiles ─────────────────────────────────────────────────────
   // First cars in Winnipeg c. 1901–03; common by the 1910s–20s. count =
   // cars on the road by year (around the camera — they respawn within
@@ -1627,7 +1705,7 @@ export const CONFIG = {
       church:     { match: 'church|cathedral|chapel|presbyterian|methodist|baptist|anglican|parish|synagogue|temple', random: { churchBell: 0.03 } },
       school:     { match: 'school|college|academy|collegiate|university', loops: [{ name: 'kidsPlaying', gate: { dow: [1, 5], hour: [[10.25, 10.5], [12, 13], [15.25, 16]] } }],
                     at: { schoolBell: [8.75, 10.25, 10.5, 12, 13, 15.25] } },
-      livery:     { match: 'livery|stable|\\bbarn\\b|feed|horse', random: { horseWhinny: 0.01, dogsBarking: 0.01 } },
+      livery:     { match: 'livery|stable|\\bbarn\\b|feed|horse', random: { horseWhinny: 0.012, dogsBarking: 0.01 } },   // horses only; moos come from the cows themselves (animals.backyardCow), not from the building
       farm:       { match: 'farm|ranch|dairy', loops: ['cattleHerd'], random: { cattleMoo: 0.03, chickens: 0.05, dogsBarking: 0.02, wellPump: 0.02, gateCreak: 0.01, horseWhinny: 0.01, roosterCrow: 0.01 } },
       home:       { match: null, homeArea: [30, 300], homeMaxFloors: 3, loops: ['cookingSizzle', 'cookingBoil', 'sewingMachine', 'loomWeaving', 'spinningWheel', 'rainRoofDrip'],
                     random: { cookingChop: 0.1 } },
@@ -1677,6 +1755,7 @@ export const CONFIG = {
     seasons:  { floeCount: 450 },
     streetLights: { spacing: 70, radius: 1800 },
     trains:   { maxCars: 25 },
+    animals:  { radius: { horse: 200, cow: 260, pig: 160, dog: 140, cat: 90, chicken: 80 }, max: { horse: 90, cow: 90, pig: 40, dog: 60, cat: 60, chicken: 140 } },
     autos:    { max: 50, scale: 0.4 },
   },
 

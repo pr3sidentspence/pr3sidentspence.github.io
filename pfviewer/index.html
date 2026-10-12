@@ -40,6 +40,19 @@ canvas{display:block;position:fixed;inset:0;}
 #stat-bar{position:fixed;bottom:0;left:0;right:0;text-align:center;padding:10px;font-size:0.7rem;color:#2e2010;letter-spacing:0.12em;background:linear-gradient(0deg,rgba(9,8,10,0.6),transparent);display:none;}
 #input-btn{position:fixed;bottom:9px;right:110px;font-size:0.7rem;color:#7a6040;opacity:0.6;z-index:31;cursor:pointer;pointer-events:auto;user-select:none;padding:3px 6px;border:1px solid #2a1e0e;border-radius:6px;background:rgba(9,8,10,0.6);}
 #input-btn:hover{opacity:1;}
+#credits-btn{position:fixed;bottom:9px;right:196px;font-size:0.7rem;color:#7a6040;opacity:0.6;z-index:31;cursor:pointer;pointer-events:auto;user-select:none;padding:3px 7px;border:1px solid #2a1e0e;border-radius:6px;background:rgba(9,8,10,0.6);font-family:Georgia,serif;}
+#credits-btn:hover,#credits-btn.on{opacity:1;}
+#credits-panel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);width:min(640px,92vw);max-height:80vh;flex-direction:column;background:rgba(9,8,10,0.96);border:1px solid #6a4a20;border-radius:10px;z-index:40;pointer-events:auto;font-family:Georgia,serif;color:#b09468;}
+#credits-panel.open{display:flex;}
+#credits-head{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #2a1e0e;color:#C8A05A;letter-spacing:0.14em;font-size:0.8rem;}
+#credits-x{cursor:pointer;padding:0 6px;font-size:1.1rem;}
+#credits-body{overflow-y:auto;padding:6px 20px 16px;font-size:0.8rem;line-height:1.6;}
+#credits-body h1{display:none;}
+#credits-body h2{font-size:0.85rem;color:#C8A05A;margin:14px 0 2px;}
+#credits-body ul{margin:0;padding-left:18px;}
+#credits-body a{color:#88AACC;text-decoration:none;}
+#credits-body a:hover{text-decoration:underline;}
+#credits-body em{color:#7a6040;}
 #build-ts{position:fixed;bottom:12px;right:14px;font-size:0.6rem;color:#2a1e0e;letter-spacing:0.08em;opacity:0.5;z-index:5;cursor:pointer;pointer-events:auto;}
 #info-panel{position:fixed;bottom:60px;right:18px;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:10px;padding:16px 20px;min-width:240px;max-width:320px;display:none;z-index:11;}
 .info-name{font-size:1rem;color:#C8A05A;margin-bottom:8px;line-height:1.3;}
@@ -249,6 +262,8 @@ body:not(.advanced) #cam-readout{display:none !important;}
     </span>
   </div>
   <div id="stat-bar"></div>
+  <div id="credits-btn" title="Sound credits (I)">♪ Credits</div>
+  <div id="credits-panel"><div id="credits-head"><span>SOUND CREDITS</span><span id="credits-x" title="Close (Esc)">✕</span></div><div id="credits-body">Loading…</div></div>
   <div id="input-btn" title="Controls: auto (follow the device) → touch → mouse + keyboard. Reloads the page."></div>
   <div id="build-ts">v4 · 2026-06-07 00:04 UTC</div>
   <div id="bldg-tooltip" style="display:none;position:fixed;pointer-events:none;background:rgba(9,8,10,0.92);border:1px solid #2a1e0e;border-radius:5px;padding:5px 10px;font-size:0.68rem;color:#C8A05A;letter-spacing:0.08em;z-index:20;white-space:nowrap;"></div>
@@ -3883,7 +3898,10 @@ async function buildCity(geojson){
           if(_roofRise>0) chimH=_roofRise+Math.max(0.8,chimH*0.5);   // peaked roof: the stack runs from the wall top up through the roof and clears the ridge
           const chimRB=chimDef.radius[0];
           const chimRT=chimDef.radius[1]*0.7;  // slightly narrower at top (period-correct taper)
-          const spread=Math.sqrt(props.area_m2||100)*CHIM.placementRadius;
+          // Real footprint, not props.area_m2 — imports can carry the whole group's area (e.g. 694 m² on a 12×5 m addition), which scattered stacks off the roof.
+          const _chArea=ringAreaM2(outer)||props.area_m2||100;
+          const _chRing=outer.slice(0,-1).map(q=>{const[sx,sy]=project(q[0],q[1]);return{x:sx,z:-sy};});
+          const spread=Math.sqrt(_chArea)*CHIM.placementRadius;
           // Smoke emission rate from config; scalar set at pool time
           const sType=chimDef.type;
           const sCfg=CHIM.smoke[sType];
@@ -3896,12 +3914,13 @@ async function buildCity(geojson){
             const r=spread*((hc&0xffff)/0xffff);
             const offX=Math.cos(ang)*r;
             const offZ=Math.sin(ang)*r;
-            const cx3=mcx+offX, cz3=mcz+offZ;
+            let cx3=mcx+offX, cz3=mcz+offZ;
+            for(let k=0;k<6&&!pointInPolygon(cx3,cz3,_chRing);k++){ cx3=mcx+(cx3-mcx)*0.5; cz3=mcz+(cz3-mcz)*0.5; }   // keep the stack on the roof: pull toward the centroid until inside
 
             // Shaft geometry (CONFIG.chimneys.brick): stovepipe only on tiny huts; houses/shops get a rectangular brick stack with a cap
             // (long side along the building's longest wall); big works and large multi-storey buildings a round tapering brick tube.
             let stackH=chimH, cGeom;
-            const B=CHIM.brick, bArea=props.area_m2||100;
+            const B=CHIM.brick, bArea=_chArea;
             const style=!B?'pipe':(mat==='log'||bArea<B.pipeMaxArea)?'pipe'
               :((sType==='dark'&&bArea>=B.tubeMinAreaDark)||(floors>=B.tubeMinFloors&&bArea>=B.tubeMinArea))?'tube':'rect';
             if(style==='pipe'){
@@ -6907,6 +6926,40 @@ function arTick(dt){
 arBtn.addEventListener('touchend',e=>{e.preventDefault();e.stopPropagation();if(ar.on)arStop();else arStart();},{passive:false});
 arBtn.addEventListener('touchstart',e=>{e.stopPropagation();},{passive:true});
 
+// Credits panel: sounds/CREDITS.md rendered with a tiny Markdown subset (headings, bullets, [links](url), *italics*). Toggle: "I" key or the ♪ button.
+(function(){
+  const panel=document.getElementById('credits-panel'), body=document.getElementById('credits-body'), btn=document.getElementById('credits-btn');
+  if(!panel||!btn) return;
+  let loaded=false;
+  const esc=t=>t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const inline=t=>esc(t)
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,'<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+    .replace(/\*([^*]+)\*/g,'<em>$1</em>');
+  function render(md){
+    let out='', inList=false;
+    for(const line of md.split('\n')){
+      const li=line.match(/^- (.*)/), h=line.match(/^(#{1,2}) (.*)/);
+      if(li){ if(!inList){out+='<ul>';inList=true;} out+='<li>'+inline(li[1])+'</li>'; continue; }
+      if(inList){out+='</ul>';inList=false;}
+      if(h) out+='<h'+h[1].length+'>'+inline(h[2])+'</h'+h[1].length+'>';
+      else if(line.trim()) out+='<p>'+inline(line)+'</p>';
+    }
+    return out+(inList?'</ul>':'');
+  }
+  function setCredits(on){
+    panel.classList.toggle('open',on); btn.classList.toggle('on',on);
+    if(on&&!loaded){ loaded=true;
+      fetch('sounds/CREDITS.md').then(r=>{ if(!r.ok) throw 0; return r.text(); })
+        .then(t=>{ body.innerHTML=render(t); }).catch(()=>{ loaded=false; body.textContent='Could not load sounds/CREDITS.md'; }); }
+  }
+  btn.addEventListener('click',()=>setCredits(!panel.classList.contains('open')));
+  document.getElementById('credits-x').addEventListener('click',()=>setCredits(false));
+  window.addEventListener('keydown',e=>{
+    if(e.ctrlKey||e.metaKey||e.altKey||e.target.closest?.('input,textarea,[contenteditable]')) return;
+    if(e.code==='KeyI') setCredits(!panel.classList.contains('open'));
+    else if(e.code==='Escape'&&panel.classList.contains('open')) setCredits(false);
+  });
+})();
 // Advanced/debug mode (Ctrl+A): shows the layer bar, season (❄/☀) button and
 // flood slider. Remembered per browser.
 function setAdvancedUI(on){
@@ -9787,7 +9840,8 @@ function tickSoundHooks(dt){
     for(const[h,hours]of Object.entries(K.at||{})) for(const hr of hours) if(sfxHourCrossed(hr))
       list.slice(0,2).forEach((s,i)=>playSfx(h,s.x,s.y+8,s.z,{delay:i*0.6+Math.random()*0.5}));
   }
-  for(const nm of _siteLoopHooks()) sfxLoopUpdate(nm,loopSrc[nm]||[]);
+  for(const nm of _siteLoopHooks()) sfxLoopUpdate(nm,[...(loopSrc[nm]||[]),...animalLoopSources(nm)]);
+  animalSounds(step);
   // Beds (non-positional) — level by time, season, place and weather
   const day=1-W.night, town=W.built, water=Math.min(1,W.river*2.5), rain=(_lastStorm&&_lastStorm.type!=='blizzard')?_wxK:0;
   sfxBedSet('birdsSongbirds',day*(1-0.6*town)*(0.4+0.6*W.green));
@@ -11068,6 +11122,292 @@ function tickTipis(dt){
 }
 window._debugTipis=()=>tipis?{n:tipis.list.length,visible:tipis.list.filter(t=>{const yr=yearFrac(currentViewDate),d=season.doy;return yr<t.endYr&&(t.yearRound||(d>t.tin+2&&d<t.tout-2));}).length}:null;
 
+// ── Domestic animals (CONFIG.animals) ───────────────────────────────────────────────────────────────
+// Horses, cows, pigs, dogs, cats, chickens — see the config block for the model. Households/stables/shops come from the building
+// footprints (cells of CONFIG.animals.cellM, generated on demand and cached); sites (the log pen, stock yards, abattoir) from a fence
+// feature or data/early_yards.json. Every ~0.5 s the animals near the camera that exist at the viewed date and hour are picked into
+// one InstancedMesh per species and wander each frame. Sound: cattleHerd loop at the sites, moos/whinnies/clucks/barks from near animals.
+let _an=null;
+const _AN_SP=['horse','cow','pig','dog','cat','chicken'];
+const _anRng=seed=>{ let a=seed|0; return()=>{a=(a+0x6D2B79F5)|0;let t=Math.imul(a^(a>>>15),1|a);t=(t+Math.imul(t^(t>>>7),61|t))^t;return((t^(t>>>14))>>>0)/4294967296;}; };
+function _anCurve(tab,yr){
+  if(!tab||!tab.length) return 0;
+  if(yr<=tab[0][0]) return tab[0][1];
+  for(let i=1;i<tab.length;i++) if(yr<tab[i][0]){ const[a,b]=tab[i-1],[c,d]=tab[i]; return b+(d-b)*(yr-a)/(c-a); }
+  return tab[tab.length-1][1];
+}
+function _anGeometry(sp){
+  const P=[], W=0xFFFFFF;
+  const box=(w,h,d,x,y,z,c=W,rx=0)=>{ const g=new THREE.BoxGeometry(w,h,d); if(rx) g.rotateX(rx); g.translate(x,y,z);
+    const n=g.attributes.position.count, a=new Float32Array(n*3), k=new THREE.Color(c); for(let i=0;i<n;i++) a.set([k.r,k.g,k.b],i*3);
+    g.setAttribute('color',new THREE.BufferAttribute(a,3)); P.push(g.toNonIndexed()); };
+  if(sp==='horse'){
+    box(0.62,0.70,1.70, 0,1.15,0);  box(0.26,0.75,0.34, 0,1.62,0.88,W,-0.45);  box(0.24,0.28,0.55, 0,1.86,1.28,W,0.5);
+    box(0.08,0.55,0.30, 0,1.90,0.80,0x1E1A16,-0.45);  box(0.10,0.70,0.10, 0,1.05,-0.92,0x1E1A16,0.15);
+    for(const sx of[-1,1]) for(const sz of[-1,1]){ box(0.14,0.80,0.14, sx*0.2,0.45,sz*0.65); box(0.15,0.10,0.15, sx*0.2,0.05,sz*0.65,0x1E1A16); }
+  }else if(sp==='cow'){
+    box(0.80,0.80,1.70, 0,1.00,0);  box(0.34,0.36,0.50, 0,1.12,1.12);  box(0.26,0.10,0.10, 0,1.36,1.10,0xE8DEC8);
+    box(0.06,0.60,0.06, 0,0.95,-0.92,0x2A2420);  box(0.22,0.14,0.30, 0,0.58,-0.45,0xC89A90);
+    for(const sx of[-1,1]) for(const sz of[-1,1]) box(0.16,0.62,0.16, sx*0.25,0.31,sz*0.6);
+  }else if(sp==='pig'){
+    box(0.55,0.50,1.00, 0,0.50,0);  box(0.30,0.30,0.36, 0,0.46,0.66);  box(0.16,0.12,0.08, 0,0.42,0.86,0xE8A8A0);
+    for(const sx of[-1,1]) for(const sz of[-1,1]) box(0.12,0.25,0.12, sx*0.17,0.125,sz*0.34);
+  }else if(sp==='dog'){
+    box(0.20,0.24,0.55, 0,0.42,0);  box(0.16,0.17,0.22, 0,0.52,0.38);  box(0.08,0.07,0.10, 0,0.48,0.52,0x1E1A16);
+    box(0.05,0.05,0.28, 0,0.52,-0.36,W,0.5);
+    for(const sx of[-1,1]) for(const sz of[-1,1]) box(0.06,0.30,0.06, sx*0.07,0.15,sz*0.2);
+  }else if(sp==='cat'){
+    box(0.14,0.16,0.36, 0,0.25,0);  box(0.12,0.12,0.12, 0,0.34,0.22);  box(0.04,0.30,0.04, 0,0.40,-0.20);
+    box(0.03,0.05,0.03, -0.04,0.43,0.22); box(0.03,0.05,0.03, 0.04,0.43,0.22);
+    for(const sx of[-1,1]) for(const sz of[-1,1]) box(0.045,0.17,0.045, sx*0.05,0.085,sz*0.13);
+  }else{
+    box(0.20,0.22,0.30, 0,0.30,0);  box(0.07,0.13,0.07, 0,0.46,0.15);  box(0.03,0.05,0.08, 0,0.55,0.15,0xB02A20);
+    box(0.03,0.03,0.05, 0,0.45,0.20,0xD8A030);  box(0.04,0.20,0.18, 0,0.40,-0.17,W,0.5);
+    for(const sx of[-1,1]) box(0.025,0.19,0.025, sx*0.04,0.095,0,0xD8A030);
+  }
+  return mergeGeometries(P,false);
+}
+// ── building spots (class by name) ────────────────────────────────────
+function _anClassOf(name,area,A,re){
+  const n=(name||'').trim();
+  if(!n||/^\d+[a-z]?\s/i.test(n)||/^dwg\b|dwelling|residence|cottage|^house\b/i.test(n)) return re.stable.test(n)?'stable':area>=A.minDwellingM2?'dwelling':'shed';
+  for(const k of ['shed','stable','dairy','industrial']) if(re[k].test(n)) return k==='shed'&&area>=A.minDwellingM2*3?'industrial':k;
+  return 'shop';
+}
+function _anFeatureSources(){ const a=[]; for(const lg of layerGroups) if(lg.geojson) a.push(lg.geojson); for(const ch of deferredChunks) a.push(ch.gj); return a; }
+function _anCollect(){
+  const A=CONFIG.animals, re={}; for(const k in A.classMatch) re[k]=new RegExp(A.classMatch[k],'i');
+  const ox=CONFIG.scene?.buildingOffsetX??0, oz=CONFIG.scene?.buildingOffsetZ??0, maxYr=CONFIG.timeline.maxYear+1;
+  const spots=[], seen=new Set(), cells=new Map(), C=A.cellM;
+  for(const gj of _anFeatureSources()) for(const f of gj.features){
+    const p=f.properties; if(!p||p.type==='walkway'||p.type==='fence'||p.type==='bridge'||p.type==='lumber'||(p.floors!=null&&p.floors<0.5)) continue;
+    const born=_isoYearFrac(p.born,NO_BORN); if(born>maxYr) continue;
+    const uid=p.uid??p.pf_uid; if(uid){ if(seen.has(uid)) continue; seen.add(uid); }
+    let c=f.geometry?.coordinates; if(!c) continue; while(Array.isArray(c[0]?.[0])) c=c[0];
+    if(c.length<4) continue;
+    let x=0,z=0,a2=0, px=null,pz=null;
+    for(const q of c){ const[sx,sy]=project(q[0],q[1]), wx=sx+ox, wz=-sy+oz; x+=wx; z+=wz; if(px!==null) a2+=px*wz-wx*pz; px=wx; pz=wz; }
+    x/=c.length; z/=c.length; const area=Math.abs(a2)/2; if(area<6) continue;
+    const s={x,z,area,r:Math.sqrt(area/Math.PI),born:Math.max(1800,born),died:_isoYearFrac(p.died,NO_DIED),name:p.name,cls:_anClassOf(p.name,area,A,re),h:(Math.imul(Math.round(x*7),73856093)^Math.imul(Math.round(z*7),19349663))|0};
+    spots.push(s); const k=Math.floor(x/C)+','+Math.floor(z/C); let l=cells.get(k); if(!l) cells.set(k,l=[]); l.push(s);
+  }
+  return {spots,cells};
+}
+function _anBlocked(x,z,own){   // inside / right beside another building, or in the water
+  const C=CONFIG.animals.cellM, gx=Math.floor(x/C), gz=Math.floor(z/C);
+  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const s of _an.cells.get((gx+i)+','+(gz+j))||[]){
+    if(s===own) continue; const r=s.r+0.6; if((s.x-x)**2+(s.z-z)**2<r*r) return true;
+  }
+  return sampleTerrainY(x,z)<CONFIG.water.startY+0.6;
+}
+// ── sites ────────────────────────────────────────────────────────────
+function _anBuildSites(){
+  const A=CONFIG.animals, ox=CONFIG.scene?.buildingOffsetX??0, oz=CONFIG.scene?.buildingOffsetZ??0, out=[];
+  const toW=(ring,ofx,ofz)=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx+ofx,z:-sy+ofz};});
+  for(const S of A.sites||[]){
+    let ring=null, born=NO_BORN, died=NO_DIED;
+    if(S.fenceMatch){
+      const re=new RegExp(S.fenceMatch,'i');
+      for(const gj of _anFeatureSources()){ for(const f of gj.features){ const p=f.properties; if(p?.type!=='fence'||!re.test(p.name||'')) continue;
+        const c=f.geometry.coordinates; if(c.length<4) continue; ring=toW(c,ox,oz); born=_isoYearFrac(p.born,NO_BORN); died=_isoYearFrac(p.died,NO_DIED); break; } if(ring) break; }
+    }else if(S.yardMatch){
+      const re=new RegExp(S.yardMatch,'i'), Y=earlyYards.find(y=>re.test(y.name||''));
+      if(Y){ ring=toW(Y.polys[0][0],0,0); born=_isoYearFrac(Y.born,NO_BORN); died=_isoYearFrac(Y.died,NO_DIED); }
+    }else if(S.poly) ring=toW(S.poly,0,0);
+    else if(S.circle){ const[sx,sy]=project(S.circle.lon,S.circle.lat); ring=[]; for(let i=0;i<16;i++){ const a=i/16*Math.PI*2; ring.push({x:sx+Math.cos(a)*S.circle.r,z:-sy+Math.sin(a)*S.circle.r}); } }
+    if(!ring) continue;
+    if(S.from!=null) born=S.from; if(S.to!=null) died=S.to;
+    let a2=0, cx=0, cz=0, x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+    for(let i=0;i<ring.length;i++){ const q=ring[i], n=ring[(i+1)%ring.length]; a2+=q.x*n.z-n.x*q.z; cx+=q.x; cz+=q.z; x0=Math.min(x0,q.x);x1=Math.max(x1,q.x);z0=Math.min(z0,q.z);z1=Math.max(z1,q.z); }
+    const area=Math.abs(a2)/2, n=Math.min(S.maxN??200,Math.floor(area/S.m2Each));
+    const site={name:S.name,ring,born,died,area,cx:cx/ring.length,cz:cz/ring.length,monthly:S.monthly,recs:[]};
+    const rnd=_anRng(Math.round(site.cx*3)^Math.round(site.cz*5)), mix=Object.entries(S.mix), tot=mix.reduce((t,m)=>t+m[1],0);
+    for(let i=0,tries=0;i<n&&tries<n*40;tries++){
+      const x=x0+rnd()*(x1-x0), z=z0+rnd()*(z1-z0); if(!pointInPolygon(x,z,ring)) continue;
+      let u=rnd()*tot, sp=mix[0][0]; for(const[k,w]of mix){ if(u<w){sp=k;break;} u-=w; }
+      site.recs.push(_anMakeRec(sp,x,z,null,born,died,'s',site,rnd)); i++;
+    }
+    out.push(site);
+  }
+  return out;
+}
+function _anMakeRec(sp,x,z,own,born,died,kind,site,rnd){
+  const cols=CONFIG.animals.colors[sp];
+  return {sp,x,z,hx:x,hz:z,own,born,died,kind,site,u:rnd(),v:rnd(),col:cols[Math.floor(rnd()*cols.length)],sc:0.92+rnd()*0.16,
+    yaw:rnd()*Math.PI*2,st:0,tmr:rnd()*8,tx:x,tz:z,y:0,yx:1e9,yz:1e9,wr:kind==='t'?0.5:(kind==='s'?1e9:CONFIG.animals.wander[sp]),gait:rnd()*6};
+}
+function _anHouseStable(s){   // a small plain stable / carriage house with a dwelling beside it (not one inside a shop, hotel or livery)
+  const B=CONFIG.animals.backyardCow; if(s.area>=B.maxM2||!new RegExp(B.nameMatch,'i').test(s.name||'')) return false;
+  const C=CONFIG.animals.cellM, gx=Math.floor(s.x/C), gz=Math.floor(s.z/C), R2=B.houseWithinM**2;
+  for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const o of _an.cells.get((gx+i)+','+(gz+j))||[]) if(o.cls==='dwelling'&&(o.x-s.x)**2+(o.z-s.z)**2<R2) return true;
+  return false;
+}
+// ── households / stables / shops per cell ────────────────────────────
+function _anCellRecs(cx,cz){
+  const key=cx+','+cz; let recs=_an.recCells.get(key); if(recs) return recs;
+  recs=[]; _an.recCells.set(key,recs);
+  const A=CONFIG.animals, spots=_an.cells.get(key); if(!spots) return recs;
+  for(const s of spots){
+    const rnd=_anRng(s.h), W=A.classWeights[s.cls]||{}, mid=Math.max(1850,s.born+1);
+    const put=(sp,u0,kind,near)=>{   // place near the building (a yard), clear of other buildings and of the road
+      for(let t=0;t<7;t++){
+        const a=rnd()*Math.PI*2, d=s.r+1.5+rnd()*(near??7), x=s.x+Math.cos(a)*d, z=s.z+Math.sin(a)*d;
+        if(_anBlocked(x,z,s)) continue;
+        const rd=_nearestRoad(x,z,mid,40); if(rd&&rd.d<rd.s.w/2+1.5) continue;
+        const r=_anMakeRec(sp,x,z,s,s.born,s.died,kind,null,rnd); r.u=u0??r.u; recs.push(r); return r;
+      }
+      return null;
+    };
+    for(const sp of _AN_SP){
+      const w=W[sp]; if(!w||!A.perCapita[sp]) continue;
+      const rmax=Math.max(...A.perCapita[sp].map(k=>k[1])), e=rmax*A.household*w; if(e<=0) continue;
+      let n=Math.floor(e)+(rnd()<e-Math.floor(e)?1:0);
+      while(n--) { const r=put(sp,null,'h'); if(r) r.curve='pc'; }
+    }
+    if(s.cls==='stable'||s.cls==='dairy'){
+      const sp=s.cls==='stable'?'horse':'cow', per=sp==='horse'?A.stable.m2PerHorse:A.stable.m2PerCow, n=Math.min(A.stable.maxPerBuilding,Math.round(s.area/per));
+      for(let i=0;i<n;i++){ const r=put(sp,null,'h',5); if(r) r.curve='stable'; }
+      if(s.cls==='stable'&&_anHouseStable(s)){ const r=put('cow',null,'h',5); if(r) r.curve='bycow'; }
+    }else if(s.cls==='shop'&&rnd()<A.hitched.chance){
+      const rd=_nearestRoad(s.x,s.z,mid,35);
+      if(rd){
+        const dx=s.x-rd.qx, dz=s.z-rd.qz, L=Math.hypot(dx,dz)||1, off=Math.max(0.5,rd.s.w/2-0.9);
+        const x=rd.qx+dx/L*off, z=rd.qz+dz/L*off, r=_anMakeRec('horse',x,z,s,Math.max(s.born,A.hitched.years[0]),Math.min(s.died,A.hitched.years[1]+rnd()*6),'t',null,rnd);
+        r.yaw=Math.atan2(rd.s.x2-rd.s.x1,rd.s.z2-rd.s.z1)+(rnd()<0.5?0:Math.PI); r.curve='none'; r.u=0; recs.push(r);
+      }
+    }
+  }
+  return recs;
+}
+// ── who is out, right now ────────────────────────────────────────────
+function _anOutdoors(sp){
+  const O=CONFIG.animals.outdoors[sp], h=currentViewDate.getHours()+currentViewDate.getMinutes()/60, [d0,d1]=CONFIG.animals.dayHours;
+  let k=(h>=d0&&h<d1)?O.day:O.night;
+  if(season.snow>0.35) k*=O.snow;
+  if(_weatherActive) k*=O.storm;
+  return k;
+}
+function _anRebuild(){
+  const A=CONFIG.animals, cam=camera.position, yr=yearFrac(currentViewDate), C=A.cellM, mon=currentViewDate.getMonth();
+  const maxR=Math.max(...Object.values(A.radius)), cands={}; for(const sp of _AN_SP) cands[sp]=[];
+  const rate={}, out={}; for(const sp of _AN_SP){ const tab=A.perCapita[sp]; rate[sp]=Math.max(...tab.map(k=>k[1]))>0?_anCurve(tab,yr)/Math.max(...tab.map(k=>k[1])):0; out[sp]=_anOutdoors(sp); }
+  const occ=_anCurve(A.stable.occupancy,yr), bycow=_anCurve(A.backyardCow.curve,yr), wx=_weatherActive?0.85:1;
+  const test=(r,d2)=>{
+    if(d2>A.radius[r.sp]**2||yr<r.born||yr>=r.died) return;
+    if(r.kind==='s'){ const m=r.site.monthly?r.site.monthly[mon]:1; if(r.u>=m) return; if(r.v>=wx*(season.snow>0.35?0.9:1)) return; }
+    else{ if(r.curve==='pc'&&r.u>=rate[r.sp]) return; if(r.curve==='stable'&&r.u>=occ) return; if(r.curve==='bycow'&&r.u>=bycow) return; if(r.v>=out[r.sp]) return; }
+    cands[r.sp].push(r); r.d2=d2;
+  };
+  const gx0=Math.floor((cam.x-maxR)/C), gx1=Math.floor((cam.x+maxR)/C), gz0=Math.floor((cam.z-maxR)/C), gz1=Math.floor((cam.z+maxR)/C);
+  for(let i=gx0;i<=gx1;i++) for(let j=gz0;j<=gz1;j++) for(const r of _anCellRecs(i,j)) test(r,(r.x-cam.x)**2+(r.z-cam.z)**2);
+  for(const S of _an.sites) for(const r of S.recs) test(r,(r.x-cam.x)**2+(r.z-cam.z)**2);
+  for(const sp of _AN_SP){
+    const c=cands[sp]; if(c.length>A.max[sp]){ c.sort((a,b)=>a.d2-b.d2); c.length=A.max[sp]; }
+    const g=_an.groups[sp]; g.recs=c; g.mesh.count=c.length;
+    c.forEach((r,i)=>g.mesh.setColorAt(i,_anCol.set(r.col)));
+    if(g.mesh.instanceColor) g.mesh.instanceColor.needsUpdate=true;
+  }
+  _an.camX=cam.x; _an.camZ=cam.z; _an.key=_anKey();
+  if(_an.recCells.size>260){ for(const[k,v]of _an.recCells){ const[a,b]=k.split(',').map(Number); if(Math.abs((a+0.5)*C-cam.x)>maxR*1.8||Math.abs((b+0.5)*C-cam.z)>maxR*1.8) _an.recCells.delete(k); } }
+  // sound: stock-site herds (cattleHerd loop) — centroid and head count of the cattle currently out there
+  _an.herds=_an.sites.map(S=>{ let n=0,x=0,z=0; for(const r of _an.groups.cow.recs) if(r.site===S){ n++; x+=r.x; z+=r.z; } return n>=5?{id:S,x:x/n,z:z/n,n}:null; }).filter(Boolean);
+}
+const _anCol=new THREE.Color();
+const _anKey=()=>Math.floor(yearFrac(currentViewDate)*12)+'|'+Math.floor((currentViewDate.getHours()+currentViewDate.getMinutes()/60)*2)+'|'+(_weatherActive?1:0)+'|'+(season.snow>0.35?1:0);
+function tickAnimals(dt){
+  const A=CONFIG.animals; if(!A?.enabled||OFF.has('animals')||!_demLoaded||!layerGroups.length||!_roadSegGrid.size) return;
+  const now=performance.now(), srcKey=layerGroups.length+'|'+deferredChunks.length+'|'+earlyYards.length;
+  if(!_an){
+    if(_anWaitKey!==srcKey){ _anWaitKey=srcKey; _anWaitT=now; return; }   // wait until the building loader has settled for a few seconds
+    if(now-_anWaitT<3000) return;
+    const col=_anCollect();
+    _an={...col,srcKey,recCells:new Map(),sites:[],groups:{},key:null,camX:1e9,camZ:1e9,t:0,herds:[]};
+    _an.sites=_anBuildSites();
+    for(const sp of _AN_SP){
+      const mesh=new THREE.InstancedMesh(_anGeometry(sp),new THREE.MeshLambertMaterial({vertexColors:true}),A.max[sp]);
+      mesh.count=0; mesh.frustumCulled=false; mesh.castShadow=sp==='horse'||sp==='cow'||sp==='pig'; mesh.receiveShadow=true;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); mesh.setColorAt(0,_anCol.set(0xffffff)); scene.add(mesh);
+      _an.groups[sp]={mesh,recs:[]};
+    }
+    console.log(`🐄 Animals: ${_an.spots.length} building spots, ${_an.sites.length} sites (${_an.sites.map(s=>s.name+' '+s.recs.length).join(', ')})`);
+    return;
+  }
+  if(_an.srcKey!==srcKey){   // more buildings / yard data arrived: collect again (once things settle)
+    if(_anWaitKey!==srcKey){ _anWaitKey=srcKey; _anWaitT=now; } else if(now-_anWaitT>3000){
+      Object.assign(_an,_anCollect(),{srcKey,recCells:new Map(),sites:_anBuildSites(),key:null});
+    }
+  }
+  const cam=camera.position;
+  _an.t-=dt;
+  if(_an.t<=0&&(_an.key!==_anKey()||Math.abs(cam.x-_an.camX)+Math.abs(cam.z-_an.camZ)>30||_an.t<-3)){ _an.t=0.5; _anRebuild(); }
+  const m=_anM, q=_anQ, p=_anP, sv=_anS, up=_anUp;
+  for(const sp of _AN_SP){
+    const g=_an.groups[sp], recs=g.recs, spd=A.speed[sp], idle=A.idleSeconds[sp];
+    for(let i=0;i<recs.length;i++){
+      const r=recs[i];
+      if(r.st===0){
+        r.tmr-=dt;
+        if(r.tmr<=0){
+          let ok=false;
+          for(let t=0;t<4&&!ok;t++){
+            const a=Math.random()*Math.PI*2, d=Math.sqrt(Math.random())*(r.kind==='s'?25:r.wr), tx=(r.kind==='s'?r.x:r.hx)+Math.cos(a)*d, tz=(r.kind==='s'?r.z:r.hz)+Math.sin(a)*d;
+            if(r.kind==='s'?pointInPolygon(tx,tz,r.site.ring):(r.kind==='t'||!_anBlocked(tx,tz,r.own))){ r.tx=tx; r.tz=tz; ok=true; }
+          }
+          if(ok){ r.st=1; } else r.tmr=1+Math.random()*3;
+        }
+      }else{
+        const dx=r.tx-r.x, dz=r.tz-r.z, dist=Math.hypot(dx,dz), step=spd*dt*(sp==='dog'&&dist>6?2:1);
+        if(dist<=step){ r.x=r.tx; r.z=r.tz; r.st=0; r.tmr=idle[0]+Math.random()*(idle[1]-idle[0]); }
+        else{
+          r.x+=dx/dist*step; r.z+=dz/dist*step; r.gait+=dt*(sp==='chicken'?9:6);
+          let da=Math.atan2(dx,dz)-r.yaw; da=Math.atan2(Math.sin(da),Math.cos(da)); r.yaw+=Math.max(-3*dt,Math.min(3*dt,da));
+        }
+      }
+      if((r.x-r.yx)**2+(r.z-r.yz)**2>0.0625){ r.y=sampleTerrainY(r.x,r.z); r.yx=r.x; r.yz=r.z; }
+      const bob=r.st===1?Math.abs(Math.sin(r.gait))*(sp==='chicken'?0.03:0.04):0;
+      q.setFromAxisAngle(up,r.yaw); p.set(r.x,r.y+bob,r.z); sv.setScalar(r.sc);
+      m.compose(p,q,sv); g.mesh.setMatrixAt(i,m);
+    }
+    g.mesh.instanceMatrix.needsUpdate=true;
+  }
+}
+let _anWaitKey=null,_anWaitT=0;
+const _anM=new THREE.Matrix4(), _anQ=new THREE.Quaternion(), _anP=new THREE.Vector3(), _anS=new THREE.Vector3(), _anUp=new THREE.Vector3(0,1,0);
+// Sound: the herds' loop sources, and moos / whinnies / clucks / barks from animals near the camera
+function animalLoopSources(nm){
+  if(nm!=='cattleHerd'||!_an) return [];
+  return _an.herds.map(h=>({id:h.id,x:h.x,y:sampleTerrainY(h.x,h.z)+1.5,z:h.z,gain:Math.min(1,0.3+h.n/60)}));
+}
+function animalSounds(step){
+  if(!_an) return;
+  const cam=camera.position, G=_an.groups, near=(r,d)=>(r.x-cam.x)**2+(r.z-cam.z)**2<d*d;
+  const pick=(sp,d,pPer,cap,sfx,dy)=>{
+    const l=G[sp].recs.filter(r=>near(r,d)); if(!l.length) return;
+    if(Math.random()<Math.min(cap,l.length*pPer)*step){ const r=l[Math.floor(Math.random()*l.length)]; playSfx(sfx,r.x,r.y+dy,r.z); }
+  };
+  pick('cow',250,0.004,0.1,'cattleMoo',1.2);
+  pick('horse',150,0.003,0.05,'horseWhinny',1.5);
+  pick('dog',120,0.004,0.04,'dogsBarking',0.5);
+  const ch=G.chicken.recs.filter(r=>near(r,50));
+  if(ch.length>=2&&Math.random()<0.05*step){ const r=ch[Math.floor(Math.random()*ch.length)]; playSfx('chickens',r.x,r.y+0.4,r.z); }
+}
+// Debug: window._debugAnimals() — what's out now; window._animalCensus(year) — expected city-wide counts from the rates (a per-capita sanity check)
+window._debugAnimals=()=>_an?{hour:currentViewDate.getHours(),key:_an.key,cam:[Math.round(camera.position.x),Math.round(camera.position.z)],spots:_an.spots.length,cachedCells:_an.recCells.size,active:Object.fromEntries(_AN_SP.map(s=>[s,_an.groups[s].recs.length])),
+  sites:_an.sites.map(s=>({name:s.name,n:s.recs.length,out:_AN_SP.reduce((t,sp)=>t+_an.groups[sp].recs.filter(r=>r.site===s).length,0),area:Math.round(s.area),born:s.born,died:s.died})),herds:_an.herds.length}:null;
+window._debugAnimalsAt=(lon,lat)=>{ const[sx,sy]=project(lon,lat), y=sampleTerrainY(sx,-sy); orbit.target.set(sx,y,-sy); camera.position.set(sx,y+40,-sy+40); orbit.update(); if(_an){ _an.key=null; _an.t=0; } };
+window._animalCensus=(yr)=>{
+  if(!_an) return null; const A=CONFIG.animals, tot={}, people={n:0}; for(const sp of _AN_SP) tot[sp]=0;
+  for(const s of _an.spots){ if(yr<s.born||yr>=s.died) continue;
+    const W=A.classWeights[s.cls]||{}; if(s.cls==='dwelling') people.n+=A.household;
+    for(const sp of _AN_SP) if(W[sp]) tot[sp]+=_anCurve(A.perCapita[sp],yr)*A.household*W[sp];
+    if(s.cls==='stable') tot.horse+=Math.min(A.stable.maxPerBuilding,Math.round(s.area/A.stable.m2PerHorse))*_anCurve(A.stable.occupancy,yr);
+    if(s.cls==='stable'&&_anHouseStable(s)) tot.cow+=_anCurve(A.backyardCow.curve,yr);
+    if(s.cls==='dairy') tot.cow+=Math.min(A.stable.maxPerBuilding,Math.round(s.area/A.stable.m2PerCow))*_anCurve(A.stable.occupancy,yr);
+  }
+  for(const sp of _AN_SP) tot[sp]=Math.round(tot[sp]);
+  return {year:yr,peopleInDwellings:people.n,total:tot,perPerson:Object.fromEntries(_AN_SP.map(sp=>[sp,+(tot[sp]/Math.max(1,people.n)).toFixed(3)]))};
+};
+
 // ── Marshes (data/early_marshes.json: the ellipses Mike drew from the 1881 map) ──────────────────────
 // Wet ground draped over the terrain (4 m cells inside the outline, a hand above the ground), olive-green in summer, drab and
 // snow-tinted in winter, dated like a creek, with mosquito anchors — the cloud thickens over wet ground in wet summers.
@@ -11489,6 +11829,7 @@ function startLoop(){
     _t(()=>{ if(!shantiesBuilt) initShanties(); });
     _t(tickOxbow);
     _t(tickTipis,dt);
+    _t(tickAnimals,dt);
     _t(tickMarshes);
     _t(tickGrounds);
     _t(tickCreekTerrain);
