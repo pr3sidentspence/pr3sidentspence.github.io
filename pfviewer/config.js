@@ -1510,7 +1510,7 @@ export const CONFIG = {
   // ── Trains ────────────────────────────────────────────────────────
   trains: {
     speedMps: { passenger: 9.0, freight: 6.5, switcher: 2.3 },       // stylised, not literal scale
-    dwellSecondsRange: { passenger: [6, 12], freight: [14, 26], switcher: [10, 24] },
+    dwellSecondsRange: { passenger: [40, 60], freight: [45, 75], switcher: [40, 60] },   // must exceed audio.train.startLeadSeconds (34) so the departure sound has time to play before they move
     passengerRouteCount: 12,        // top-N longest segments get passenger service
     freightThroughMinLengthM: 900,  // mainline-scale threshold for through freight
     smokePuffsPerLocomotive: 7,
@@ -1550,6 +1550,7 @@ export const CONFIG = {
   audio: {
     files: {
       locomotive: {
+        enabled: false,       // the old loop has whistles in it; trainRun / trainStart / trainWhistle sfx below do the job now
         path: './sounds/locomotive-loop.mp3',
         maxConcurrent: 4,     // concurrent locomotive loops across all trains
         rangeMetres: 450,     // beyond this distance, a train doesn't get an audio slot
@@ -1574,7 +1575,8 @@ export const CONFIG = {
       streetcarRun:    { path: './sounds/streetcar-run.mp3',    loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 12, rolloffPower: 2, maxDistance: 300 },
       streetcarBell:   { path: './sounds/streetcar-bell.mp3',   gain: 0.7, refDistance: 15, rolloffPower: 1.5, maxDistance: 400, minGap: 2, duck: 0.2 },   // replaces the synth bell if present
       trainRun:        { path: './sounds/train-run.mp3',        loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 1.5, maxDistance: 600 },
-      trainWhistle:    { path: './sounds/train-whistle.mp3',    gain: 1.0, refDistance: 60, rolloffPower: 1.2, maxDistance: 3000, minGap: 10, duck: 0.5 },
+      trainStart:      { path: './sounds/train-start.mp3',      gain: 0.9, refDistance: 40, rolloffPower: 1.5, maxDistance: 900 },   // starts ~34 s before the train moves (train.startLeadSeconds)
+      trainWhistle:    { path: './sounds/train-whistle-2.mp3',  gain: 1.0, refDistance: 60, rolloffPower: 1.2, maxDistance: 3000, minGap: 10, duck: 0.5 },
       steamboatEngine: { path: './sounds/steamboat-engine.mp3', loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 2, maxDistance: 500 },
       steamboatWhistle:{ path: './sounds/steamboat-whistle.mp3',gain: 1.0, refDistance: 80, rolloffPower: 1.2, maxDistance: 3500, minGap: 10, duck: 0.5 },
       launchEngine:    { path: './sounds/launch-engine.mp3',    loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 10, rolloffPower: 2, maxDistance: 300 },
@@ -1704,7 +1706,7 @@ export const CONFIG = {
     vehicleEras: { rows: [[1900, 1927, 'carModelTDrive'], [1928, 1949, 'car1930s40sDrive'], [1950, 2100, 'car1950sDrive']], busFrom: 1950, busShare: 0,
                    hornChance: 0.08 },   // chance an auto honks when it turns at a junction near the camera (carHorn)
     // Trains: idle ↔ running crossfade, whistle at departure/arrival, onboard bed near a moving train
-    train: { fadeSeconds: 2.5, whistleOnDepart: 0.7, whistleOnArrive: 0.5, whistleRandomPerSec: 1 / 240, onboardRadius: 14, onboardFade: 22 },
+    train: { fadeSeconds: 2.5, startLeadSeconds: 34, startRange: 900, whistleOnDepart: 0.3, whistleOnArrive: 0.15, whistleRandomPerSec: 1 / 900, onboardRadius: 14, onboardFade: 22 },
     // Walk-mode footsteps. Surface under the camera: board walks/docks → plank (until the planks go: sidewalks.businessEnd), later sidewalks → stone,
     // roadway or yard → gravel; snow cover and mud override. metresPerStep: stride; the sprint stride is longer.
     footsteps: { metresPerStep: 0.8, sprintMetresPerStep: 1.1, snowAbove: 0.45, mudAbove: 0.4, offRoad: 'footstepsGravel', plankUntilYear: 1920, sidewalkBand: [0.5, 3.2] },

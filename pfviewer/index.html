@@ -7206,6 +7206,7 @@ const trainAudioSlots=[];       // {panner,gain,source,train}
 const TRAIN_AUDIO_GAIN=CONFIG.audio.files.locomotive.gainByKind;
 
 async function loadTrainAudio(){
+  if(CONFIG.audio.files.locomotive.enabled===false) return;   // locomotive-loop.mp3 has whistles baked in — off; trainRun/trainStart/trainWhistle sfx hooks replace it
   try{
     const res=await fetch(CONFIG.audio.files.locomotive.path);
     if(!res.ok){console.warn('🚂 locomotive-loop.mp3 not found in ./sounds/ — train audio disabled');return;}
@@ -9796,6 +9797,9 @@ function tickSoundHooks(dt){
     t._sv=(t._sv??tgt)+(tgt-(t._sv??tgt))*Math.min(1,step/(TR.fadeSeconds??2.5));
     if(t._wasMoving!==undefined&&t._wasMoving!==!!t.moving&&near(x,z,2500)&&Math.random()<(t.moving?TR.whistleOnDepart:TR.whistleOnArrive)) playSfx('trainWhistle',x,y+4,z);
     t._wasMoving=!!t.moving;
+    if(!t.moving&&t.pauseTimer>0){   // about to pull out: the departure sound starts TR.startLeadSeconds before the train moves
+      if(!t._startPlayed&&t.pauseTimer<=(TR.startLeadSeconds??34)){ t._startPlayed=true; if(near(x,z,TR.startRange??900)) playSfx('trainStart',x,y+2,z); }
+    }else t._startPlayed=false;
     const sv=t._sv, id=t;
     trRun.push({id,x,y,z,gain:sv}); trRails.push({id,x,y,z,gain:sv}); trIdle.push({id,x,y,z,gain:1-sv});
     if(rnd(TR.whistleRandomPerSec??1/240)&&near(x,z,2000)) playSfx('trainWhistle',x,y+4,z);
