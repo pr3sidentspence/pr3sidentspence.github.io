@@ -11177,7 +11177,8 @@ function _dfGeometry(){
 }
 function _dfCollect(){
   const D=CONFIG.storms.snowpack.drifts, C=D.cellM, cells=new Map(), seen=new Set(), maxYr=CONFIG.timeline.maxYear+1;
-  let n=0;
+  // pass 1: every footprint (world ring, bbox, dates, height) in a grid — edges that run through another building are not outside walls
+  const feats=[], fg=new Map(), FC=30;
   for(const gj of _anFeatureSources()) for(const f of gj.features){
     const p=f.properties, gt=f.geometry?.type; if(!p||(gt!=='Polygon'&&gt!=='MultiPolygon')) continue;
     if(p.type==='walkway'||p.type==='fence'||p.type==='bridge'||p.type==='lumber'||(p.floors!=null&&p.floors<0.5)) continue;
@@ -11186,13 +11187,28 @@ function _dfCollect(){
     const died=_isoYearFrac(p.died,NO_DIED), bh=Math.max(p.floors??1.5,1)*FLOOR_H;
     for(const rings of gt==='MultiPolygon'?f.geometry.coordinates:[f.geometry.coordinates]){
       if(!rings[0]||rings[0].length<4) continue;
-      for(const e of wallEdgesOf(rings[0])){
-        if(e.len<D.minEdgeM||e.nx*0.30+e.nz*0.954<D.leeDot) continue;
-        const mx=(e.ax+e.bx)/2, mz=(e.az+e.bz)/2;
-        if(hasNeighbourAlongNormal(mx,mz,e.nx,e.nz,2.5,Math.min(3,e.len/2))) continue;
-        const k=Math.floor(mx/C)+','+Math.floor(mz/C); let l=cells.get(k); if(!l) cells.set(k,l=[]);
-        l.push({mx,mz,nx:e.nx,nz:e.nz,len:e.len,bh,born:Math.max(1800,born),died}); n++;
-      }
+      const ringW=rings[0].slice(0,-1).map(q=>{const[sx,sy]=project(q[0],q[1]);return{x:sx,z:-sy};});
+      let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; for(const q of ringW){x0=Math.min(x0,q.x);x1=Math.max(x1,q.x);z0=Math.min(z0,q.z);z1=Math.max(z1,q.z);}
+      const ft={ringW,x0,x1,z0,z1,born:Math.max(1800,born),died,bh,src:rings[0]};
+      feats.push(ft);
+      for(let i=Math.floor(x0/FC);i<=Math.floor(x1/FC);i++) for(let j=Math.floor(z0/FC);j<=Math.floor(z1/FC);j++){ const k=i+','+j; let l=fg.get(k); if(!l) fg.set(k,l=[]); l.push(ft); }
+    }
+  }
+  const insideOther=(ft,x,z)=>{ for(const o of fg.get(Math.floor(x/FC)+','+Math.floor(z/FC))||[]){
+    if(o===ft||o.ringW===ft.ringW||o.born>=ft.died||o.died<=ft.born||x<o.x0||x>o.x1||z<o.z0||z>o.z1) continue;
+    if(pointInPolygon(x,z,o.ringW)) return true; } return false; };
+  let n=0;
+  for(const ft of feats){
+    for(const e of wallEdgesOf(ft.src)){
+      if(e.len<D.minEdgeM||e.nx*0.30+e.nz*0.954<D.leeDot) continue;
+      const mx=(e.ax+e.bx)/2, mz=(e.az+e.bz)/2;
+      if(hasNeighbourAlongNormal(mx,mz,e.nx,e.nz,2.5,Math.min(3,e.len/2))) continue;
+      let buried=false; for(const t of[0.2,0.5,0.8]){ const x=e.ax+(e.bx-e.ax)*t+e.nx*1.2, z=e.az+(e.bz-e.az)*t+e.nz*1.2; if(insideOther(ft,x,z)){ buried=true; break; } }
+      if(buried) continue;
+      let reach=D.maxDepthM; for(let r=1.2;r<=D.maxDepthM+0.01;r+=0.6) if(insideOther(ft,mx+e.nx*r,mz+e.nz*r)){ reach=r-0.6; break; }   // a building in front stops the ramp short
+      if(reach<1.2) continue;
+      const k=Math.floor(mx/C)+','+Math.floor(mz/C); let l=cells.get(k); if(!l) cells.set(k,l=[]);
+      l.push({mx,mz,nx:e.nx,nz:e.nz,len:e.len,bh:ft.bh,reach,ringW:ft.ringW,born:ft.born,died:ft.died}); n++;
     }
   }
   return {cells,n};
@@ -11225,12 +11241,23 @@ function tickDrifts(dt){
   list.forEach(({e,H},i)=>{
     q.setFromAxisAngle(up,Math.atan2(e.nx,e.nz));
     p.set(e.mx+e.nx*0.08,sampleTerrainY(e.mx,e.mz)-0.05,e.mz+e.nz*0.08);
-    sv.set(e.len*1.12,H,Math.min(D.maxDepthM,H*D.depthRatio));
+    sv.set(e.len*1.12,H,Math.min(e.reach,H*D.depthRatio));
     m.compose(p,q,sv); _df.mesh.setMatrixAt(i,m);
   });
-  _df.mesh.count=list.length; _df.mesh.instanceMatrix.needsUpdate=true;
+  _df.shownList=list; _df.mesh.count=list.length; _df.mesh.instanceMatrix.needsUpdate=true;
 }
-window._debugDrifts=()=>_df?{edges:_df.n,shown:_df.mesh?.count,drift:season.drift}:null;
+window._debugDriftNormals=()=>{ const n=_df.mesh.geometry.attributes.normal, p=_df.mesh.geometry.attributes.position; const k=Math.floor(p.count/2); return {ny:+n.getY(k).toFixed(2),nz:+n.getZ(k).toFixed(2),y:+p.getY(k).toFixed(2)}; };
+window._debugDriftMat=()=>{ const o=[]; const m=new THREE.Matrix4(); for(let i=0;i<3;i++){ const l=_df.shownList[i], e=l.e; _df.mesh.getMatrixAt(i,m); const a=new THREE.Vector3(0,0,0).applyMatrix4(m), b=new THREE.Vector3(0,0,1).applyMatrix4(m), t=new THREE.Vector3(0,1,0).applyMatrix4(m);
+  o.push({wall:[+e.mx.toFixed(1),+e.mz.toFixed(1)],n:[+e.nx.toFixed(2),+e.nz.toFixed(2)],base:[+a.x.toFixed(1),+a.z.toFixed(1)],far:[+b.x.toFixed(1),+b.z.toFixed(1)],topY:+(t.y-a.y).toFixed(2)}); } return o; };
+window._debugDriftRay=()=>{ const out=[]; const rc=new THREE.Raycaster(); const metas=[];
+  for(const lg of layerGroups) lg.group.traverse(o=>{ if(o.isMesh) metas.push(o); });
+  for(const l of (_df?.shownList||[]).slice(0,8)){ const e=l.e, y=sampleTerrainY(e.mx,e.mz)+1.5;
+    rc.set(new THREE.Vector3(e.mx+e.nx*2,y,e.mz+e.nz*2),new THREE.Vector3(-e.nx,0,-e.nz)); rc.far=30;
+    let hit=null; for(const m of metas){ try{ const h=rc.intersectObject(m,false)[0]; if(h&&(!hit||h.distance<hit.distance)) hit=h; }catch(_){} } out.push({d:hit?+hit.distance.toFixed(2):null,n:hit?.face?[+hit.face.normal.x.toFixed(2),+hit.face.normal.z.toFixed(2)]:null,en:[+e.nx.toFixed(2),+e.nz.toFixed(2)],H:+l.H.toFixed(1)}); }
+  return out; };
+window._debugDrifts=()=>{ if(!_df) return null; const out={edges:_df.n,shown:_df.mesh?.count,drift:season.drift,inside:0,outside:0,sample:null};
+  for(const l of _df.shownList||[]){ const e=l.e, o=pointInPolygon(e.mx+e.nx*1.0,e.mz+e.nz*1.0,e.ringW), i=pointInPolygon(e.mx-e.nx*1.0,e.mz-e.nz*1.0,e.ringW); if(o) out.inside++; else out.outside++; if(!out.sample) out.sample={mx:e.mx,mz:e.mz,nx:e.nx,nz:e.nz,outPtInside:o,inPtInside:i}; }
+  return out; };
 
 // ── Domestic animals (CONFIG.animals) ───────────────────────────────────────────────────────────────
 // Horses, cows, pigs, dogs, cats, chickens — see the config block for the model. Households/stables/shops come from the building
