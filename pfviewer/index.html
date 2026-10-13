@@ -9798,10 +9798,11 @@ function tickSoundHooks(dt){
     if(t._wasMoving!==undefined&&t._wasMoving!==!!t.moving&&near(x,z,2500)&&Math.random()<(t.moving?TR.whistleOnDepart:TR.whistleOnArrive)) playSfx('trainWhistle',x,y+4,z);
     t._wasMoving=!!t.moving;
     if(!t.moving&&t.pauseTimer>0){   // about to pull out: the departure sound starts TR.startLeadSeconds before the train moves
-      if(!t._startPlayed&&t.pauseTimer<=(TR.startLeadSeconds??34)){ t._startPlayed=true; if(near(x,z,TR.startRange??900)) playSfx('trainStart',x,y+2,z); }
+      if(!t._startPlayed&&t.pauseTimer<=(TR.startLeadSeconds??34)){ t._startPlayed=true; if(near(x,z,TR.startRange??900)){ playSfx('trainStart',x,y+2,z); t._startEnd=performance.now()*0.001+(_sfxVar.trainStart?.[0]?.duration??45); } }
     }else t._startPlayed=false;
     const sv=t._sv, id=t;
-    trRun.push({id,x,y,z,gain:sv}); trRails.push({id,x,y,z,gain:sv}); trIdle.push({id,x,y,z,gain:1-sv});
+    const rw=t._startEnd?Math.max(0,Math.min(1,(performance.now()*0.001-(t._startEnd-(TR.startFadeSeconds??4)))/(TR.startFadeSeconds??4))):1;   // the start sound plays on past departure; train-run fades in as it ends
+    trRun.push({id,x,y,z,gain:sv*rw}); trRails.push({id,x,y,z,gain:sv}); trIdle.push({id,x,y,z,gain:1-sv});
     if(rnd(TR.whistleRandomPerSec??1/240)&&near(x,z,2000)) playSfx('trainWhistle',x,y+4,z);
     if(sv>0.15){   // onboard: the camera is on or beside the train
       let d=Math.hypot(x-cam.x,y-cam.y,z-cam.z);

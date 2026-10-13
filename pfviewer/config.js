@@ -1706,7 +1706,7 @@ export const CONFIG = {
     vehicleEras: { rows: [[1900, 1927, 'carModelTDrive'], [1928, 1949, 'car1930s40sDrive'], [1950, 2100, 'car1950sDrive']], busFrom: 1950, busShare: 0,
                    hornChance: 0.08 },   // chance an auto honks when it turns at a junction near the camera (carHorn)
     // Trains: idle ↔ running crossfade, whistle at departure/arrival, onboard bed near a moving train
-    train: { fadeSeconds: 2.5, startLeadSeconds: 34, startRange: 900, whistleOnDepart: 0.3, whistleOnArrive: 0.15, whistleRandomPerSec: 1 / 900, onboardRadius: 14, onboardFade: 22 },
+    train: { fadeSeconds: 2.5, startLeadSeconds: 34, startFadeSeconds: 4, startRange: 900, whistleOnDepart: 0.3, whistleOnArrive: 0.15, whistleRandomPerSec: 1 / 900, onboardRadius: 14, onboardFade: 22 },
     // Walk-mode footsteps. Surface under the camera: board walks/docks → plank (until the planks go: sidewalks.businessEnd), later sidewalks → stone,
     // roadway or yard → gravel; snow cover and mud override. metresPerStep: stride; the sprint stride is longer.
     footsteps: { metresPerStep: 0.8, sprintMetresPerStep: 1.1, snowAbove: 0.45, mudAbove: 0.4, offRoad: 'footstepsGravel', plankUntilYear: 1920, sidewalkBand: [0.5, 3.2] },
