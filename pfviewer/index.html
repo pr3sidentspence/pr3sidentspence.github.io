@@ -2393,7 +2393,8 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
   const ridgeH=ridgeHOverride??FLOOR_H*0.64;
   function ridgePt(x,z){const t=Math.max(rMin,Math.min(rMax,(x-cx)*ax+(z-cz)*az));return{x:cx+ax*t,y:roofBaseY+ridgeH,z:cz+az*t};}
   const pos=[], gab=[];   // gab: the gable-end triangles — they are WALL (see pushRoofGables), wound to face outward
-  const tri=(a,b,c)=>pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  // roof slopes always face up: concave outlines put some edge triangles on the far side of the ridge, where the ring's winding would point them down
+  const tri=(a,b,c)=>{ const ny=(b.z-a.z)*(c.x-a.x)-(b.x-a.x)*(c.z-a.z); if(ny<0) pos.push(a.x,a.y,a.z,c.x,c.y,c.z,b.x,b.y,b.z); else pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z); };
   for(let i=0;i<n;i++){
     const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n];
     const v1={x:x1,y:roofBaseY,z:z1},v2={x:x2,y:roofBaseY,z:z2};
@@ -2416,7 +2417,7 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
 // give each piece its own ridge along its long side. The intersecting
 // roofs read as cross-gabled wings. Ridge height ≈ pitch × half the
 // piece's short side (clamped), or roof_height.
-function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null){
+function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null,steep=false){
   // tidy: drop near-duplicate and near-collinear points
   let ring=ringIn.filter((p,i)=>{const q=ringIn[(i+1)%ringIn.length];return Math.hypot(p[0]-q[0],p[1]-q[1])>0.4;});
   for(let pass=0;pass<2;pass++) ring=ring.filter((p,i)=>{const a=ring[(i-1+ring.length)%ring.length],b=ring[(i+1)%ring.length];
@@ -2454,7 +2455,7 @@ function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null){
       const ux=(x2-x1)/L,uz=(z2-z1)/L; let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
       for(const[x,z]of pr){const u=x*ux+z*uz,v=-x*uz+z*ux;a0=Math.min(a0,u);a1=Math.max(a1,u);b0=Math.min(b0,v);b1=Math.max(b1,v);}
       if((a1-a0)*(b1-b0)<best){best=(a1-a0)*(b1-b0);short=Math.min(a1-a0,b1-b0);}}
-    const rh=ridgeHOverride??Math.max(1.2,Math.min(CONFIG.building.wingRoof?.maxRidgeM??9,short*0.5*pitch));
+    const rh=steep&&ridgeHOverride!=null?Math.max(1.2,Math.min(ridgeHOverride,short*0.5)):ridgeHOverride??Math.max(1.2,Math.min(CONFIG.building.wingRoof?.maxRidgeM??9,short*0.5*pitch));
     const g=buildRoofGeometry(pr,roofBaseY,rh); if(g) geos.push(g);
   }
   if(!geos.length) return null;
@@ -3839,8 +3840,8 @@ async function buildCity(geojson){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         // Complex outlines (> 14 points, or roof_type 'wings'): a roof per wing; simple ones: one ridge
-        const rg=(roofTypeOverride==='wings'||outer.length>14)&&roofTypeOverride!=='mansard'
-          ?buildWingRoof(ring,height+0.05,props.roof_height??null)
+        const rg=(roofTypeOverride==='wings'||outer.length>14)
+          ?buildWingRoof(ring,height+0.05,props.roof_height??null,roofTypeOverride==='mansard')   // a complex mansard (château hotel) gets a steep roof per wing, not one ridge across the courtyard
           :buildRoofGeometry(ring,height+0.05,props.roof_height??null);
         if(rg){ rg.translate(0,buildingBaseY,0); wallCums[mat][wallCums[mat].length-1]+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY); rg.computeBoundingBox(); _roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));
           if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }   // e.g. copper
