@@ -2411,13 +2411,27 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null){
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.computeVertexNormals(); if(gab.length) geom.userData.gable=gab; return geom;
 }
+// True mansard: steep slopes from the eaves up to an inset ring, then a flat deck. Works on any outline (courtyards, wings) because it follows
+// the footprint instead of finding a ridge. Slopes and deck always face up. Used by roof_type 'mansard' on complex outlines (Fort Garry Hotel).
+function buildMansardRoof(ring,roofBaseY,H,insetM){
+  const n=ring.length; if(n<3) return null;
+  let A=0; for(let i=0;i<n;i++){const a=ring[i],b=ring[(i+1)%n];A+=a[0]*b[1]-b[0]*a[1];}
+  const d=Math.min(insetM,0.3*Math.sqrt(Math.abs(A)/2)), top=insetRing(ring,d), y1=roofBaseY+H, pos=[];
+  const tri=(a,b,c)=>{ const ny=(b[2]-a[2])*(c[0]-a[0])-(b[0]-a[0])*(c[2]-a[2]); if(ny<0) pos.push(...a,...c,...b); else pos.push(...a,...b,...c); };
+  for(let i=0;i<n;i++){ const j=(i+1)%n;
+    const a=[ring[i][0],roofBaseY,ring[i][1]], b=[ring[j][0],roofBaseY,ring[j][1]], c=[top[i][0],y1,top[i][1]], e=[top[j][0],y1,top[j][1]];
+    tri(a,b,e); tri(a,e,c); }
+  const deck=THREE.ShapeUtils.triangulateShape(top.map(([x,z])=>new THREE.Vector2(x,z)),[]);
+  for(const t of deck){ const [a,b,c]=t.map(k=>[top[k][0],y1,top[k][1]]); tri(a,b,c); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.computeVertexNormals(); return g;
+}
 // Complex outlines (wings, courtyards-less complexes, ragged digitizing):
 // split the footprint into convex pieces — triangulate, then merge
 // neighbouring pieces while the union stays convex (Hertel–Mehlhorn) — and
 // give each piece its own ridge along its long side. The intersecting
 // roofs read as cross-gabled wings. Ridge height ≈ pitch × half the
 // piece's short side (clamped), or roof_height.
-function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null,steep=false){
+function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null){
   // tidy: drop near-duplicate and near-collinear points
   let ring=ringIn.filter((p,i)=>{const q=ringIn[(i+1)%ringIn.length];return Math.hypot(p[0]-q[0],p[1]-q[1])>0.4;});
   for(let pass=0;pass<2;pass++) ring=ring.filter((p,i)=>{const a=ring[(i-1+ring.length)%ring.length],b=ring[(i+1)%ring.length];
@@ -2455,7 +2469,7 @@ function buildWingRoof(ringIn,roofBaseY,ridgeHOverride=null,steep=false){
       const ux=(x2-x1)/L,uz=(z2-z1)/L; let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
       for(const[x,z]of pr){const u=x*ux+z*uz,v=-x*uz+z*ux;a0=Math.min(a0,u);a1=Math.max(a1,u);b0=Math.min(b0,v);b1=Math.max(b1,v);}
       if((a1-a0)*(b1-b0)<best){best=(a1-a0)*(b1-b0);short=Math.min(a1-a0,b1-b0);}}
-    const rh=steep&&ridgeHOverride!=null?Math.max(1.2,Math.min(ridgeHOverride,short*0.5)):ridgeHOverride??Math.max(1.2,Math.min(CONFIG.building.wingRoof?.maxRidgeM??9,short*0.5*pitch));
+    const rh=ridgeHOverride??Math.max(1.2,Math.min(CONFIG.building.wingRoof?.maxRidgeM??9,short*0.5*pitch));
     const g=buildRoofGeometry(pr,roofBaseY,rh); if(g) geos.push(g);
   }
   if(!geos.length) return null;
@@ -3840,8 +3854,10 @@ async function buildCity(geojson){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         // Complex outlines (> 14 points, or roof_type 'wings'): a roof per wing; simple ones: one ridge
-        const rg=(roofTypeOverride==='wings'||outer.length>14)
-          ?buildWingRoof(ring,height+0.05,props.roof_height??null,roofTypeOverride==='mansard')   // a complex mansard (château hotel) gets a steep roof per wing, not one ridge across the courtyard
+        const rg=roofTypeOverride==='mansard'&&outer.length>14
+          ?buildMansardRoof(ring,height+0.05,props.roof_height??FLOOR_H*2,(props.roof_height??FLOOR_H*2)*0.45)   // complex mansard (château hotel): follows the footprint
+          :(roofTypeOverride==='wings'||outer.length>14)
+          ?buildWingRoof(ring,height+0.05,props.roof_height??null)
           :buildRoofGeometry(ring,height+0.05,props.roof_height??null);
         if(rg){ rg.translate(0,buildingBaseY,0); wallCums[mat][wallCums[mat].length-1]+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY); rg.computeBoundingBox(); _roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));
           if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }   // e.g. copper
