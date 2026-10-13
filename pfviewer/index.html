@@ -9893,7 +9893,8 @@ function tickSoundHooks(dt){
     const list=_siteNear[kind]; if(!list) continue;
     for(const L of K.loops||[]){ const nm=L.name??L, arr=loopSrc[nm]??(loopSrc[nm]=[]); for(const s of list) arr.push({id:s,x:s.x,y:s.y+2,z:s.z,gate:L.gate}); }
     for(const s of list) for(const nm of s.loops||[]) (loopSrc[nm]??(loopSrc[nm]=[])).push({id:s,x:s.x,y:s.y+6,z:s.z});
-    for(const[h,p]of Object.entries(K.random||{})) if(rnd(p)){
+    for(const[h,p0]of Object.entries(K.random||{})){ const fade=K.yearFade?.[h], p=fade?p0*_anCurve(fade,W.year):p0; if(!rnd(p)) continue;   // yearFade: share of the rate left by year (stables emptied as cars took over)
+
       const R2=(S[h]?.maxDistance??150)**2, c=list.filter(s=>s.d2<R2).slice(0,3);
       if(c.length){ const s=c[Math.floor(Math.random()*c.length)]; playSfx(h,s.x,s.y+1.5,s.z); }
     }

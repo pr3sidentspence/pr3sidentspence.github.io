@@ -1730,7 +1730,8 @@ export const CONFIG = {
       church:     { match: 'church|cathedral|chapel|presbyterian|methodist|baptist|anglican|parish|synagogue|temple', random: { churchBell: 0.03 } },
       school:     { match: 'school|college|academy|collegiate|university', loops: [{ name: 'kidsPlaying', gate: { dow: [1, 5], hour: [[10.25, 10.5], [12, 13], [15.25, 16]] } }],
                     at: { schoolBell: [8.75, 10.25, 10.5, 12, 13, 15.25] } },
-      livery:     { match: 'livery|stable|\\bbarn\\b|feed|horse', random: { horseWhinny: 0.012, dogsBarking: 0.01 } },   // horses only; moos come from the cows themselves (animals.backyardCow), not from the building
+      livery:     { match: 'livery|stable|\\bbarn\\b|feed|horse', random: { horseWhinny: 0.012, dogsBarking: 0.01 },
+                  yearFade: { horseWhinny: [[1850, 1], [1915, 1], [1925, 0.6], [1935, 0.25], [1945, 0.08], [1955, 0.02], [1960, 0]] } },   // horses only, and they fade out as stables became shops and garages; moos come from the cows themselves (animals.backyardCow), not from the building
       farm:       { match: 'farm|ranch|dairy', loops: ['cattleHerd'], random: { cattleMoo: 0.03, chickens: 0.05, dogsBarking: 0.02, wellPump: 0.02, gateCreak: 0.01, horseWhinny: 0.01, roosterCrow: 0.01 } },
       home:       { match: null, homeArea: [30, 300], homeMaxFloors: 3, loops: ['cookingSizzle', 'cookingBoil', 'sewingMachine', 'loomWeaving', 'spinningWheel', 'rainRoofDrip'],
                     random: { cookingChop: 0.1 } },
