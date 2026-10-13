@@ -1347,6 +1347,13 @@ export const CONFIG = {
       driftMaxM: 3.6,          // drift height at the worst (a first floor); houses are buried up to their eaves, taller buildings to the first floor
       driftHalfDays: 7,        // the dug-out share of a drift goes with this half-life
       driftPersist: 0.35,      // share of a drift that stays until the spring melt
+      drifts: {                // the ramps of snow against the lee walls (geometry, near the camera)
+        color: 0xEEF2F7, radius: 240, max: 700, cellM: 60,
+        minDriftM: 0.35,       // no ramps below this drift height
+        minHeightM: 0.4, minEdgeM: 2.5,
+        leeDot: 0.5,           // wall normal . lee direction (SSE) needed
+        depthRatio: 2.3, maxDepthM: 6,   // ramp length out from the wall = height x ratio, capped
+      },
     },          // a blizzard leaves snow cover this long (melting) even out of season
     roadWet: { darken: 0.45, drySeconds: 25 },   // thunderstorm rain darkens the roads by this much; they dry over ~drySeconds after
     fadeSeconds: 0.1,          // time constant of the storm fade in/out (~3× this to settle)
@@ -1771,6 +1778,7 @@ export const CONFIG = {
     seasons:  { floeCount: 450 },
     streetLights: { spacing: 70, radius: 1800 },
     trains:   { maxCars: 25 },
+    storms:   { snowpack: { drifts: { radius: 150, max: 300 } } },
     animals:  { radius: { horse: 200, cow: 260, pig: 160, dog: 140, cat: 90, chicken: 80 }, max: { horse: 90, cow: 90, pig: 40, dog: 60, cat: 60, chicken: 140 } },
     autos:    { max: 50, scale: 0.4 },
   },

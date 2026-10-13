@@ -11160,6 +11160,78 @@ function tickTipis(dt){
 }
 window._debugTipis=()=>tipis?{n:tipis.list.length,visible:tipis.list.filter(t=>{const yr=yearFrac(currentViewDate),d=season.doy;return yr<t.endYr&&(t.yearRound||(d>t.tin+2&&d<t.tout-2));}).length}:null;
 
+// ── Blizzard drifts as geometry (CONFIG.storms.snowpack.drifts) ──────────────────────────────────────
+// When the snowpack model reports a drift (season.drift, metres), every lee-facing wall (south / south-east) near the camera gets a snow ramp:
+// a lumpy wedge rising to the drift height at the wall and sloping out to the ground, tapering at the corners. One InstancedMesh, rebuilt
+// every ~0.5 s when the camera moves, the date moves or the drift changes. Walls that abut a neighbour get none. The wall shader's white
+// band (snowTop in the lifespan shader) meets the ramp's top edge. Houses: ramps up to their eaves; taller buildings: the first floor.
+let _df=null;
+function _dfGeometry(){
+  const NU=14, NV=7, pos=[], idx=[];
+  for(let j=0;j<=NV;j++) for(let i=0;i<=NU;i++){
+    const u=i/NU, v=j/NV, env=Math.pow(Math.sin(Math.PI*u),0.55), lump=0.88+0.12*Math.sin(u*19+v*4.1)+0.06*Math.sin(u*41-v*7);
+    pos.push((u-0.5), Math.max(0,env*Math.pow(1-v,1.7)*lump), v);
+  }
+  for(let j=0;j<NV;j++) for(let i=0;i<NU;i++){ const a=j*(NU+1)+i, b=a+1, c=a+NU+1, d=c+1; idx.push(a,c,b, b,c,d); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+function _dfCollect(){
+  const D=CONFIG.storms.snowpack.drifts, C=D.cellM, cells=new Map(), seen=new Set(), maxYr=CONFIG.timeline.maxYear+1;
+  let n=0;
+  for(const gj of _anFeatureSources()) for(const f of gj.features){
+    const p=f.properties, gt=f.geometry?.type; if(!p||(gt!=='Polygon'&&gt!=='MultiPolygon')) continue;
+    if(p.type==='walkway'||p.type==='fence'||p.type==='bridge'||p.type==='lumber'||(p.floors!=null&&p.floors<0.5)) continue;
+    const born=_isoYearFrac(p.born,NO_BORN); if(born>maxYr) continue;
+    const uid=p.uid??p.pf_uid; if(uid){ if(seen.has(uid)) continue; seen.add(uid); }
+    const died=_isoYearFrac(p.died,NO_DIED), bh=Math.max(p.floors??1.5,1)*FLOOR_H;
+    for(const rings of gt==='MultiPolygon'?f.geometry.coordinates:[f.geometry.coordinates]){
+      if(!rings[0]||rings[0].length<4) continue;
+      for(const e of wallEdgesOf(rings[0])){
+        if(e.len<D.minEdgeM||e.nx*0.30+e.nz*0.954<D.leeDot) continue;
+        const mx=(e.ax+e.bx)/2, mz=(e.az+e.bz)/2;
+        if(hasNeighbourAlongNormal(mx,mz,e.nx,e.nz,2.5,Math.min(3,e.len/2))) continue;
+        const k=Math.floor(mx/C)+','+Math.floor(mz/C); let l=cells.get(k); if(!l) cells.set(k,l=[]);
+        l.push({mx,mz,nx:e.nx,nz:e.nz,len:e.len,bh,born:Math.max(1800,born),died}); n++;
+      }
+    }
+  }
+  return {cells,n};
+}
+function tickDrifts(dt){
+  const P=CONFIG.storms?.snowpack, D=P?.drifts; if(!D||OFF.has('drifts')||!_demLoaded||!layerGroups.length) return;
+  const drift=season.drift||0;
+  if(drift<D.minDriftM){ if(_df?.mesh&&_df.mesh.count) _df.mesh.count=0; return; }
+  const now=performance.now(), srcKey=layerGroups.length+'|'+deferredChunks.length;
+  if(!_df){
+    _df={cells:new Map(),n:0,srcKey:null,key:null,camX:1e9,camZ:1e9,t:0,mesh:null};
+    const mesh=new THREE.InstancedMesh(_dfGeometry(),new THREE.MeshLambertMaterial({color:D.color}),D.max);
+    mesh.count=0; mesh.frustumCulled=false; mesh.receiveShadow=true; mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); scene.add(mesh); _df.mesh=mesh;
+  }
+  if(_df.srcKey!==srcKey){ if(_df.srcKey===null||now-(_df.waitT||0)>3000){ Object.assign(_df,_dfCollect(),{srcKey,waitT:now,key:null}); } else return; }
+  const cam=camera.position, key=Math.round(drift*10)+'|'+Math.floor(yearFrac(currentViewDate)*52);
+  _df.t-=dt;
+  if(_df.t>0||(_df.key===key&&Math.abs(cam.x-_df.camX)+Math.abs(cam.z-_df.camZ)<25)) return;
+  _df.t=0.5; _df.key=key; _df.camX=cam.x; _df.camZ=cam.z;
+  const yr=yearFrac(currentViewDate), C=D.cellM, R=D.radius, list=[];
+  for(let i=Math.floor((cam.x-R)/C);i<=Math.floor((cam.x+R)/C);i++) for(let j=Math.floor((cam.z-R)/C);j<=Math.floor((cam.z+R)/C);j++)
+    for(const e of _df.cells.get(i+','+j)||[]){
+      if(yr<e.born||yr>=e.died) continue;
+      const d2=(e.mx-cam.x)**2+(e.mz-cam.z)**2; if(d2>R*R) continue;
+      const H=Math.min(drift,e.bh<9?e.bh*0.85:FLOOR_H)*0.92; if(H<D.minHeightM) continue;
+      list.push({e,H,d2});
+    }
+  if(list.length>D.max){ list.sort((a,b)=>a.d2-b.d2); list.length=D.max; }
+  const m=_anM, q=_anQ, p=_anP, sv=_anS, up=_anUp;
+  list.forEach(({e,H},i)=>{
+    q.setFromAxisAngle(up,Math.atan2(e.nx,e.nz));
+    p.set(e.mx+e.nx*0.08,sampleTerrainY(e.mx,e.mz)-0.05,e.mz+e.nz*0.08);
+    sv.set(e.len*1.12,H,Math.min(D.maxDepthM,H*D.depthRatio));
+    m.compose(p,q,sv); _df.mesh.setMatrixAt(i,m);
+  });
+  _df.mesh.count=list.length; _df.mesh.instanceMatrix.needsUpdate=true;
+}
+window._debugDrifts=()=>_df?{edges:_df.n,shown:_df.mesh?.count,drift:season.drift}:null;
+
 // ── Domestic animals (CONFIG.animals) ───────────────────────────────────────────────────────────────
 // Horses, cows, pigs, dogs, cats, chickens — see the config block for the model. Households/stables/shops come from the building
 // footprints (cells of CONFIG.animals.cellM, generated on demand and cached); sites (the log pen, stock yards, abattoir) from a fence
@@ -11869,6 +11941,7 @@ function startLoop(){
     _t(tickOxbow);
     _t(tickTipis,dt);
     _t(tickAnimals,dt);
+    _t(tickDrifts,dt);
     _t(tickMarshes);
     _t(tickGrounds);
     _t(tickCreekTerrain);
@@ -12188,6 +12261,7 @@ function snowpackAt(d, seasonalSnow){
   }
   return {depth:Math.min(P.maxDepthM,(seasonalSnow||0)*P.baseDepthM+storm),storm:Math.min(P.maxDepthM,storm),drift:Math.min(P.driftMaxM,drift)};
 }
+window._debugSnowWalls=()=>({depth:snowWallUniforms.uSnowDepth.value,drift:snowWallUniforms.uDriftH.value,progs:renderer.info.programs.filter(p=>/n[12]/.test(p.cacheKey)).map(p=>p.cacheKey+(p.diagnostics?.runnable===false?' FAILED':''))});
 window._debugSnow=iso=>{ const d=parseLocalISODate(iso), S=seasonState(d); return {snow:+S.snow.toFixed(2),depth:+S.depth.toFixed(2),drift:+S.drift.toFixed(2)}; };
 function stormSnowCover(d){
   const t=d.getTime(), keep=(CONFIG.storms?.snowAfterDays??5)*DAY_MS;
