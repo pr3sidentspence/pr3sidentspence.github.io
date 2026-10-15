@@ -6695,7 +6695,7 @@ function applyDateFromURL(){
 // builds the matching query string, so "frame a shot, hit C, paste the
 // link" round-trips exactly.
 let _copyCameraToastTimer=null;
-function copyCameraToClipboard(){
+function copyCameraToClipboard(){   // (also the 🔗 button in the card overlay bar)
   const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
   const azDeg=((Math.atan2(fwd.x,-fwd.z)*180/Math.PI)+360)%360;
   const elevDeg=Math.asin(Math.max(-1,Math.min(1,fwd.y)))*180/Math.PI;
@@ -6705,8 +6705,10 @@ function copyCameraToClipboard(){
   const year=currentViewDate.getFullYear(), month=currentViewDate.getMonth()+1, day=currentViewDate.getDate();
   const{hours,minutes}=todFractionToHM(currentTodFraction);
 
-  const qs=`lon=${lon.toFixed(6)}&lat=${lat.toFixed(6)}&az=${azDeg.toFixed(1)}&elev=${elevDeg.toFixed(1)}&alt=${alt.toFixed(1)}`
+  let qs=`lon=${lon.toFixed(6)}&lat=${lat.toFixed(6)}&az=${azDeg.toFixed(2)}&elev=${elevDeg.toFixed(2)}&alt=${alt.toFixed(1)}`
          +`&year=${year}&month=${month}&day=${day}&hours=${hours}&minutes=${minutes}`;
+  // card overlay open: add the card, its opacity, the FoV and any lens shift, so the link rebuilds the same matching view
+  if(typeof pcLinkParams==='function'){ const cp=pcLinkParams(); if(cp) qs+='&'+cp; }
   const url=`${location.origin}${location.pathname}?${qs}`;
   console.log('📷 Camera link:',url);
 
@@ -6718,9 +6720,9 @@ function copyCameraToClipboard(){
   if(navigator.clipboard?.writeText){
     navigator.clipboard.writeText(url)
       .then(()=>announce('Camera link copied to clipboard'))
-      .catch(()=>announce('Clipboard blocked — link logged to console (F12)'));
+      .catch(()=>{ announce('Clipboard blocked — link logged to console (F12)'); try{ prompt('Copy this link:',url); }catch(e){} });
   }else{
-    announce('Clipboard unavailable — link logged to console (F12)');
+    announce('Clipboard unavailable — link logged to console (F12)'); try{ prompt('Copy this link:',url); }catch(e){}
   }
 }
 
@@ -10600,7 +10602,7 @@ function pcLoad(list){
 }
 async function pcLoadFile(){
   const f=CONFIG.postcards?.file; if(!f) return;
-  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; const j=await r.json(); pcLoad(Array.isArray(j)?j:(j.views||[])); }catch(e){ /* optional */ }
+  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; const j=await r.json(); pcLoad(Array.isArray(j)?j:(j.views||[])); pcRestoreFromURL(); }catch(e){ /* optional */ }
 }
 function _pcCamera(){   // world x,z, azimuth (° clockwise from north), pitch (°)
   const f=_pcF.set(0,0,-1).applyQuaternion(camera.quaternion);
@@ -10670,6 +10672,7 @@ function _pcUI(){
     +'<span class="btn" id="pc-hzmode" title="shift: keep the camera level and slide the picture so the horizon lands on the line (verticals stay vertical). pitch: tilt the camera instead.">shift</span>'
     +'<span class="btn" id="pc-hzbtn" title="drag the red line to the photo\'s horizon: the camera pitch is set so the 3D horizon lands there">⟷ horizon</span>'
     +'<span class="btn" id="pc-save" title="remember this camera (position, heading, pitch, FoV) for this card">💾 save fit</span>'
+    +'<span class="btn" id="pc-link" title="copy a link that reopens exactly this view: place, direction, FoV, date, card and opacity (same as the C key)">🔗 link</span>'
     +'<span class="btn" id="pc-export" title="copy all saved fits as JSON (for FastForward)">⧉ export</span>'
     +'<span class="btn" id="pc-close">✕ close</span>';
   PC.el={badge,panel,ov,bar}; makeSlidable(panel,'right'); makeSlidable(bar,'bottom'); pfLayout();
@@ -10685,6 +10688,7 @@ function _pcUI(){
   document.getElementById('pc-hzbtn').addEventListener('click',()=>pcHorizon(hz.style.display!=='block'));
   document.getElementById('pc-hzmode').addEventListener('click',e=>{ PC.hzMode=PC.hzMode==='shift'?'pitch':'shift'; e.target.textContent=PC.hzMode; if(hz.style.display==='block') pcHorizon(true); });
   document.getElementById('pc-save').addEventListener('click',pcSaveFit);
+  document.getElementById('pc-link').addEventListener('click',copyCameraToClipboard);
   document.getElementById('pc-export').addEventListener('click',pcExportFits);
   const dragY=y=>{ hz.style.top=Math.max(40,Math.min(innerHeight-40,y))+'px'; };
   let dragging=false;
@@ -10805,6 +10809,27 @@ function pcExportFits(){
   const fits=Object.values(pcFits()); if(!fits.length){ _pcToast('no saved fits yet'); return; }
   const txt=JSON.stringify(fits,null,1);
   (navigator.clipboard?.writeText(txt)||Promise.reject()).then(()=>_pcToast(`${fits.length} fit(s) copied as JSON`)).catch(()=>{ console.log(txt); _pcToast(`${fits.length} fit(s) printed to the console`); });
+}
+// ── Shareable card views ──────────────────────────────────────────
+// With the overlay open, the camera link (C key / 🔗 button) also carries card=<id>&op=<opacity>&fov=<vertical°>&shift=<lens shift>.
+// Opening such a link places the camera from lon/lat/az/elev/alt/date as usual, then (once the card list has loaded) re-opens the
+// overlay with the same card, opacity, FoV and shift — without moving the camera or the date.
+function pcLinkParams(){
+  if(!PC.el||PC.el.ov.style.display!=='flex'||!PC.current) return '';
+  return `card=${encodeURIComponent(PC.current.id)}&op=${(+PC.el.ov.style.opacity).toFixed(2)}&fov=${camera.fov.toFixed(2)}&shift=${(PC.shift||0).toFixed(4)}`;
+}
+function pcRestoreFromURL(){
+  const q=new URLSearchParams(location.search), id=q.get('card'); if(id==null||!PC.el) return;
+  const v=PC.views.find(w=>String(w.id)===id);
+  if(!v){ _pcToast('card '+id+' is not in the card list'); return; }
+  const num=(k,d)=>{ const x=parseFloat(q.get(k)); return Number.isFinite(x)?x:d; };
+  const op=Math.max(0,Math.min(1,num('op',CONFIG.postcards.defaultOpacity)));
+  if(PC.savedFov==null) PC.savedFov=camera.fov;
+  PC.current=v; PC.cardFov=v.fov||camera.fov;
+  pcSetShift(num('shift',0));
+  const fov=num('fov',v.fov||camera.fov); camera.fov=Math.max(15,Math.min(130,fov)); camera.updateProjectionMatrix();
+  if(v.img){ pcLoadOverlayImg(PC.el.ov.querySelector('img'),v); PC.el.ov.style.display='flex'; PC.el.bar.style.display='flex'; document.getElementById('pc-op').value=op; PC.el.ov.style.opacity=op; }
+  PC.setFov(camera.fov); pcPanel(false);
 }
 function pcOverlayClose(){
   if(!PC.el) return; PC.el.ov.style.display='none'; PC.el.bar.style.display='none'; pcHorizon(false); pcSetShift(0);
@@ -11379,7 +11404,7 @@ function _anBuildSites(){
     if(S.from!=null) born=S.from; if(S.to!=null) died=S.to;
     let a2=0, cx=0, cz=0, x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
     for(let i=0;i<ring.length;i++){ const q=ring[i], n=ring[(i+1)%ring.length]; a2+=q.x*n.z-n.x*q.z; cx+=q.x; cz+=q.z; x0=Math.min(x0,q.x);x1=Math.max(x1,q.x);z0=Math.min(z0,q.z);z1=Math.max(z1,q.z); }
-    const area=Math.abs(a2)/2, n=Math.min(S.maxN??200,Math.floor(area/S.m2Each));
+    const area=Math.abs(a2)/2, n=Math.round(Math.min(S.maxN??200,Math.floor(area/S.m2Each))*(CONFIG.animals.density??1));
     const site={name:S.name,ring,born,died,area,cx:cx/ring.length,cz:cz/ring.length,monthly:S.monthly,recs:[]};
     const rnd=_anRng(Math.round(site.cx*3)^Math.round(site.cz*5)), mix=Object.entries(S.mix), tot=mix.reduce((t,m)=>t+m[1],0);
     for(let i=0,tries=0;i<n&&tries<n*40;tries++){
@@ -11420,15 +11445,15 @@ function _anCellRecs(cx,cz){
     };
     for(const sp of _AN_SP){
       const w=W[sp]; if(!w||!A.perCapita[sp]) continue;
-      const rmax=Math.max(...A.perCapita[sp].map(k=>k[1])), e=rmax*A.household*w; if(e<=0) continue;
+      const rmax=Math.max(...A.perCapita[sp].map(k=>k[1])), e=rmax*A.household*w*(A.density??1); if(e<=0) continue;
       let n=Math.floor(e)+(rnd()<e-Math.floor(e)?1:0);
       while(n--) { const r=put(sp,null,'h'); if(r) r.curve='pc'; }
     }
     if(s.cls==='stable'||s.cls==='dairy'){
-      const sp=s.cls==='stable'?'horse':'cow', per=sp==='horse'?A.stable.m2PerHorse:A.stable.m2PerCow, n=Math.min(A.stable.maxPerBuilding,Math.round(s.area/per));
+      const sp=s.cls==='stable'?'horse':'cow', per=sp==='horse'?A.stable.m2PerHorse:A.stable.m2PerCow, nf=Math.min(A.stable.maxPerBuilding,Math.round(s.area/per))*(A.density??1), n=Math.floor(nf)+(rnd()<nf-Math.floor(nf)?1:0);
       for(let i=0;i<n;i++){ const r=put(sp,null,'h',5); if(r) r.curve='stable'; }
-      if(s.cls==='stable'&&_anHouseStable(s)){ const r=put('cow',null,'h',5); if(r) r.curve='bycow'; }
-    }else if(s.cls==='shop'&&rnd()<A.hitched.chance){
+      if(s.cls==='stable'&&_anHouseStable(s)&&rnd()<(A.density??1)){ const r=put('cow',null,'h',5); if(r) r.curve='bycow'; }
+    }else if(s.cls==='shop'&&rnd()<A.hitched.chance*(A.density??1)){
       const rd=_nearestRoad(s.x,s.z,mid,35);
       if(rd){
         const dx=s.x-rd.qx, dz=s.z-rd.qz, L=Math.hypot(dx,dz)||1, off=Math.max(0.5,rd.s.w/2-0.9);
@@ -11560,10 +11585,10 @@ window._animalCensus=(yr)=>{
   if(!_an) return null; const A=CONFIG.animals, tot={}, people={n:0}; for(const sp of _AN_SP) tot[sp]=0;
   for(const s of _an.spots){ if(yr<s.born||yr>=s.died) continue;
     const W=A.classWeights[s.cls]||{}; if(s.cls==='dwelling') people.n+=A.household;
-    for(const sp of _AN_SP) if(W[sp]) tot[sp]+=_anCurve(A.perCapita[sp],yr)*A.household*W[sp];
-    if(s.cls==='stable') tot.horse+=Math.min(A.stable.maxPerBuilding,Math.round(s.area/A.stable.m2PerHorse))*_anCurve(A.stable.occupancy,yr);
-    if(s.cls==='stable'&&_anHouseStable(s)) tot.cow+=_anCurve(A.backyardCow.curve,yr);
-    if(s.cls==='dairy') tot.cow+=Math.min(A.stable.maxPerBuilding,Math.round(s.area/A.stable.m2PerCow))*_anCurve(A.stable.occupancy,yr);
+    for(const sp of _AN_SP) if(W[sp]) tot[sp]+=_anCurve(A.perCapita[sp],yr)*A.household*W[sp]*(A.density??1);
+    if(s.cls==='stable') tot.horse+=Math.min(A.stable.maxPerBuilding,Math.round(s.area/A.stable.m2PerHorse))*_anCurve(A.stable.occupancy,yr)*(A.density??1);
+    if(s.cls==='stable'&&_anHouseStable(s)) tot.cow+=_anCurve(A.backyardCow.curve,yr)*(A.density??1);
+    if(s.cls==='dairy') tot.cow+=Math.min(A.stable.maxPerBuilding,Math.round(s.area/A.stable.m2PerCow))*_anCurve(A.stable.occupancy,yr)*(A.density??1);
   }
   for(const sp of _AN_SP) tot[sp]=Math.round(tot[sp]);
   return {year:yr,peopleInDwellings:people.n,total:tot,perPerson:Object.fromEntries(_AN_SP.map(sp=>[sp,+(tot[sp]/Math.max(1,people.n)).toFixed(3)]))};

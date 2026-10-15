@@ -939,6 +939,7 @@ export const CONFIG = {
   // horses peak 1900-1920 and collapse after 1925; the family cow and pig leave town by about 1910; chickens and pets stay.
   animals: {
     enabled: true,
+    density: 0.1,                 // overall multiplier on every animal count (households, stables, hitched horses, sites); 1 = the full estimates below
     household: 5,                 // people per dwelling-sized building (Winnipeg 1881: 4.6, 1901: 4.9 by building count in the data)
     minDwellingM2: 30,            // smaller unnamed buildings are sheds / outhouses: no animals
     radius:  { horse: 320, cow: 420, pig: 260, dog: 230, cat: 150, chicken: 130 },   // m from the camera
