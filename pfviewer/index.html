@@ -4427,7 +4427,7 @@ async function buildCity(geojson){
       polygonOffsetFactor: -5,
       polygonOffsetUnits:  -5,
     }));
-    brownsCreekMatRef=bcMat; delete _applied.creeks;   // re-tint on the next season update
+    brownsCreekMats.push(bcMat); delete _applied.creeks;   // re-tint on the next season update
     group.add(new THREE.Mesh(bcGeo,bcMat));
     console.log(`Brown's Creek: ${creekRibbonVerts.length/18} ribbon segments`);
   }
@@ -5458,7 +5458,7 @@ let channelMesh   = null;   // opaque ground-coloured channel walls
 let channelMatRef = null;
 let creekMesh     = null;   // flat water-coloured creek ribbons
 let creekMatRef   = null;
-let brownsCreekMatRef = null;   // Brown's Creek's own ribbon (frozen / snowed over like the other creeks)
+const brownsCreekMats = [];   // Brown's Creek's own ribbon (frozen / snowed over like the other creeks)
 let waterMesh     = null;   // flood plane
 // ── Confluence plume (CONFIG.water.confluence) ─────────────────────
 // Fragment-shader fake of the Assiniboine's lighter water staying separate
@@ -12371,7 +12371,7 @@ function applySeason(force){
   if(_changed('creeks',Math.max(S.ice,S.snow),0.002)){
     const W=CONFIG.water, k=Math.max(S.ice,S.snow);
     if(creekMatRef) creekMatRef.color.copy(_sc.a.set(W.color).lerp(_sc.b.set(W.creekWhite),k));
-    if(brownsCreekMatRef) brownsCreekMatRef.color.copy(_sc.a.set(W.brownsCreekColor).lerp(_sc.b.set(W.creekWhite),k));
+    for(const m of brownsCreekMats) m.color.copy(_sc.a.set(W.brownsCreekColor).lerp(_sc.b.set(W.creekWhite),k));
   }
   plumeUniforms.uPlumeStrength.value=(1-S.ice)*(1-S.floes);
   // Sun declination + heating smoke follow the day of year (setTimeOfDay reads season)
