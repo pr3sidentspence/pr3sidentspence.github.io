@@ -27,7 +27,18 @@ def feat(name, props, geom):
     return {"type": "Feature", "properties": p, "geometry": geom}
 
 def main():
-    ring = wall((21.0, 29.0), (55.5, -8.5), 2.2); ring.append(ring[0])
+    # Continue the surviving 36 m of NE wall (part 2 of the SEW Wall multipolygon): same centreline, same thickness, overlapping its end by 1 m
+    # and ending inside the east bastion — so there is no step, gap or change in direction where the two meet.
+    src = json.load(open(os.path.join(HERE, '..', 'data', 'pastforward_2026_assessment.geojson')))
+    sew = next(f for f in src['features'] if (f['properties'].get('name') or '').endswith('SEW Wall'))
+    m = lambda c: ((c[0] + 97.134) * M_LON, (c[1] - 49.8870) * M_LAT)
+    q = [m(c) for c in sew['geometry']['coordinates'][1][0][:4]]        # a, b (the end by the fort's middle), c, d (the north-bastion end)
+    far0, far1, near0, near1 = q[0], q[1], q[3], q[2]                   # long edges are q0→q1 and q3→q2; q1/q2 = the end nearer the east bastion
+    ea = ((q[1][0] + q[2][0]) / 2, (q[1][1] + q[2][1]) / 2); nb = ((q[0][0] + q[3][0]) / 2, (q[0][1] + q[3][1]) / 2)
+    L = math.hypot(ea[0] - nb[0], ea[1] - nb[1]); ux, uy = (ea[0] - nb[0]) / L, (ea[1] - nb[1]) / L
+    thick = abs((q[2][0] - q[1][0]) * -uy + (q[2][1] - q[1][1]) * ux)
+    a = (ea[0] - ux * 1.0, ea[1] - uy * 1.0); b = (ea[0] + ux * 56.0, ea[1] + uy * 56.0)
+    ring = wall(a, b, thick); ring.append(ring[0])
     feats = [
       feat("Upper Fort Garry Original NE Wall", {"material": "stone", "floors": 2, "born": "1837-06-01", "construction_months": 24, "died": "1853-08-01",
            "died_basis": "removed once the northern addition was complete (addition wall finished 1853-06-01)", "born_basis": "with the original stone walls",

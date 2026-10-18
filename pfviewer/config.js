@@ -280,6 +280,8 @@ export const CONFIG = {
     maxDistance: 1800,    // …and tiles farther than this (3D) from the camera are hidden, nearest first…
     maxPanes: 150000,     // …up to this many real panes at once (the painted windows take over beyond); 0-cost cap on close-up work
     tilesPerFrame: 2,     // new tiles switched on per frame (spreads GPU uploads)
+    // Fake recess (shader): shadowed jambs + lintel, lit sill, optional sash bars. depth = share of the pane edge; shadow = darkest edge shade (0..1).
+    reveal: { depth: 0.11, shadow: 0.3, sillLight: 0.35, bars: true, barW: 0.018, barColor: [0.42, 0.4, 0.35] },
     // Warm amber glow added to glass at night, scaled by darkness (0..1).
     nightGlowColor: { r: 0.47, g: 0.19, b: 0.02 },
   },
@@ -331,10 +333,12 @@ export const CONFIG = {
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
-                'roof_height','roof_color','bridge_style','bridge_fit','fence_height','fence_gap','fence_width','fence_thickness','fence_color'],
+                'assess_use','roof_height','roof_color','bridge_style','bridge_fit','fence_height','fence_gap','fence_width','fence_thickness','fence_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
     // ridge height = pitch × half the wing's short side, capped at maxRidgeM
+    bastionRoofScale: 0.67,   // Upper Fort Garry's bastion cones were too tall: 2/3 of the generic conical height
+    roofOverhangM: 0.45,   // pitched roofs project this far past the walls on all sides (eaves and gable-end rakes); capped at 20% of the short side. 0 = off. Not applied to wing/mansard/elevated roofs.
     wingRoof: { auto: true, pitch: 0.6, maxRidgeM: 9 },   // auto: false = complex outlines stay flat unless roof_type 'wings'
     platformHeight: 0.6, // low platform/loading-dock structures
     minHeight: 2.0,
@@ -510,6 +514,12 @@ export const CONFIG = {
     // (filled in since — the LiDAR is flat there); cosine profile, metres
     // Short segments a→b [lon,lat] along the Seine through the spots where bridge decks cut the LiDAR channel (carved to bedY — deliberately below the
     // neighbouring channel bed so the gap holds water whenever the reaches either side do — see carveRiverGaps)
+    // Banks to re-grade (see carveBankPatches): the LiDAR water surface is a flat shelf at about −6.0 and the painted channel beside it steps down in
+    // terraces; the patch turns both into one smooth slope. radiusM = patch radius; dryAboveY = ground higher than this is left alone;
+    // slope = metres of fall per metre out from the dry ground; floorY = deepest the ramp goes.
+    bankPatches: [
+      { name: 'West bank by the fish cold storage', lon: -97.13038, lat: 49.89910, radiusM: 140, dryAboveY: -4.5, slope: 0.18, floorY: -9.2 },
+    ],
     riverGaps: [
       // the viewer-mesh check above had left Provencher out of its window; the real break is ~45 m south-east of the first cut:
       { name: 'Seine at Provencher (lower)', a: [-97.10941, 49.89561], b: [-97.10913, 49.89534], halfWidthM: 14, bedY: -9.0 },
@@ -627,6 +637,7 @@ export const CONFIG = {
     // Brown's Creek: a small clear prairie creek — no glacial silt, no Red River brown.
     // Dark teal-green reads as shallow moving water in a 3D scene.
     brownsCreekColor: 0x2E6058,
+    creekWhite: 0xF4F6FA,      // creeks (Brown's Creek too) fade to this as they freeze and snow over
     floodMaxRiseMetres: 12.5, // historic 1826-flood-scale peak at slider=1.0 → water at +9.5m
     // Geographic registration offset applied to all river/water geometry.
     // The NHD river data (modern GPS) is slightly north of the Goad's Atlas
@@ -719,7 +730,7 @@ export const CONFIG = {
     assiniboineShare: [[1859,0.15],[1878,0.2],[1879,0.55],[1885,0.55],[1887,0.3],[1900,0.15]],
     speed: { upstream: 3.0, downstream: 4.2 },   // m/s; the Red flows north, the Assiniboine east
     draft: 0.45,                                 // metres of hull below the waterline
-    dock: { lon: -97.13226, lat: 49.88590, heading: 90 },   // moored against the landing's T-head; heading ° (0=N, 90=E)
+    dock: { lon: -97.13226, lat: 49.88590, heading: 261 },   // moored against the landing's T-head; heading ° (0=N, 90=E). Bow upstream: the Assiniboine runs east (~81°) here
     colors: { hull: 0xE6E0CE, cabin: 0xF1EDE1, roof: 0x6B6255, trim: 0x3A3530, stack: 0x1E1C1A, wheel: 0x8B2A1E },
     wake: { length: 160, foamColor: 0xD9D2BF, foamAlpha: 0.45, armAlpha: 0.28, armAngleDeg: 19.5 },
     smokeTint: 0x8C8883,                         // wood-fired: greyer than the locomotives
@@ -1036,6 +1047,7 @@ export const CONFIG = {
     horseSpeed: 6, motorSpeed: 11,
     maxPerFire: 3, maxRoadDistance: 40,
     stayUntil: 0.8,            // fraction of the fire window they stay for
+    hose: { drops: 70, color: 0xCFE6F5, size: 0.3, arc: 0.16, speed: 14, spread: 0.7, standoff: 6, minStandoff: 8 },   // parked engines: a fireman at the end of a hose plays a stream on the flames (arc = rise as a share of the throw; speed m/s; spread = scatter in m at the far end; standoff = metres beyond the fire's edge)
     red: 0xA8201A,
   },
 
@@ -1224,7 +1236,19 @@ export const CONFIG = {
     enabled: true, radiusM: 70, maxAltitudeM: 90, max: 300, minAreaM2: 25, share: 0.32, windowShare: 0.35, windowMax: 3, turnoverYears: 12,
     wallHeightM: 0.6, windowHeightM: 0.34, doorHeightM: 4.65, atlasPx: [2048, 1024], slotPx: [256, 64],
     exclude: /church|cathedral|school|convent|hospital|cemetery|station|elevator|mill\b|works|factory|synagogue|temple|college|university|armou?ry|gaol|jail/i,
-    byName: [[/stable|livery/i, 'STABLE', 'wall'], [/blacksmith|smithy|forge/i, '', 'anvil'], [/hotel|house\b/i, 'HOTEL', 'wall'], [/bank/i, 'BANK', 'wall'], [/drug|apothec|pharmac/i, 'DRUGS', 'wall']],
+    // A Goad label that names a trade or use → that sign (first match wins, so a restaurant-with-stable is a RESTAURANT). t = lettering, s = style.
+    byName: [[/hotel/i, 'HOTEL', 'wall'], [/boarding ?house|rooming/i, 'BOARDING', 'wall'], [/bank\b/i, 'BANK', 'wall'], [/drug|apothec|pharmac|chemist/i, 'DRUGS', 'wall'],
+      [/chinese laundry|laundry/i, 'LAUNDRY', 'wall'], [/restaurant|cafe|eating|lunch/i, 'RESTAURANT', 'wall'], [/grocer/i, 'GROCER', 'wall'], [/bakery|baker\b/i, 'BAKERY', 'wall'],
+      [/butcher|meat market/i, 'BUTCHER', 'wall'], [/hardware/i, 'HARDWARE', 'wall'], [/tin ?smith/i, 'TINSMITH', 'wall'], [/plumb/i, 'PLUMBER', 'wall'], [/carpent|joiner/i, 'CARPENTER', 'wall'],
+      [/confection/i, 'CONFECTIONERY', 'wall'], [/liquor|\bwine\b|saloon|\bbar\b/i, 'LIQUORS', 'wall'], [/furniture/i, 'FURNITURE', 'wall'], [/second ?hand/i, 'SECOND HAND', 'wall'],
+      [/printing|printer/i, 'PRINTING', 'wall'], [/auction/i, 'AUCTION', 'wall'], [/carriage/i, 'CARRIAGES', 'wall'], [/paint(er| shop)/i, 'PAINTER', 'wall'], [/harness|saddl/i, 'HARNESS', 'wall'],
+      [/barber/i, 'BARBER', 'wall'], [/tailor/i, 'TAILOR', 'wall'], [/jewel/i, 'JEWELLER', 'wall'], [/dry goods|general store|store\b/i, 'GENERAL STORE', 'wall'], [/boot|shoe/i, 'BOOTS & SHOES', 'wall'],
+      [/photo/i, 'PHOTOS', 'wall'], [/undertak|funeral/i, 'UNDERTAKER', 'wall'], [/ice ?house|ice company/i, 'ICE', 'wall'], [/feed|flour and feed/i, 'FEED', 'wall'], [/fish/i, 'FISH', 'wall'],
+      [/offices?$|office and|offices and/i, 'OFFICES', 'wall'],
+      [/blacksmith|black ?smith|smithy|forge/i, '', 'anvil'], [/stable|livery/i, 'STABLE', 'wall']],
+    // Labels that are not shops: dwellings, outbuildings, yards, street-address names — no sign at all. Any other label is read as a firm only if firmName matches.
+    noSign: /\bdwg\b|dwell|tenement|\bw\.?c\.?$|privy|outhouse|\bshed\b|stack|\bwell\b|\boven\b|garage|coal|wood|\bhouse$|^house\b|\b(avenue|street|road|boulevard|place|crescent|drive|terrace|row|lane|st|ave)\b\.?\s*[nsew]?\.?$|^\d+\b|greenhouse|stack/i,
+    firmName: /\b(company|co\.|ltd|limited|brothers|bros|& son|and son|sons)\b/i,
     // t = lettering, s = style: 'wall' (painted board over the door) | 'window' (gilt lettering on glass) | 'anvil' | 'horseshoe' (icon boards)
     occupants: [
       { t: 'STABLE', s: 'wall', y: [1870, 1940], a: [50, 1200], f: [1, 2] },
