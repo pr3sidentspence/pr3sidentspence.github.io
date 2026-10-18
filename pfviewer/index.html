@@ -450,6 +450,10 @@ import { OrbitControls }   from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { CONFIG }          from './config.js';
 
+// Cache-buster for data fetches: a fixed version so the browser can cache the big files.
+// Bump CONFIG.dataVersion when data changes, or load the page with ?fresh to bypass the cache.
+const DATA_V='?v='+(new URLSearchParams(location.search).has('fresh')?Date.now():(CONFIG.dataVersion??'1'));
+
 // ── Low-memory (mobile) profile ─────────────────────────────────────
 // Phones lose the WebGL context (white canvas + sad-face icon) when the GPU
 // runs out of memory. On touch devices CONFIG.mobile is deep-merged over
@@ -1408,15 +1412,15 @@ function carveBankPatches(h,S,cellM){
     console.log(`🌊 Bank patch "${p.name}": ${n} DEM cells re-graded`);
   }
 }
+function prefetchDEM(){ return Promise.all([fetch('./data/dem.json'+DATA_V), fetch('./data/dem.bin'+DATA_V)]); }
 async function applyDEM(){
   // Ensure terrainMesh world matrix is current before any sampleTerrainY calls.
   if(terrainMesh) terrainMesh.updateWorldMatrix(true, false);
   try{
-    const metaRes = await fetch('./data/dem.json?v='+Date.now());
-    if(!metaRes.ok) return;  // no DEM yet — keep Perlin noise
+    const [metaRes, binRes] = await (window._demPrefetch ?? prefetchDEM());
+    window._demPrefetch = null;
+    if(!metaRes.ok || !binRes.ok) return;  // no DEM yet — keep Perlin noise
     const meta    = await metaRes.json();
-    const binRes  = await fetch('./data/dem.bin?v='+Date.now());
-    if(!binRes.ok) return;
     const buf     = await binRes.arrayBuffer();
     const heights = new Float32Array(buf);  // index = Three.js vertex index (iz*VERTS+ix)
 
@@ -3156,6 +3160,141 @@ const DORMER_EMBED  = CONFIG.dormers.embed;
 // read as a real dormer rather than a box with a roof facing the wrong way.
 // Pushes its window glass into glassVerts and returns {wallGeom, gableGeom,
 // roofGeom} (any may be null if construction failed) for the caller to merge in.
+// Hoisted from buildCity's per-feature scope
+const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod','wings']);
+
+// All glass for one building polygon: church lancets, procedural or mask windows, half-storey dormer windows.
+// Shared by buildCity and rebuildGlassMesh so the two can't drift apart. Verts are appended to glassVerts and
+// lifted by baseY (terrain base). Returns null for a footprint with no wall edges (buildCity skips the rest of
+// the polygon), else {dormers:[{dWG,dGG,dRG}]} — dormer wall/roof geometry for buildCity to merge (rebuild disposes it).
+// register: also add the wall edges to the facade-face spatial index (buildCity only).
+function placeBuildingGlass(glassVerts,props,outer,mat,baseY,partyGrid,_featIdx,_lifeBorn,bldgCol,register){
+  const glassStart=glassVerts.length;
+  const dormers=[];
+  const floors=props.floors??1, isPlatform=floors<=0.2;
+  const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
+  const baseFloors=Math.max(0,Math.min(props.base_floors||0,floors-0.5));
+  const fullFloorsForDormers=floorsForWindows(floors);
+  const halfFloorFrac=floors-Math.floor(floors+1e-6);
+  const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
+  const roofTypeOverride=props.roof_type||'';
+  const forcePeaked=PEAKED_ROOF_TYPES.has(roofTypeOverride), forceFlat=roofTypeOverride==='flat';
+  const areaOk=props.area_m2==null||props.area_m2>0.3;
+  const isBridge=props.type==='bridge';
+  const isLumberYard=props.type==='lumber', isWalkway=props.type==='walkway';
+  const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
+  const nm=(props.name||'').toLowerCase();
+  const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
+               ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
+               ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks
+  const isElevator=nm.includes('elevator');
+  const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
+  const noWindows=isWall||isElevator||isLumberYard||isWalkway;
+  // No windows on outbuildings (tiny footprints, one-storey industrial sheds) —
+  // hundreds of thousands of panes nobody can see
+  const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);
+  // Churches: one row of tall narrow (lancet) windows along each free wall
+  if(!isPlatform&&isChurch&&!noWindows&&!isBridge&&floors>0.5&&CONFIG.windows.church!==false){
+    const CW=CONFIG.windows.church??{}, sp=CW.spacing??4, ww=CW.width??1.0, sill=CW.sill??1.6;
+    const wh=Math.max(1.5,Math.min(height*(CW.heightShare??0.6),height-sill-1.0));
+    for(const e of wallEdgesOf(outer)){
+      if(e.len<sp*0.8) continue;
+      if(partyWallFraction(partyGrid,e,_featIdx,_lifeBorn)>0.6) continue;
+      const n=Math.max(1,Math.floor(e.len/sp)), wins=[];
+      for(let k=0;k<n;k++){ const c=(k+0.5)/n; wins.push({u0:c-ww/2/e.len,u1:c+ww/2/e.len,v0:sill/height,v1:(sill+wh)/height}); }
+      const p0=glassVerts.length/18;
+      placeMaskWindows(glassVerts,e.ax,e.az,e.bx,e.bz,e.nx,e.nz,height,wins,e.len);
+      const lancet=glassVerts.lancet??(glassVerts.lancet=new Set());   // panes to get the pointed-arch cut in the glass shader
+      for(let p=p0;p<glassVerts.length/18;p++) lancet.add(p);
+    }
+  }
+  if(!isPlatform&&!isChurch&&!noWindows&&!isOutbuilding&&floors>0.5){
+    // Edges with outward normals (all of them, incl. the closing edge)
+    const wEdges=wallEdgesOf(outer);
+    // Register in spatial index for facade face selection (Up ≠ N: XZ only)
+    if(register) for(const e of wEdges) addWallEdge((e.ax+e.bx)/2,(e.az+e.bz)/2,e.nx,e.nz);
+    if(wEdges.length===0) return null;
+
+    // Find primary front edge (most eastward-facing outward normal)
+    let primaryIdx=0,bestDot=-Infinity;
+    for(let i=0;i<wEdges.length;i++){
+      const d=wEdges[i].nx;  // eastward component
+      if(d>bestDot){bestDot=d;primaryIdx=i;}
+    }
+    const primaryLen=wEdges[primaryIdx].len;
+    const primaryNx=wEdges[primaryIdx].nx, primaryNz=wEdges[primaryIdx].nz;
+
+    // Detect narrow strip building: primary face much shorter than perpendicular sides
+    const perpEdges=wEdges.filter(e=>Math.abs(e.nx*primaryNx+e.nz*primaryNz)<0.35);
+    const maxPerpLen=perpEdges.length?Math.max(...perpEdges.map(e=>e.len)):0;
+    const isNarrow=primaryLen<7&&maxPerpLen>primaryLen*1.5;
+
+    // Check for window mask for this building
+    const bldgStem=props.name?normName(props.name):null;
+    const maskEntry=bldgStem?windowMaskCache.get(bldgStem):null;
+
+    for(let i=0;i<wEdges.length;i++){
+      const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
+      const isPrimary=(i===primaryIdx);
+      // No windows on walls that actually abut a neighbour (party walls)
+      if(partyWallFraction(partyGrid,wEdges[i],_featIdx,_lifeBorn)>0.6) continue;
+
+      // Is this edge part of the facade face? (within 60° of primary normal)
+      const isFacadeFace= maskEntry && (nx*primaryNx+nz*primaryNz>0.65);
+
+      if(isFacadeFace){
+        // Place mask-derived windows on this face instead of procedural ones
+        placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
+      } else {
+        placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow,baseFloors);
+      }
+    }
+
+    // Half-storey dormers: low-rise peaked-roof buildings get a few small
+    // dormers on the front (primary) edge in place of the flush windows
+    // that floorsForWindows() deliberately omitted for the top half-floor.
+    // Limiting to the primary edge keeps this cheap (one set of dormers
+    // per qualifying building, not per wall edge) and matches how real
+    // half-storeys are dormered — mainly on the street-facing roof slope.
+    // Only applies if the primary edge is actually an *eave* (parallel to
+    // the main ridge — a sloped roof face). If it's a gable end instead
+    // (perpendicular to the ridge — already a vertical triangular wall),
+    // there's no slope to punch through, so no dormer is added there.
+    const ridgeEdge=wEdges.reduce((a,b)=>b.len>a.len?b:a);
+    const ridgeAx=(ridgeEdge.bx-ridgeEdge.ax)/ridgeEdge.len, ridgeAz=(ridgeEdge.bz-ridgeEdge.az)/ridgeEdge.len;
+    const pe0=wEdges[primaryIdx];
+    const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
+    const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
+    if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!forceFlat&&(forcePeaked||PEAKED_MATS.has(mat))&&floors>CONFIG.dormers.minFloorsForDormer&&(floors<=CONFIG.dormers.maxFloorsForDormer||roofTypeOverride==='mansard')&&areaOk){
+      const pe=wEdges[primaryIdx];
+      const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
+      const usableP=primaryLen-1.6;  // margin from corners
+      if(usableP>DORMER_W){
+        const dormerCount=Math.max(1,Math.min(CONFIG.dormers.maxPerBuilding,Math.round(primaryLen/CONFIG.dormers.spacingMetres)));
+        // With roof overhangs the roof slopes down past the wall line, straight through a dormer that stands proud of the wall — so the front
+        // face goes flush with the wall (a wall dormer rising from the eave line) and the box runs back up the slope until the main roof
+        // has risen past its ridge, then disappears into it.
+        let dDepth=DORMER_DEPTH, dFront=null;
+        if(CONFIG.building.roofOverhangM>0&&roofTypeOverride!=='wings'&&outer.length<=14){
+          let lo=1e9,hi=-1e9; for(const e of wEdges){ for(const[x,z]of[[e.ax,e.az],[e.bx,e.bz]]){ const u=(x-pe.ax)*pe.nx+(z-pe.az)*pe.nz; lo=Math.min(lo,u); hi=Math.max(hi,u); } }
+          const halfSpan=Math.max(1,(hi-lo)/2), slope=Math.max(0.15,(props.roof_height??FLOOR_H*0.64)/halfSpan);
+          dDepth=Math.min((DORMER_WALL_H+DORMER_ROOF_H)/slope+0.3,halfSpan*0.95); dFront=0.02;
+        }
+        for(let d=0;d<dormerCount;d++){
+          const t=((d+0.5)/dormerCount)*primaryLen;
+          const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
+          // Pass bare `height` so buildDormer places verts at Y≈height (Y=0 baseline).
+          // The glass lift below adds baseY once — no double-offset. The caller translates the returned geoms by baseY.
+          const{wallGeom:dWG,gableGeom:dGG,roofGeom:dRG}=buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,bldgCol,dDepth,dFront);
+          dormers.push({dWG,dGG,dRG});
+        }
+      }
+    }
+  }
+  if(baseY!==0) for(let gi=glassStart+1;gi<glassVerts.length;gi+=3) glassVerts[gi]+=baseY;
+  return{dormers};
+}
+
 function buildDormer(glassVerts, cx,cz, ex,ez, nx,nz, eaveY, bldgCol, depth=DORMER_DEPTH, frontOut=null){
   const hw=DORMER_W*0.5, dHalf=depth*0.5;
   const acrossCentre=frontOut==null?dHalf-DORMER_EMBED:frontOut-dHalf;   // frontOut: where the front face sits, metres outward of the wall line  // mostly proud of the wall, slightly embedded
@@ -3187,7 +3326,9 @@ function buildDormer(glassVerts, cx,cz, ex,ez, nx,nz, eaveY, bldgCol, depth=DORM
   const rB={x:(bl.x+br.x)/2,y:ridgeY,z:(bl.z+br.z)/2};
   const rF={x:(fl.x+fr.x)/2,y:ridgeY,z:(fl.z+fr.z)/2};
   const rPos=[];
-  const rTri=(a,b,c)=>rPos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  // Triangle winding must face up/out whichever way the footprint ring runs (ex×up vs the outward normal n)
+  const flip=(-ez*nx+ex*nz)<0;
+  const rTri=(a,b,c)=>flip?rPos.push(a.x,a.y,a.z,c.x,c.y,c.z,b.x,b.y,b.z):rPos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
   rTri(bl,fl,rF); rTri(bl,rF,rB);   // left slope
   rTri(br,rB,rF); rTri(br,rF,fr);  // right slope
   const roofGeom=new THREE.BufferGeometry();
@@ -3197,7 +3338,7 @@ function buildDormer(glassVerts, cx,cz, ex,ez, nx,nz, eaveY, bldgCol, depth=DORM
   // Gable-end triangles (front + back) close off the roof — clad in wall
   // colour, like real dormer cheeks/pediments, not roofing material.
   const gPos=[];
-  const gTri=(a,b,c)=>gPos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
+  const gTri=(a,b,c)=>flip?gPos.push(a.x,a.y,a.z,c.x,c.y,c.z,b.x,b.y,b.z):gPos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z);
   gTri(fl,fr,rF);  // front gable (outward-facing)
   gTri(bl,rB,br);  // back gable
   const gableGeom=new THREE.BufferGeometry();
@@ -3243,16 +3384,16 @@ tagMaterialForLifespan(glassMat,0,true,false,true); // shared across all layers/
   glassMat.onBeforeCompile=(sh,r)=>{
     base(sh,r);
     sh.uniforms.uWinLate=windowPaintUniforms.uWinLate;
-    sh.vertexShader='varying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\nattribute vec2 aPaneUv;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vGlassXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\n  vPaneUv = aPaneUv;');
-    sh.fragmentShader='uniform float uWinLate;\nvarying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+    sh.vertexShader='varying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\nattribute vec2 aPaneUv;\nattribute vec4 aPaneLit;\nvarying vec4 vPaneLit;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vGlassXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\n  vPaneUv = aPaneUv;\n  vPaneLit = aPaneLit;');
+    sh.fragmentShader='uniform float uWinLate;\nvarying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\nvarying vec4 vPaneLit;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
   {
-    float gFloor = floor((vBldY - vBuild.x) / ${FLOOR_H.toFixed(3)});
-    vec2 cellId = floor(vGlassXZ / ${(NL.paneCellM??2.2).toFixed(2)});
-    float h1 = fract(sin(dot(vec3(cellId, gFloor), vec3(12.9898, 78.233, 37.719))) * 43758.5453);
-    float h2 = fract(sin(dot(vec3(cellId, gFloor), vec3(39.346, 11.135, 83.155))) * 24634.6345);
-    float ground = step(gFloor, 0.5);
-    float lit = max(ground, step(h1, ${(NL.litShare??0.62).toFixed(3)}) * step(uWinLate, h2));
+    // lit/dark is decided per pane (hash + ground flag baked into aPaneLit in makeGlassMeshes), so a pane is never half lit
+    float lit = max(vPaneLit.z, step(vPaneLit.x, ${(NL.litShare??0.62).toFixed(3)}) * step(uWinLate, vPaneLit.y));
     totalEmissiveRadiance *= lit;
+  }
+  if (vPaneLit.w > 0.5) {   // lancet: pointed arch cut from the top of the quad (straight sides up to the springing line, then two convex arcs meeting at a point)
+    float t = clamp((vPaneUv.y - 0.55) / 0.45, 0.0, 1.0);
+    if (abs(vPaneUv.x - 0.5) > 0.5 * (1.0 - pow(t, 1.7))) discard;
   }
   {   // recessed look: the pane is a flat quad proud of the wall, so fake the reveal — shadowed jambs and lintel, a lit sill, painted sash bars
     vec2 pu = vPaneUv, pe = min(pu, 1.0 - pu);
@@ -3397,7 +3538,7 @@ async function loadBuildingHistory(){
   const url=CONFIG.dataFiles.buildingHistory;
   if(!url) return _buildingHistory;
   try{
-    const res=await fetch(url+'?v='+Date.now());
+    const res=await fetch(url+DATA_V);
     if(res.ok) _buildingHistory=(await res.json()).buildings??{};
   }catch(e){console.warn('Building history: failed to load',e);}
   return _buildingHistory;
@@ -3592,7 +3733,6 @@ async function buildCity(geojson){
     const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
     // Explicit roof-type override from planimetro (overrides material/floor heuristics).
     const roofTypeOverride=props.roof_type||'';
-    const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod','wings']);
     const forcePeaked=PEAKED_ROOF_TYPES.has(roofTypeOverride);
     const curvedRoof=CURVED_ROOF_TYPES.has(roofTypeOverride);
     const forceFlat=roofTypeOverride==='flat';
@@ -3802,8 +3942,6 @@ async function buildCity(geojson){
         wx:mcx+(CONFIG.scene?.buildingOffsetX??0), wy:buildingBaseY+height, wz:mcz+(CONFIG.scene?.buildingOffsetZ??0),
         type:'dark', rate:props.smoke_stack===true?0.22:+props.smoke_stack, timer:Math.random()*0.2, constant:true, year, group,
         born:_isoYearFrac(props.born,NO_BORN), died:_isoYearFrac(props.died,NO_DIED)});
-      // Track glass vert start so we can apply buildingBaseY to window Y coords after geometry is built
-      const _glassStart=glassVerts.length;
       // Place procedural windows on all wall edges of this building
       const areaOk=props.area_m2==null||props.area_m2>0.3;
       const isBridge=props.type==='bridge';
@@ -3816,114 +3954,19 @@ async function buildCity(geojson){
       const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
       const noWindows=isWall||isElevator||isLumberYard||isWalkway;
 
-      // No windows on outbuildings (tiny footprints, one-storey industrial sheds) —
-      // hundreds of thousands of panes nobody can see
-      const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);
-      // Churches: one row of tall narrow (lancet) windows along each free wall
-      if(!isPlatform&&isChurch&&!noWindows&&!isBridge&&floors>0.5&&CONFIG.windows.church!==false){
-        const CW=CONFIG.windows.church??{}, sp=CW.spacing??4, ww=CW.width??1.0, sill=CW.sill??1.6;
-        const wh=Math.max(1.5,Math.min(height*(CW.heightShare??0.6),height-sill-1.0));
-        for(const e of wallEdgesOf(outer)){
-          if(e.len<sp*0.8) continue;
-          if(partyWallFraction(partyGrid,e,_featIdx,_lifeBorn)>0.6) continue;
-          const n=Math.max(1,Math.floor(e.len/sp)), wins=[];
-          for(let k=0;k<n;k++){ const c=(k+0.5)/n; wins.push({u0:c-ww/2/e.len,u1:c+ww/2/e.len,v0:sill/height,v1:(sill+wh)/height}); }
-          placeMaskWindows(glassVerts,e.ax,e.az,e.bx,e.bz,e.nx,e.nz,height,wins,e.len);
+      // Windows (church lancets, procedural / mask windows, half-storey dormers) — shared with rebuildGlassMesh
+      const _gl=placeBuildingGlass(glassVerts,props,outer,mat,buildingBaseY,partyGrid,_featIdx,_lifeBorn,bldgCol,true);
+      if(_gl===null) continue;   // degenerate footprint: no wall edges
+      if(_gl.dormers.length){
+        let _dormerTris=0;
+        for(const{dWG,dGG,dRG}of _gl.dormers){
+          if(dWG){dWG.translate(0,buildingBaseY,0);wallGeos[mat].push(dWG);_dormerTris+=dWG.index?dWG.index.count/3:dWG.attributes.position.count/3;}
+          if(dGG){dGG.translate(0,buildingBaseY,0);wallGeos[mat].push(dGG);_dormerTris+=dGG.index?dGG.index.count/3:dGG.attributes.position.count/3;}
+          if(dRG){dRG.translate(0,buildingBaseY,0);roofGeos[mat].push(dRG);}
         }
-      }
-      if(!isPlatform&&!isChurch&&!noWindows&&!isOutbuilding&&floors>0.5){
-        // Edges with outward normals (all of them, incl. the closing edge)
-        const wEdges=wallEdgesOf(outer);
-        // Register in spatial index for facade face selection (Up ≠ N: XZ only)
-        for(const e of wEdges) addWallEdge((e.ax+e.bx)/2,(e.az+e.bz)/2,e.nx,e.nz);
-        if(wEdges.length===0) continue;
-
-        // Find primary front edge (most eastward-facing outward normal)
-        let primaryIdx=0,bestDot=-Infinity;
-        for(let i=0;i<wEdges.length;i++){
-          const d=wEdges[i].nx;  // eastward component
-          if(d>bestDot){bestDot=d;primaryIdx=i;}
-        }
-        const primaryLen=wEdges[primaryIdx].len;
-        const primaryNx=wEdges[primaryIdx].nx, primaryNz=wEdges[primaryIdx].nz;
-
-        // Detect narrow strip building: primary face much shorter than perpendicular sides
-        const perpEdges=wEdges.filter(e=>Math.abs(e.nx*primaryNx+e.nz*primaryNz)<0.35);
-        const maxPerpLen=perpEdges.length?Math.max(...perpEdges.map(e=>e.len)):0;
-        const isNarrow=primaryLen<7&&maxPerpLen>primaryLen*1.5;
-
-        // Check for window mask for this building
-        const bldgStem=props.name?normName(props.name):null;
-        const maskEntry=bldgStem?windowMaskCache.get(bldgStem):null;
-
-        for(let i=0;i<wEdges.length;i++){
-          const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
-          const isPrimary=(i===primaryIdx);
-          // No windows on walls that actually abut a neighbour (party walls)
-          if(partyWallFraction(partyGrid,wEdges[i],_featIdx,_lifeBorn)>0.6) continue;
-
-          // Is this edge part of the facade face? (within 60° of primary normal)
-          const isFacadeFace= maskEntry && (nx*primaryNx+nz*primaryNz>0.65);
-
-          if(isFacadeFace){
-            // Place mask-derived windows on this face instead of procedural ones
-            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
-          } else {
-            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow,baseFloors);
-          }
-        }
-
-        // Half-storey dormers: low-rise peaked-roof buildings get a few small
-        // dormers on the front (primary) edge in place of the flush windows
-        // that floorsForWindows() deliberately omitted for the top half-floor.
-        // Limiting to the primary edge keeps this cheap (one set of dormers
-        // per qualifying building, not per wall edge) and matches how real
-        // half-storeys are dormered — mainly on the street-facing roof slope.
-        // Only applies if the primary edge is actually an *eave* (parallel to
-        // the main ridge — a sloped roof face). If it's a gable end instead
-        // (perpendicular to the ridge — already a vertical triangular wall),
-        // there's no slope to punch through, so no dormer is added there.
-        const ridgeEdge=wEdges.reduce((a,b)=>b.len>a.len?b:a);
-        const ridgeAx=(ridgeEdge.bx-ridgeEdge.ax)/ridgeEdge.len, ridgeAz=(ridgeEdge.bz-ridgeEdge.az)/ridgeEdge.len;
-        const pe0=wEdges[primaryIdx];
-        const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
-        const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
-        if(hasHalfFloor&&primaryIsEave&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!forceFlat&&(forcePeaked||PEAKED_MATS.has(mat))&&floors>CONFIG.dormers.minFloorsForDormer&&(floors<=CONFIG.dormers.maxFloorsForDormer||roofTypeOverride==='mansard')&&areaOk){
-          const pe=wEdges[primaryIdx];
-          const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
-          const usableP=primaryLen-1.6;  // margin from corners
-          if(usableP>DORMER_W){
-            const dormerCount=Math.max(1,Math.min(CONFIG.dormers.maxPerBuilding,Math.round(primaryLen/CONFIG.dormers.spacingMetres)));
-            let _dormerTris=0;
-            // With roof overhangs the roof slopes down past the wall line, straight through a dormer that stands proud of the wall — so the front
-            // face goes flush with the wall (a wall dormer rising from the eave line) and the box runs back up the slope until the main roof
-            // has risen past its ridge, then disappears into it.
-            let dDepth=DORMER_DEPTH, dFront=null;
-            if(CONFIG.building.roofOverhangM>0&&roofTypeOverride!=='wings'&&outer.length<=14){
-              let lo=1e9,hi=-1e9; for(const e of wEdges){ for(const[x,z]of[[e.ax,e.az],[e.bx,e.bz]]){ const u=(x-pe.ax)*pe.nx+(z-pe.az)*pe.nz; lo=Math.min(lo,u); hi=Math.max(hi,u); } }
-              const halfSpan=Math.max(1,(hi-lo)/2), slope=Math.max(0.15,(props.roof_height??FLOOR_H*0.64)/halfSpan);
-              dDepth=Math.min((DORMER_WALL_H+DORMER_ROOF_H)/slope+0.3,halfSpan*0.95); dFront=0.02;
-            }
-            for(let d=0;d<dormerCount;d++){
-              const t=((d+0.5)/dormerCount)*primaryLen;
-              const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
-              // Pass bare `height` so buildDormer places verts at Y≈height (Y=0 baseline).
-              // Glass vert fix below then adds buildingBaseY once — no double-offset.
-              // Returned geoms are translated by buildingBaseY here.
-              const{wallGeom:dWG,gableGeom:dGG,roofGeom:dRG}=buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,bldgCol,dDepth,dFront);
-              if(dWG){dWG.translate(0,buildingBaseY,0);wallGeos[mat].push(dWG);_dormerTris+=dWG.index?dWG.index.count/3:dWG.attributes.position.count/3;}
-              if(dGG){dGG.translate(0,buildingBaseY,0);wallGeos[mat].push(dGG);_dormerTris+=dGG.index?dGG.index.count/3:dGG.attributes.position.count/3;}
-              if(dRG){dRG.translate(0,buildingBaseY,0);roofGeos[mat].push(dRG);}
-            }
-            // dWG/dGG landed in wallGeos[mat] AFTER this building's wallCums entry
-            // was already recorded (base wall only, above) — widen that entry so
-            // the hover binary-search boundary still matches the merged mesh.
-            // Same class of bug as the elevator fix; dormers are far more common
-            // (any peaked-roof building with a half floor), so this is the likely
-            // main cause of persistently wrong hover names.
-            if(_dormerTris>0) wallCums[mat][wallCums[mat].length-1]+=_dormerTris;
-          }
-        }
+        // dWG/dGG landed in wallGeos[mat] AFTER this building's wallCums entry was already recorded (base wall only) —
+        // widen that entry so the hover binary-search boundary still matches the merged mesh.
+        if(_dormerTris>0) wallCums[mat][wallCums[mat].length-1]+=_dormerTris;
       }
       // Standard peaked roofs: wood/iron/etc, low-rise — or any material with explicit peaked roof_type.
       // forcePeaked overrides material/floor/vertex limits; forceFlat suppresses the automatic peaked roof.
@@ -3935,7 +3978,7 @@ async function buildCity(geojson){
           applyVertexColour(cg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate);
           towerRoofGeos.push(cg); }
       }
-      else if(!isPlatform&&!isBridge&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&(outer.length<=14||CONFIG.building.wingRoof?.auto!==false)))){
+      else if(!isPlatform&&!isBridge&&!isChurch&&!isUpperFort&&!isWall&&!isLumberYard&&!isWalkway&&!forceFlat&&floors>0.2&&areaOk&&(forcePeaked||(PEAKED_MATS.has(mat)&&floors<=2.5&&(outer.length<=14||CONFIG.building.wingRoof?.auto!==false)))){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         // Complex outlines (> 14 points, or roof_type 'wings'): a roof per wing; simple ones: one ridge
@@ -3951,7 +3994,7 @@ async function buildCity(geojson){
 
       // Church/cathedral: steep peaked roof regardless of material or floor count.
       // Ridge height = wallH × 0.8 for a Gothic pitch. No parapet.
-      if(!isPlatform&&!isBridge&&isChurch&&areaOk){
+      if(!isPlatform&&!isBridge&&isChurch&&!curvedRoof&&areaOk){
         const ring=[];
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const churchRidgeH=height*0.8;
@@ -4103,10 +4146,6 @@ async function buildCity(geojson){
             });
           }
         }
-      }
-      // Offset all glass verts added for this building by its terrain base height.
-      if(buildingBaseY!==0){
-        for(let _gi=_glassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=buildingBaseY;
       }
     }
     // Apply this feature's born/died + construction tag to every geometry it
@@ -4631,18 +4670,29 @@ const glassTiles=[];   // {mesh, x, z}
 function makeGlassMeshes(group, glassVerts, glassIdx){
   const T=CONFIG.glass.tileMetres??400, buckets=new Map();
   const nP=glassVerts.length/18;
+  const cellM=CONFIG.nightLights?.paneCellM??2.2;
+  const lowY=new Map();   // lowest pane bottom per building → ground-floor test
+  for(let p=0;p<nP;p++){ const b=glassIdx[p], y=glassVerts[p*18+1]; if(!(lowY.get(b)<=y)) lowY.set(b,y); }
   for(let p=0;p<nP;p++){
     const o=p*18;
     const key=Math.floor(glassVerts[o]/T)+','+Math.floor(glassVerts[o+2]/T);
     let b=buckets.get(key); if(!b){b=[];buckets.set(key,b);} b.push(p);
   }
   for(const panes of buckets.values()){
-    const n=panes.length, pos=new Float32Array(n*12), idx=new Float32Array(n*4), ind=new Uint32Array(n*6);
+    const n=panes.length, pos=new Float32Array(n*12), idx=new Float32Array(n*4), ind=new Uint32Array(n*6), lit=new Uint8Array(n*16);
     let cx=0,cz=0;
     panes.forEach((p,k)=>{
       const o=p*18, v=k*12;
       for(const[dst,src]of[[0,0],[3,3],[6,6],[9,15]]){ pos[v+dst]=glassVerts[o+src];pos[v+dst+1]=glassVerts[o+src+1];pos[v+dst+2]=glassVerts[o+src+2]; }
       idx.fill(glassIdx[p],k*4,k*4+4);
+      {   // per-pane night state: hashed on the pane centre's cell + storey; ground floor always lit
+        const mx=(glassVerts[o]+glassVerts[o+6])/2, mz=(glassVerts[o+2]+glassVerts[o+8])/2, rel=glassVerts[o+1]-lowY.get(glassIdx[p]);
+        const fl=Math.floor(rel/FLOOR_H), cx0=Math.floor(mx/cellM), cz0=Math.floor(mz/cellM);
+        const fr=v=>v-Math.floor(v);
+        const h1=fr(Math.sin(cx0*12.9898+cz0*78.233+fl*37.719)*43758.5453), h2=fr(Math.sin(cx0*39.346+cz0*11.135+fl*83.155)*24634.6345);
+        const gnd=rel<FLOOR_H*0.8?255:0;
+        for(let c=0;c<4;c++) lit.set([Math.round(h1*255),Math.round(h2*255),gnd,glassVerts.lancet?.has(p)?255:0],k*16+c*4);
+      }
       const q=k*4; ind.set([q,q+1,q+2,q,q+2,q+3],k*6);
       cx+=glassVerts[o]; cz+=glassVerts[o+2];
     });
@@ -4651,6 +4701,7 @@ function makeGlassMeshes(group, glassVerts, glassIdx){
     g.setAttribute('position',new THREE.BufferAttribute(pos,3));
     g.setAttribute('aPaneUv',new THREE.BufferAttribute(puv,2));
     g.setAttribute('aBldIdx',new THREE.BufferAttribute(idx,1));
+    g.setAttribute('aPaneLit',new THREE.BufferAttribute(lit,4,true));
     g.setIndex(new THREE.BufferAttribute(ind,1));
     g.computeVertexNormals();
     releaseAfterUpload(g);
@@ -5395,7 +5446,7 @@ async function loadWaterLevels(){
   const L=CONFIG.water.levels;
   if(!L.historyFile) return;
   try{
-    const res=await fetch(L.historyFile+'?v='+Date.now());
+    const res=await fetch(L.historyFile+DATA_V);
     if(!res.ok){console.log(`🌊 Water levels: no ${L.historyFile} (${res.status}) — using seasonal curve`);return;}
     const j=await res.json();
     const conv=v=>j.datum==='asl'?v-(demRefElev??0)
@@ -7710,7 +7761,7 @@ function buildRouteWaypoints(roadGJ, stName){
   for(const feat of segs){
     const fr = parseInt(feat.properties.from_right||feat.properties.from_left||'0')||0;
     const to = parseInt(feat.properties.to_right||feat.properties.to_left||'9999')||9999;
-    if(clip && to < clip.min && fr > clip.max) continue;
+    if(clip && (to < clip.min || fr > clip.max)) continue;
     const lines = feat.geometry.type==='MultiLineString'
       ? feat.geometry.coordinates : [feat.geometry.coordinates];
     for(const line of lines){
@@ -8439,7 +8490,7 @@ let _railHistory=null, _railExtras=[];
 async function applyRailHistory(gj){
   if(_railHistory===null){
     _railHistory=false;
-    try{ const url=CONFIG.dataFiles.railHistory; if(url){ const r=await fetch(url+'?v='+Date.now()); if(r.ok){ const j=await r.json(); _railHistory=j.features; _railExtras=j.extras||[]; } } }catch(e){ console.warn('Rail history: failed to load',e); }
+    try{ const url=CONFIG.dataFiles.railHistory; if(url){ const r=await fetch(url+DATA_V); if(r.ok){ const j=await r.json(); _railHistory=j.features; _railExtras=j.extras||[]; } } }catch(e){ console.warn('Rail history: failed to load',e); }
   }
   const H=_railHistory; if(!H||gj._railDated) return gj;
   const out=[];
@@ -10753,7 +10804,7 @@ function pcLoad(list){
 }
 async function pcLoadFile(){
   const f=CONFIG.postcards?.file; if(!f) return;
-  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; const j=await r.json(); pcLoad(Array.isArray(j)?j:(j.views||[])); pcRestoreFromURL(); }catch(e){ /* optional */ }
+  try{ const r=await fetch(f+DATA_V); if(!r.ok) return; const j=await r.json(); pcLoad(Array.isArray(j)?j:(j.views||[])); pcRestoreFromURL(); }catch(e){ /* optional */ }
 }
 function _pcCamera(){   // world x,z, azimuth (° clockwise from north), pitch (°)
   const f=_pcF.set(0,0,-1).applyQuaternion(camera.quaternion);
@@ -12141,7 +12192,12 @@ function startLoop(){
         // Re-ground when Q brings camera back to surface
         if((keys['KeyQ']||udDown) && camera.position.y <= _groundFloor + 0.1) fpsGrounded = true;
       }
-    }else{orbit.update();clampOrbitAltitude();updateHover();}
+    }else{
+      // Right-drag pan speed scales with the camera→pivot distance, which is tiny when the pivot sits just ahead of a high camera
+      // (zoomed in from altitude, or a look-up view) — scale it up to match the zoom rule: max(ZOOM_FLOOR, 0.6 × height above ground).
+      { const dist=camera.position.distanceTo(orbit.target)||1, agl=camera.position.y-sampleTerrainY(camera.position.x,camera.position.z);
+        orbit.panSpeed=Math.min(50,Math.max(1,Math.max(ZOOM_FLOOR,agl*0.6)/dist)); }
+      orbit.update();clampOrbitAltitude();updateHover();}
     _t(tickStreetcars,dt);
     _t(tickCarts,dt);
     _t(tickAutos,dt);
@@ -12389,7 +12445,7 @@ let moistureData=null;
 async function loadMoisture(){
   const f=CONFIG.seasons.moisture?.file; if(!f) return;
   try{
-    const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return;
+    const r=await fetch(f+DATA_V); if(!r.ok) return;
     moistureData=await r.json();
     console.log(`🌾 Moisture: ${Object.keys(moistureData.years).length} years`);
     applySeason(true);
@@ -12431,26 +12487,27 @@ let earlyVeg=null;
 let earlyBridges=[], earlyMarshes=[], earlyYards=[], cemetery=null, cemCum=null, cemTrees=null;
 async function loadEarlyBridges(){
   const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.marshFile;
-  if(f) try{ const r=await fetch(f+'?v='+Date.now()); if(r.ok){ earlyBridges=(await r.json()).bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }
-  catch(e){ console.warn('Creek bridges: failed to load',e); }
-  if(pf) try{ const r=await fetch(pf+'?v='+Date.now()); if(r.ok){ earlyMarshes=(await r.json()).marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }
-  catch(e){ console.warn('Marshes: failed to load',e); }
-  try{ const r=await fetch('./data/early_yards.json?v='+Date.now()); if(r.ok) earlyYards=(await r.json()).yards||[]; }catch(e){ console.warn('Yards: failed to load',e); }
-  try{ const r=await fetch('./data/elmwood_years.json?v='+Date.now()); if(r.ok){ const iv=(await r.json()).interments, ys=Object.keys(iv).map(Number).sort((a,b)=>a-b); let c=0; cemCum={years:{},total:0}; for(const y of ys){ cemCum.years[y]=[c,iv[y]]; c+=iv[y]; } cemCum.total=c; } }catch(e){ console.warn('Cemetery interments: failed to load',e); }
-  try{ const f=CONFIG.cemetery?.treesFile; if(f){ const r=await fetch(f+'?v='+Date.now()); if(r.ok) cemTrees=(await r.json()).trees; } }catch(e){ console.warn('Cemetery trees: failed to load',e); }
-  try{ const r=await fetch('./data/cemeteries.json?v='+Date.now()); if(r.ok) cemetery=await r.json(); }catch(e){ console.warn('Cemetery: failed to load',e); }
+  const getJSON=async u=>{ const r=await fetch(u+DATA_V); return r.ok?r.json():null; };
+  await Promise.all([
+    (async()=>{ if(!f) return; try{ const j=await getJSON(f); if(j){ earlyBridges=j.bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }catch(e){ console.warn('Creek bridges: failed to load',e); } })(),
+    (async()=>{ if(!pf) return; try{ const j=await getJSON(pf); if(j){ earlyMarshes=j.marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }catch(e){ console.warn('Marshes: failed to load',e); } })(),
+    (async()=>{ try{ const j=await getJSON('./data/early_yards.json'); if(j) earlyYards=j.yards||[]; }catch(e){ console.warn('Yards: failed to load',e); } })(),
+    (async()=>{ try{ const j=await getJSON('./data/elmwood_years.json'); if(j){ const iv=j.interments, ys=Object.keys(iv).map(Number).sort((a,b)=>a-b); let c=0; cemCum={years:{},total:0}; for(const y of ys){ cemCum.years[y]=[c,iv[y]]; c+=iv[y]; } cemCum.total=c; } }catch(e){ console.warn('Cemetery interments: failed to load',e); } })(),
+    (async()=>{ try{ const tf=CONFIG.cemetery?.treesFile; if(tf){ const j=await getJSON(tf); if(j) cemTrees=j.trees; } }catch(e){ console.warn('Cemetery trees: failed to load',e); } })(),
+    (async()=>{ try{ const j=await getJSON('./data/cemeteries.json'); if(j) cemetery=j; }catch(e){ console.warn('Cemetery: failed to load',e); } })(),
+  ]);
 }
 async function loadEarlyVegetation(){
   await loadEarlyBridges();
   const f=CONFIG.earlyVegetation?.file; if(!f) return;
-  try{ const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return; earlyVeg=await r.json();
+  try{ const r=await fetch(f+DATA_V); if(!r.ok) return; earlyVeg=await r.json();
     console.log(`🌳 Early vegetation: ${earlyVeg.stands.length} stand(s), ${earlyVeg.trails.length} trail(s)`); }
   catch(e){ console.warn('Early vegetation: failed to load',e); }
 }
 async function loadStorms(){
   const f=CONFIG.storms?.file; if(!f) return;
   try{
-    const r=await fetch(f+'?v='+Date.now()); if(!r.ok) return;
+    const r=await fetch(f+DATA_V); if(!r.ok) return;
     const j=await r.json();
     stormList=j.storms.map(s=>({...s,t0:parseLocalISODate(s.start).getTime(),t1:parseLocalISODate(s.end).getTime()+DAY_MS,
       tp:parseLocalISODate(s.peak).getTime()}));
@@ -12949,20 +13006,11 @@ function rebuildGlassMesh(layerEntry){
     const _lifeBorn=parseYearOrSentinel(props.born,NO_BORN), _lifeDied=parseYearOrSentinel(props.died,NO_DIED);
     const _glassOuterStart0=glassVerts.length;
     const mat=MATS[props.material]?props.material:'unknown';
-    const floors=props.floors??1, isPlatform=floors<=0.2;
-    const height=isPlatform?PLATFORM_H:Math.max(floors*FLOOR_H,MIN_H);
     if(feat.geometry.type!=='Polygon'&&feat.geometry.type!=='MultiPolygon') continue;
     const polygons=feat.geometry.type==='MultiPolygon'?feat.geometry.coordinates:[feat.geometry.coordinates];
     for(const rings of polygons){
       const outer=rings[0];
       if(!outer||outer.length<4) continue;
-      const areaOk=props.area_m2==null||props.area_m2>0.3;
-      const isBridge=props.type==='bridge';
-      const nm=(props.name||'').toLowerCase();
-      const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
-                   ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
-                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks
-      const noWindows=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls')||nm.includes('elevator')||props.type==='lumber';
       // Terrain base for this building (centroid + up to 4 ring samples)
       const _rbNPts=outer.length-1;
       let _rbCx=0,_rbCz=0;
@@ -12972,64 +13020,9 @@ function rebuildGlassMesh(layerEntry){
       const _rbStep=Math.max(1,Math.floor(_rbNPts/4));
       for(let j=0;j<_rbNPts;j+=_rbStep){const[sx,sy]=project(outer[j][0],outer[j][1]);_rbTSum+=sampleTerrainY(sx,-sy);_rbTN++;}
       const _rbBaseY=_rbTSum/_rbTN;
-      const _rbGlassStart=glassVerts.length;
-      const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);   // same rule as buildCity
-      if(!isPlatform&&!isChurch&&!isBridge&&!noWindows&&!isOutbuilding&&floors>0.5&&areaOk){
-        const wEdges=wallEdgesOf(outer);
-        if(wEdges.length===0) continue;
-        let primaryIdx=0,bestDot=-Infinity;
-        for(let i=0;i<wEdges.length;i++){
-          const d=wEdges[i].nx;
-          if(d>bestDot){bestDot=d;primaryIdx=i;}
-        }
-        const primaryNx=wEdges[primaryIdx].nx, primaryNz=wEdges[primaryIdx].nz;
-        const primaryLen=wEdges[primaryIdx].len;
-        const perpEdges=wEdges.filter(e=>Math.abs(e.nx*primaryNx+e.nz*primaryNz)<0.35);
-        const maxPerpLen=perpEdges.length?Math.max(...perpEdges.map(e=>e.len)):0;
-        const isNarrow=primaryLen<7&&maxPerpLen>primaryLen*1.5;
-        const bldgStem=props.name?normName(props.name):null;
-        const maskEntry=bldgStem?windowMaskCache.get(bldgStem):null;
-        for(let i=0;i<wEdges.length;i++){
-          const{ax,az,bx,bz,nx,nz,len}=wEdges[i];
-          const isPrimary=(i===primaryIdx);
-          if(partyWallFraction(partyGrid,wEdges[i],_featIdx,_lifeBorn)>0.6) continue;   // party wall
-          const isFacadeFace=maskEntry&&(nx*primaryNx+nz*primaryNz>0.65);
-          if(isFacadeFace){
-            placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
-          } else {
-            placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,floorsForWindows(floors),mat,isPrimary&&isNarrow,Math.max(0,Math.min(props.base_floors||0,floors-0.5)));
-          }
-        }
-
-        // Re-add half-storey dormer windows too (dormer wall/roof geometry
-        // itself was already baked into the meshes at buildCity time and is
-        // untouched here — only the glass needs regenerating).
-        const fullFloorsForDormers=floorsForWindows(floors);
-        const halfFloorFrac=floors-Math.floor(floors+1e-6);
-        const hasHalfFloor=fullFloorsForDormers>=1&&halfFloorFrac>0.3&&halfFloorFrac<0.9;
-        const ridgeEdge=wEdges.reduce((a,b)=>b.len>a.len?b:a);
-        const ridgeAx=(ridgeEdge.bx-ridgeEdge.ax)/ridgeEdge.len, ridgeAz=(ridgeEdge.bz-ridgeEdge.az)/ridgeEdge.len;
-        const pe0=wEdges[primaryIdx];
-        const primaryEdgeDirX=(pe0.bx-pe0.ax)/pe0.len, primaryEdgeDirZ=(pe0.bz-pe0.az)/pe0.len;
-        const primaryIsEave=Math.abs(primaryEdgeDirX*ridgeAx+primaryEdgeDirZ*ridgeAz)>0.65;
-        if(hasHalfFloor&&primaryIsEave&&props.type!=='lumber'&&PEAKED_MATS.has(mat)&&floors>CONFIG.dormers.minFloorsForDormer&&floors<=CONFIG.dormers.maxFloorsForDormer&&areaOk){
-          const pe=wEdges[primaryIdx];
-          const pex=(pe.bx-pe.ax)/pe.len, pez=(pe.bz-pe.az)/pe.len;
-          if(primaryLen-1.6>DORMER_W){
-            const dormerCount=Math.max(1,Math.min(CONFIG.dormers.maxPerBuilding,Math.round(primaryLen/CONFIG.dormers.spacingMetres)));
-            for(let d=0;d<dormerCount;d++){
-              const t=((d+0.5)/dormerCount)*primaryLen;
-              const dcx=pe.ax+pex*t, dcz=pe.az+pez*t;
-              // Use bare height — glass vert fix below adds _rbBaseY once (no double-offset).
-              buildDormer(glassVerts,dcx,dcz,pex,pez,pe.nx,pe.nz,height,0xffffff);
-            }
-          }
-        }
-      }
-      // Apply terrain base Y to all glass verts placed for this building
-      if(_rbBaseY!==0){
-        for(let _gi=_rbGlassStart+1;_gi<glassVerts.length;_gi+=3) glassVerts[_gi]+=_rbBaseY;
-      }
+      // Same placement as buildCity; the dormer wall/roof geometry already lives in the meshes, so only the glass is kept
+      const gl=placeBuildingGlass(glassVerts,props,outer,mat,_rbBaseY,partyGrid,_featIdx,_lifeBorn,0xffffff,false);
+      if(gl) for(const{dWG,dGG,dRG}of gl.dormers){ dWG?.dispose(); dGG?.dispose(); dRG?.dispose(); }
     }
     const _row=buildInfoByProps.get(props)?.idx??0;
     for(let _gp=_glassOuterStart0/18;_gp<glassVerts.length/18;_gp++) glassIdx.push(_row);
@@ -13291,17 +13284,18 @@ renderer.render(scene,camera);
   document.getElementById('loading').style.display='flex';
   setProgress(0,'Checking for data…');await tick();
 
-  const found=[];
-  for(let i=0;i<AUTOLOAD.length;i++){
-    const url=AUTOLOAD[i];
+  window._demPrefetch=prefetchDEM(); window._demPrefetch.catch(()=>{});   // DEM downloads alongside the GeoJSON
+  let _fetched=0;
+  const results=await Promise.all(AUTOLOAD.map(async url=>{
     try{
-      setProgress(Math.round(i/AUTOLOAD.length*35),`Fetching ${url.split('/').pop()}…`);await tick();
-      const res=await fetch(url+'?v='+Date.now());
-      if(!res.ok) continue;
+      const res=await fetch(url+DATA_V);
+      if(!res.ok) return null;
       const gj=await res.json();
-      if(gj.features?.length) found.push({url,gj});
-    }catch(e){}
-  }
+      setProgress(Math.round(++_fetched/AUTOLOAD.length*35),`Fetched ${url.split('/').pop()}…`);
+      return gj.features?.length?{url,gj}:null;
+    }catch(e){ return null; }
+  }));
+  const found=results.filter(Boolean);   // AUTOLOAD order preserved
   if(found.length===0){
     document.getElementById('loading').style.display='none';
     document.getElementById('drop-zone').style.display='flex';
@@ -13392,9 +13386,9 @@ renderer.render(scene,camera);
   for(const stem of AUTOLOAD_BUMPS){
     let burl=`./data/bump_${stem}.png`;
     try{
-      let bres=await fetch(burl+'?v='+Date.now());
+      let bres=await fetch(burl+DATA_V);
       const fb=CONFIG.dataFiles.bumpFallbackDir;   // wall bumps also live in ./images/ (brick, wood, lumber, + generated stone/iron/concrete/log)
-      if(!bres.ok&&fb){ burl=`${fb}/bump_${stem}.png`; bres=await fetch(burl+'?v='+Date.now()); }
+      if(!bres.ok&&fb){ burl=`${fb}/bump_${stem}.png`; bres=await fetch(burl+DATA_V); }
       if(!bres.ok){ console.log(`🧱 Bump autoload: ${burl} → ${bres.status} (skipped)`); continue; }
       const blob=await bres.blob();
       const file=new File([blob],`bump_${stem}.png`,{type:'image/png'});

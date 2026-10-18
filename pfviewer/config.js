@@ -31,6 +31,7 @@ const _SFX_CLASS = {
 const _sfx = (cls, file, o = {}) => ({ path: `./sounds/${file}.mp3`, ..._SFX_CLASS[cls], ...o });
 
 export const CONFIG = {
+  dataVersion: '2026-10-18',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
 
   // ── Data files ──────────────────────────────────────────────────────
   // GeoJSON layers loaded automatically on startup. Add/remove/rename
@@ -1470,7 +1471,7 @@ export const CONFIG = {
       headlight: 0xFFFFCC, taillight: 0xDD1100,
       bodySpecular: 0x332200, windowSpecular: 0x334455,
     },
-    routeClips: { // index along route where streetcars are allowed to run, by route name
+    routeClips: { // street-address range (min..max) where streetcars are allowed to run, by route name
       Portage: { min: 1,  max: 558 },
       Main:    { min: 54, max: 960 },
     },
