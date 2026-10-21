@@ -31,7 +31,7 @@ const _SFX_CLASS = {
 const _sfx = (cls, file, o = {}) => ({ path: `./sounds/${file}.mp3`, ..._SFX_CLASS[cls], ...o });
 
 export const CONFIG = {
-  dataVersion: '2026-10-18',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
+  dataVersion: '2026-10-20a',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
 
   // ── Data files ──────────────────────────────────────────────────────
   // GeoJSON layers loaded automatically on startup. Add/remove/rename
@@ -296,6 +296,7 @@ export const CONFIG = {
     gap: 0.90,             // horizontal gap between windows (m) — smaller = denser
     margin: 0.70,          // margin kept clear at wall ends (m)
     inset: 0.06,           // how far glass sits back from the wall face (m)
+    mullionColor: 0x5F3D3B,       // accent frame / mullion colour for buildings with window_mullions (sandstone)
     groundFloorWidth: 1.50,       // wider ground-floor "shopfront" windows
     groundFloorHeightFrac: 0.78,  // ground floor window height, as a fraction of floor height
     // A half-floor fraction at/above this is treated as a full floor of
@@ -333,7 +334,7 @@ export const CONFIG = {
                 'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','fire_days','taper_top','smoke_stack','replaced_by','fires',
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
-                'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes',
+                'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes','window_arch','window_mullions','window_sides',
                 'assess_use','roof_height','roof_color','bridge_style','bridge_fit','fence_height','fence_gap','fence_width','fence_thickness','fence_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
@@ -425,9 +426,9 @@ export const CONFIG = {
     // Stack styles: footprint under pipeMaxArea (huts, log cabins) keeps the plain stovepipe; heavy-industry buildings over tubeMinAreaDark m², or
     // multi-storey ones (tubeMinFloors, tubeMinArea) get a round tapering brick tube whose height/radius grow with floors and footprint; everything else
     // a rectangular brick stack (width = rectW0 + rectWPerSqrtArea·√area, depth = width·rectAspect) rising rectExtraH above the roof clearance.
-    brick: { pipeMaxArea: 30, tubeMinAreaDark: 300, tubeMinFloors: 3, tubeMinArea: 500,
+    brick: { pipeMaxArea: 30, tubeMinAreaDark: 300, tubeMinFloors: 99, tubeMinArea: 500,   // tubeMinFloors 99: multi-storey commercial/warehouse blocks get the small rectangular stack, round tubes only for dark/industrial works
       colors: [0x8E4A36, 0x9A5240, 0x7C3F2E, 0x6E3A2C, 0x84503C],
-      rectW0: 0.4, rectWPerSqrtArea: 0.025, rectMaxW: 1.1, rectAspect: 0.7, rectExtraH: 0.5,
+      rectW0: 0.35, rectWPerSqrtArea: 0.02, rectMaxW: 0.8, rectAspect: 0.7, rectExtraH: 0.5,
       tubeBaseH: 3.5, tubePerFloor: 0.75, tubePerSqrtArea: 0.075, tubeMaxH: 12, tubeR0: 0.5, tubeRPerSqrtArea: 0.04, tubeMinR: 0.7, tubeMaxR: 2.0, tubeTopRatio: 0.7 },
     // Minimum floors before a chimney is placed.
     minFloors: 0.5,
@@ -556,6 +557,12 @@ export const CONFIG = {
         until: '1910-04-15',     // filled in: ground back to today's levels from spring 1910, no lake
       },
     },
+    // Beyond the 12 km LiDAR terrain: NRCan HRDEM 2 m mosaic DTM to ±19.6 km at 20 m (tools/bake_terrain.py →
+    // data/dem_outer.*), Floodway filled, rivers cut below the flood plane. tileM tiles; every tile has a mesh at every
+    // loStep-th sample, tiles within hiRadiusM of the camera (3D distance) a full one. holeM: tiles wholly inside are
+    // skipped (the inner terrain covers them). seamBlendM: blend from the inner terrain's edge out to the HRDEM;
+    // sinkM: how far the outer surface sits under the inner one where they overlap; skirtM: hides cracks between LODs.
+    outer: { file: './data/dem_outer', tileM: 2800, holeM: 5600, loStep: 4, hiRadiusM: 4000, seamBlendM: 400, sinkM: 1.5, skirtM: 4 },
     noiseAmplitude: 0.80,   // metres of prairie undulation — enough for interesting flood spread
     noiseBaseY: 0.0,        // baseline Y for terrain surface (buildings sit at y=0)
     channelDepth: 5.5,      // metres the channel floor sits below bank level (y=0)
@@ -918,6 +925,17 @@ export const CONFIG = {
   // names it — click it to fly there.
   cues: { beacon: true, beaconHeight: 160, beaconRadius: 7, beaconSeconds: 6, beaconOpacity: 0.35 },
 
+  // ── Street name labels (L key) ──────────────────────────────────────
+  // Names painted flat along the road for streets near the camera. Summer: summerColor lettering with a winterColor outline; once snow lies (cover ≥ 0.5) the two swap.
+  streetLabels: {
+    radius: 380, max: 140,        // metres from the camera; labels at once (nearest win)
+    spacingM: 160, minSegM: 25,   // min gap between labels of one street; shortest road segment worth labelling
+    heightShare: 0.28, minHeightM: 2, maxHeightM: 5, maxLengthM: 70,   // letter height = road width × share (clamped); longest label
+    lift: 0.4,                    // above the road surface (m)
+    moveM: 60,                    // rebuild after the camera moves this far
+    summerColor: 0xf2efe6, winterColor: 0x1a1814,
+  },
+
   // ── Shantytown in the CNR East Yards ────────────────────────────────
   // Ramshackle huts and cabins beside the yard tracks (areaWorld = world
   // x0,z0,x1,z1 box around the East Yards at the Forks). Each goes up in
@@ -925,14 +943,16 @@ export const CONFIG = {
   // within buildingClearM.
   shanties: {
     // areaWorld = world x0,z0,x1,z1: the East Yards at the Forks plus open ground west
-    // and north of them. Huts go beside yard tracks (trackShare) or on open ground, up
+    // and north of them. Huts go on the open ground in siteWorld, openClearM from any track, up
     // to permanentClearM from any permanent structure that stands at the time; each
     // stands `lifeYears` and is displaced early when a permanent building is built
     // within permanentClearM.
     areaWorld: [-700, -700, 900, 1100],
-    count: 170, trackShare: 0.45,          // was 70 — more huts (the clearance rules still thin them out)
+    count: 170,                            // was 70 — more huts (the clearance rules still thin them out)
+    siteWorld: [0, 590, 340, 790],         // where the huts stand: the open ground between the sidings (world x0,z0,x1,z1)
+    openClearM: 25,                        // and at least this far from any track
     years: [1882, 1938], lifeYears: [4, 18],
-    trackClearM: 6, spreadM: 22, minSpacingM: 7, permanentClearM: 100,
+    minSpacingM: 7, permanentClearM: 100,
     size: [2.4, 4.2],
     colors: [0x6A6058, 0x5A4E42, 0x7A6E60, 0x4A4440, 0x6E5A44, 0x3A3632],
   },
@@ -1795,7 +1815,7 @@ export const CONFIG = {
     mosquitoes: { perAnchor: 24, maxAnchors: 1200, cloud: { puffs: 3, size: 4.5, opacity: 0.2, maxPx: 100, fade: [40, 200], color: 0x1A1816 } },
     earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
     signs: { radiusM: 45, max: 120, atlasPx: [1024, 512] },
-    terrain:  { segments: 300 },                 // 40 m grid (DEM is resampled)
+    terrain:  { segments: 300, outer: { hiRadiusM: 2000 } },   // 40 m grid (DEM is resampled); fewer full-resolution outer tiles
     // Only buildings within 3 km. Small details and real window glass only near the camera:
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
     // (painted windows cover the distance). Phones share one GPU process across all tabs.

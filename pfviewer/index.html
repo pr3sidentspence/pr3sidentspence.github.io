@@ -203,7 +203,10 @@ body:not(.advanced) #layer-bar,
 body:not(.advanced) #winter-btn,
 body:not(.advanced) #flood-control,
 body:not(.advanced) #haze-btn,
-body:not(.advanced) #cam-readout{display:none !important;}
+body:not(.advanced) #cam-readout,
+body:not(.advanced) #fov-control{display:none !important;}
+#fov-control{position:fixed;right:12px;bottom:150px;z-index:22;background:rgba(9,8,10,.72);border:1px solid #2a1e0e;border-radius:6px;padding:6px 9px;font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;color:#C8A05A;display:flex;align-items:center;gap:8px;}
+#fov-control input{width:130px;accent-color:#C8A05A;}
 /* Compass: the dial turns so N points at true north; the fixed notch at the top is where you're looking. */
 #compass{position:fixed;top:170px;left:18px;width:58px;height:58px;z-index:22;pointer-events:none;filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));}
 #compass svg{width:100%;height:100%;display:block;}
@@ -257,7 +260,8 @@ body:not(.advanced) #cam-readout{display:none !important;}
     <b>Orbit:</b> drag · scroll to zoom<br>
     <span class="key">F</span>&nbsp; Walk mode &nbsp;&nbsp;<span class="key">Ctrl</span>+hover building info<br>
     <span class="key">H</span>&nbsp; Home view &nbsp;&nbsp;<span class="key">M</span>&nbsp; Minimap<br>
-    <span class="key">C</span>&nbsp; Copy camera link<br>
+    <span class="key">C</span>&nbsp; Copy camera link &nbsp;&nbsp;<span class="key">T</span>&nbsp; Fly to hovered building<br>
+    <span class="key">L</span>&nbsp; Street names<br>
     <span id="fps-hint">
       <span class="key">W A S D</span> Move &nbsp;<span class="key">Mouse</span> Look<br>
       <span class="key">Shift</span> Sprint &nbsp;<span class="key">Q / E</span> Down / Up<br>
@@ -317,6 +321,7 @@ body:not(.advanced) #cam-readout{display:none !important;}
   <text x="32" y="22" text-anchor="middle" font-family="Georgia,serif" font-size="9" font-weight="bold" fill="#fff" transform="rotate(0 32 32)">N</text></g>
   <path d="M32 1 L28.5 -4 H35.5 Z" transform="translate(0 6)" fill="#C8A05A"/></svg></div>
 <div id="cam-readout"></div>
+<div id="fov-control"><span id="fov-mode">orbit</span> FoV <input type="range" id="fov-slider" min="30" max="110" step="1"><span id="fov-val"></span>°</div>
 <button id="haze-btn" onclick="toggleHaze()" style="position:fixed;top:54px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">☁ Haze: on</button>
 <button id="winter-btn" onclick="toggleWinter()" style="display:none;position:fixed;top:18px;right:120px;background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:6px;padding:6px 14px;font-size:0.7rem;letter-spacing:0.14em;color:#88AACC;font-family:Georgia,serif;cursor:pointer;pointer-events:auto;z-index:10;">❄ Winter</button>
 
@@ -461,7 +466,7 @@ const DATA_V='?v='+(new URLSearchParams(location.search).has('fresh')?Date.now()
 // fit), one layer's building files, smaller shadows, lower pixel ratio.
 // ?profile=mobile forces it (testing on desktop); ?profile=desktop skips it.
 const _profile=new URLSearchParams(location.search).get('profile');
-// ?off=haze,ground,plume,shadows,paint,water,trees,vehicles,fences,glass,facades — switch
+// ?off=haze,ground,plume,shadows,paint,water,trees,vehicles,fences,glass,facades,outer — switch
 // features off to find what a device's GPU chokes on (see ?debug=1)
 const OFF=new Set((new URLSearchParams(location.search).get('off')||'').split(',').map(x=>x.trim()).filter(Boolean));
 if(OFF.size) window.pfDiag?.add('info','features off: '+[...OFF].join(', '));
@@ -822,9 +827,10 @@ float gcNoise(vec2 p){vec2 i=floor(p),f=fract(p);vec2 u=f*f*(3.-2.*f);
     g*=mix(1.,.9+.2*nFine,1.-smoothstep(40.,220.,camD));   // fine grain near camera only (avoids shimmer)
     if(uGcHasTex>.5){
       // R = year yard coverage reached, G = year core coverage reached (byte = year-1800)
-      vec2 yrs=texture2D(uGcTex,(wp-uGcMin)/uGcSize).rg*255.+1800.;
-      float yard=clamp((uGcYear-yrs.x)/uGcFadeYears,0.,1.);
-      float core=clamp((uGcYear-yrs.y)/uGcFadeYears,0.,1.);
+      vec2 guv=(wp-uGcMin)/uGcSize, gin=step(0.,guv)*step(guv,vec2(1.));   // none outside the map (it clamps to its edge)
+      vec2 yrs=texture2D(uGcTex,guv).rg*255.+1800.;
+      float yard=clamp((uGcYear-yrs.x)/uGcFadeYears,0.,1.)*gin.x*gin.y;
+      float core=clamp((uGcYear-yrs.y)/uGcFadeYears,0.,1.)*gin.x*gin.y;
       float patchy=smoothstep(.3,.7,nSm*.55+nFine*.45);
       g=mix(g,uGcYardDirt,yard*(.3+.55*patchy));
       g=mix(g,uGcCoreDirt,core*(.7+.3*patchy));
@@ -1490,6 +1496,8 @@ window.grid = grid;
 // Used by buildRoads (and anything else that must sit on the ground).
 // Uses worldToLocal so it handles terrain offset AND rotation correctly.
 const _sampleVec = new THREE.Vector3();
+// Outer terrain (see initOuterTerrain) — declared up here because sampleTerrainY falls back to it
+const outerTerrain={h:null,n:0,cell:0,half:0,tiles:[],last:null};
 function sampleTerrainY(wx, wz){
   const segs  = CONFIG.terrain?.segments ?? 300;
   const verts = segs + 1;
@@ -1498,6 +1506,7 @@ function sampleTerrainY(wx, wz){
   terrainMesh.worldToLocal(_sampleVec);
   const lx = _sampleVec.x;
   const lz = _sampleVec.z;
+  if(outerTerrain.h && (Math.abs(lx) > 6000 || Math.abs(lz) > 6000)) return outerTerrainY(wx, wz);
   // Bilinear across the 4 surrounding grid vertices — was nearest-neighbour
   // (Math.round), which returned a stair-stepped height that only changed
   // at each 10m grid line. Roads/buildings/etc. sample this at arbitrary
@@ -1513,6 +1522,117 @@ function sampleTerrainY(wx, wz){
   const y0 = y00 + (y10 - y00) * tx;
   const y1 = y01 + (y11 - y01) * tx;
   return y0 + (y1 - y0) * tz;
+}
+
+// ── Outer terrain ───────────────────────────────────────────────────
+// data/dem_outer.* (tools/bake_terrain.py): NRCan HRDEM out to ±size/2 around the Forks, int16 cm, laid out in WORLD
+// coordinates — the inner mesh's rotated UTM frame drifts 25–110 m from project() that far out. The Floodway is filled
+// and the rivers are cut below the flood plane in the bake. Drawn as tiles of tileM: every tile has a coarse mesh (every
+// loStep-th sample), tiles within hiRadiusM of the camera get a full-resolution one. Tiles wholly inside ±holeM are
+// skipped (the inner terrain covers them). Under the inner terrain the heights follow it, sunk by sinkM so it always
+// wins, and blend out to the HRDEM over seamBlendM past its edge. Skirts hang down every tile edge to hide LOD cracks.
+function prefetchOuterDEM(){ const f=CONFIG.terrain?.outer?.file; return f?Promise.all([fetch(f+'.json'+DATA_V),fetch(f+'.bin'+DATA_V)]):Promise.resolve(null); }
+function outerTerrainY(wx,wz){
+  const O=outerTerrain, n=O.n, h=O.h;
+  const fx=Math.max(0,Math.min(n-1.0001,(wx+O.half)/O.cell)), fz=Math.max(0,Math.min(n-1.0001,(wz+O.half)/O.cell));
+  const x0=Math.floor(fx), z0=Math.floor(fz), tx=fx-x0, tz=fz-z0, i=z0*n+x0;
+  const a=h[i]+(h[i+1]-h[i])*tx, b=h[i+n]+(h[i+n+1]-h[i+n])*tx;
+  return a+(b-a)*tz;
+}
+function _outerTileMesh(t,step){
+  const O=outerTerrain, h=O.h, n=O.n, c=O.cell, k=t.tc/step, nv=k+1, skirt=CONFIG.terrain.outer.skirtM??4;
+  const H=(i,j)=>h[Math.min(n-1,Math.max(0,j))*n+Math.min(n-1,Math.max(0,i))];
+  const nRing=4*k, pos=new Float32Array((nv*nv+nRing)*3), nor=new Float32Array(pos.length);
+  let p=0;
+  for(let b=0;b<nv;b++) for(let a=0;a<nv;a++,p+=3){
+    const i=t.i0+a*step, j=t.j0+b*step;
+    pos[p]=-O.half+i*c; pos[p+1]=H(i,j); pos[p+2]=-O.half+j*c;
+    // normals from the heightfield itself, so neighbouring tiles shade the same along their shared edge
+    const dx=(H(i+step,j)-H(i-step,j))/(2*step*c), dz=(H(i,j+step)-H(i,j-step))/(2*step*c), l=Math.hypot(dx,1,dz);
+    nor[p]=-dx/l; nor[p+1]=1/l; nor[p+2]=-dz/l;
+  }
+  const idx=[];
+  for(let b=0;b<k;b++) for(let a=0;a<k;a++){ const v=b*nv+a; idx.push(v,v+nv,v+1, v+1,v+nv,v+nv+1); }
+  // skirt: the edge ring, copied skirtM lower, joined both ways round (no need to know which side faces out)
+  const ring=[];
+  for(let a=0;a<k;a++) ring.push(a);
+  for(let b=0;b<k;b++) ring.push(b*nv+k);
+  for(let a=k;a>0;a--) ring.push(k*nv+a);
+  for(let b=k;b>0;b--) ring.push(b*nv);
+  for(let r=0;r<nRing;r++){
+    const s=ring[r]*3, d=(nv*nv+r)*3;
+    pos[d]=pos[s]; pos[d+1]=pos[s+1]-skirt; pos[d+2]=pos[s+2];
+    nor[d]=nor[s]; nor[d+1]=nor[s+1]; nor[d+2]=nor[s+2];
+    const r1=(r+1)%nRing, A=ring[r], B=ring[r1], LA=nv*nv+r, LB=nv*nv+r1;
+    idx.push(A,LA,B, B,LA,LB, A,B,LA, B,LB,LA);
+  }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3));
+  g.setAttribute('normal',new THREE.BufferAttribute(nor,3));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  const m=new THREE.Mesh(g,groundMat);
+  m.receiveShadow=true; m.matrixAutoUpdate=false; m.updateMatrix();
+  return m;
+}
+function _scaleFloodPlane(){
+  if(waterMesh&&outerTerrain.h){ const s=(2*outerTerrain.half+2000)/14000; waterMesh.scale.set(s,1,s); }
+}
+async function initOuterTerrain(){
+  const C=CONFIG.terrain?.outer;
+  if(!C||!C.file||OFF.has('outer')){ window._outerPrefetch=null; return; }   // ?off=outer
+  try{
+    const r=await (window._outerPrefetch ?? prefetchOuterDEM());
+    window._outerPrefetch=null;
+    if(!r||!r[0].ok||!r[1].ok) return;
+    const meta=await r[0].json(), q=new Int16Array(await r[1].arrayBuffer()), n=meta.verts;
+    if(q.length!==n*n){ console.warn(`Outer DEM size mismatch: ${q.length} vs ${n}²`); return; }
+    const O=outerTerrain, h=new Float32Array(n*n), sc=meta.scale??0.01;
+    const dRef=demRefElev!=null?meta.refElev-demRefElev:0;   // to the inner DEM's world y=0
+    for(let i=0;i<h.length;i++) h[i]=q[i]*sc+dRef;
+    O.n=n; O.cell=meta.size/(n-1); O.half=meta.size/2;
+    if(_demLoaded){
+      // seam: follow the inner terrain (sunk) under it, blend to the HRDEM over seamBlendM past its edge
+      const IH=6000, B=C.seamBlendM??400, sinkM=C.sinkM??1.5, v=new THREE.Vector3();
+      const R=IH*Math.SQRT2+Math.hypot(CONFIG.scene?.terrainOffsetX??0,CONFIG.scene?.terrainOffsetZ??0)+B+O.cell;
+      const g0=Math.max(0,Math.floor((O.half-R)/O.cell)), g1=Math.min(n-1,Math.ceil((O.half+R)/O.cell));
+      for(let j=g0;j<=g1;j++) for(let i=g0;i<=g1;i++){
+        const x=-O.half+i*O.cell, z=-O.half+j*O.cell;
+        v.set(x,0,z); terrainMesh.worldToLocal(v);
+        const d=Math.max(Math.abs(v.x),Math.abs(v.z))-IH;
+        if(d>=B) continue;
+        const u=Math.max(0,d)/B, t=u*u*(3-2*u), sink=d<0?sinkM*Math.min(1,-d/100):0, k=j*n+i;
+        h[k]=(sampleTerrainY(x,z)-sink)*(1-t)+h[k]*t;   // O.h still null here, so this is the inner terrain (edge-clamped)
+      }
+    }
+    O.h=h;
+    const T=C.tileM??2800, tc=Math.round(T/O.cell), nt=Math.floor((n-1)/tc), hole=C.holeM??5600;
+    for(let tz=0;tz<nt;tz++) for(let tx=0;tx<nt;tx++){
+      const x0=-O.half+tx*T, z0=-O.half+tz*T;
+      if(x0>=-hole&&x0+T<=hole&&z0>=-hole&&z0+T<=hole) continue;
+      const tile={i0:tx*tc,j0:tz*tc,tc,cx:x0+T/2,cz:z0+T/2,lo:null,hi:null};
+      tile.lo=_outerTileMesh(tile,C.loStep??4); scene.add(tile.lo);
+      O.tiles.push(tile);
+    }
+    _scaleFloodPlane();
+    window.outerTerrain=O;
+    console.log(`🗺 Outer terrain: ${n}² @ ${O.cell} m, ±${(O.half/1000).toFixed(1)} km, ${O.tiles.length} tiles`);
+  }catch(e){ console.warn('Outer DEM load failed:',e); }
+}
+function tickOuterTerrain(){
+  const O=outerTerrain; if(!O.tiles.length) return;
+  const p=camera.position;
+  if(O.last&&O.last.distanceToSquared(p)<100*100) return;
+  (O.last??=new THREE.Vector3()).copy(p);
+  const C=CONFIG.terrain.outer, R=C.hiRadiusM??4000, half=(C.tileM??2800)/2;
+  let built=0;
+  for(const t of O.tiles){
+    const dx=Math.max(0,Math.abs(p.x-t.cx)-half), dz=Math.max(0,Math.abs(p.z-t.cz)-half), d=Math.hypot(dx,dz,Math.max(0,p.y));
+    if(d<R){ if(!t.hi&&built<2){ t.hi=_outerTileMesh(t,1); scene.add(t.hi); built++; } }
+    else if(t.hi&&d>R*1.3){ scene.remove(t.hi); t.hi.geometry.dispose(); t.hi=null; }
+    t.lo.visible=!t.hi;
+  }
+  if(built) O.last=null;   // two new fine tiles a frame at most; look again next frame
 }
 
 // Terrain is only ever resolved at its own ~10m grid above — sampling
@@ -3190,6 +3310,7 @@ function placeBuildingGlass(glassVerts,props,outer,mat,baseY,partyGrid,_featIdx,
   const isElevator=nm.includes('elevator');
   const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
   const noWindows=isWall||isElevator||isLumberYard||isWalkway;
+  const winArch=props.window_arch?new Set(props.window_arch):null, winMull=props.window_mullions?new Set(props.window_mullions):null;
   // No windows on outbuildings (tiny footprints, one-storey industrial sheds) —
   // hundreds of thousands of panes nobody can see
   const isOutbuilding=ringAreaM2(outer)<30||(mat==='wood_industrial'&&floors<=1.5);
@@ -3204,8 +3325,8 @@ function placeBuildingGlass(glassVerts,props,outer,mat,baseY,partyGrid,_featIdx,
       for(let k=0;k<n;k++){ const c=(k+0.5)/n; wins.push({u0:c-ww/2/e.len,u1:c+ww/2/e.len,v0:sill/height,v1:(sill+wh)/height}); }
       const p0=glassVerts.length/18;
       placeMaskWindows(glassVerts,e.ax,e.az,e.bx,e.bz,e.nx,e.nz,height,wins,e.len);
-      const lancet=glassVerts.lancet??(glassVerts.lancet=new Set());   // panes to get the pointed-arch cut in the glass shader
-      for(let p=p0;p<glassVerts.length/18;p++) lancet.add(p);
+      const fl=glassVerts.flags??(glassVerts.flags=new Map());   // panes to get the pointed-arch cut in the glass shader
+      for(let p=p0;p<glassVerts.length/18;p++) fl.set(p,PANE_LANCET);
     }
   }
   if(!isPlatform&&!isChurch&&!noWindows&&!isOutbuilding&&floors>0.5){
@@ -3246,7 +3367,10 @@ function placeBuildingGlass(glassVerts,props,outer,mat,baseY,partyGrid,_featIdx,
         // Place mask-derived windows on this face instead of procedural ones
         placeMaskWindows(glassVerts,ax,az,bx,bz,nx,nz,maskEntry.panelHeight??height,maskEntry.windows,len);
       } else {
-        placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow,baseFloors);
+        // Per-building window props (building_history.json): window_arch / window_mullions = 0-based floors; window_sides = {south:{floors,columns}}
+        const side=nz>0.7?'south':nz<-0.7?'north':nx>0.7?'east':nx<-0.7?'west':null, sr=side&&props.window_sides?.[side];
+        const wopts=(winArch||winMull||sr)?{arch:winArch,mull:winMull,only:sr?new Set(sr.floors||[]):null,columns:sr?.columns}:null;
+        placeWindowsOnEdge(glassVerts,ax,az,bx,bz,nx,nz,height,fullFloorsForDormers,mat,isPrimary&&isNarrow,baseFloors,wopts);
       }
     }
 
@@ -3384,16 +3508,22 @@ tagMaterialForLifespan(glassMat,0,true,false,true); // shared across all layers/
   glassMat.onBeforeCompile=(sh,r)=>{
     base(sh,r);
     sh.uniforms.uWinLate=windowPaintUniforms.uWinLate;
+    sh.uniforms.uMullion={value:new THREE.Color(CONFIG.windows.mullionColor??0x5F3D3B)};
     sh.vertexShader='varying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\nattribute vec2 aPaneUv;\nattribute vec4 aPaneLit;\nvarying vec4 vPaneLit;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vGlassXZ = (modelMatrix * vec4(transformed, 1.0)).xz;\n  vPaneUv = aPaneUv;\n  vPaneLit = aPaneLit;');
-    sh.fragmentShader='uniform float uWinLate;\nvarying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\nvarying vec4 vPaneLit;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+    sh.fragmentShader='uniform float uWinLate;\nuniform vec3 uMullion;\nvarying vec2 vGlassXZ;\nvarying vec2 vPaneUv;\nvarying vec4 vPaneLit;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
   {
     // lit/dark is decided per pane (hash + ground flag baked into aPaneLit in makeGlassMeshes), so a pane is never half lit
     float lit = max(vPaneLit.z, step(vPaneLit.x, ${(NL.litShare??0.62).toFixed(3)}) * step(uWinLate, vPaneLit.y));
     totalEmissiveRadiance *= lit;
   }
-  if (vPaneLit.w > 0.5) {   // lancet: pointed arch cut from the top of the quad (straight sides up to the springing line, then two convex arcs meeting at a point)
+  float pf = floor(vPaneLit.w * 255.0 + 0.5);   // pane flags: 1 lancet, 2 round arch, 4 accent frame + mullion
+  if (mod(pf, 2.0) > 0.5) {   // lancet: pointed arch cut from the top of the quad (straight sides up to the springing line, then two convex arcs meeting at a point)
     float t = clamp((vPaneUv.y - 0.55) / 0.45, 0.0, 1.0);
     if (abs(vPaneUv.x - 0.5) > 0.5 * (1.0 - pow(t, 1.7))) discard;
+  }
+  if (mod(floor(pf / 2.0), 2.0) > 0.5) {   // round-headed: elliptical arch over the top 30% of the pane
+    float t = clamp((vPaneUv.y - 0.7) / 0.3, 0.0, 1.0);
+    if (abs(vPaneUv.x - 0.5) > 0.5 * sqrt(1.0 - t * t)) discard;
   }
   {   // recessed look: the pane is a flat quad proud of the wall, so fake the reveal — shadowed jambs and lintel, a lit sill, painted sash bars
     vec2 pu = vPaneUv, pe = min(pu, 1.0 - pu);
@@ -3405,6 +3535,13 @@ tagMaterialForLifespan(glassMat,0,true,false,true); // shared across all layers/
     float bar = max(step(abs(pu.x - 0.5), ${(CONFIG.glass.reveal?.barW??0.018).toFixed(3)}), step(abs(pu.y - 0.52), ${(CONFIG.glass.reveal?.barW??0.018).toFixed(3)} * 0.7)) * ${(CONFIG.glass.reveal?.bars?'1.0':'0.0')};
     diffuseColor.rgb = mix(diffuseColor.rgb * shade, vec3(${(CONFIG.glass.reveal?.barColor??[0.42,0.4,0.35]).join(',')}), bar);
     totalEmissiveRadiance *= (1.0 - bar) * mix(0.5, 1.0, smoothstep(0.0, 0.6, ed));
+  }
+  if (floor(pf / 4.0) > 0.5) {   // accent frame round the pane and a centre mullion, in the stone accent colour
+    vec2 q = vPaneUv, qe = min(q, 1.0 - q);
+    float fr = max(step(qe.x, 0.1), step(qe.y, 0.06)), mu = step(abs(q.x - 0.5), 0.035);
+    float acc = max(fr, mu);
+    diffuseColor.rgb = mix(diffuseColor.rgb, uMullion, acc);
+    totalEmissiveRadiance *= 1.0 - acc;
   }`);
   };
   glassMat.customProgramCacheKey=()=>'lifespan0t_glassNightReveal';
@@ -3438,7 +3575,11 @@ function placeMaskWindows(glassVerts, ax,az,bx,bz, nx,nz, worldHeight, maskWindo
   }
 }
 
-function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false, startFloor=0){
+// opts (per-building window_* props): arch / mull = Sets of 0-based floors whose panes get a round head / accent frame + mullion;
+// only = Set of floors that get the full row, with columns = edge fractions where the other floors get single windows (null: skip them).
+const PANE_LANCET=1, PANE_ARCH=2, PANE_MULL=4;   // bits in glassVerts.flags (pane index → bits), read by makeGlassMeshes → aPaneLit.w
+function _flagPane(glassVerts,bits){ if(!bits) return; (glassVerts.flags??(glassVerts.flags=new Map())).set(glassVerts.length/18,bits); }
+function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat, isStorefront=false, startFloor=0, opts=null){
   const edgeDx=bx-ax, edgeDz=bz-az;
   const edgeLen=Math.sqrt(edgeDx*edgeDx+edgeDz*edgeDz);
   if(edgeLen<2.5) return;
@@ -3494,12 +3635,16 @@ function placeWindowsOnEdge(glassVerts, ax,az,bx,bz, nx,nz, height, floors, mat,
       const _startT=WIN_MARGIN+(usable-totalSpan)*0.5;
       const _winBaseY=f*FLOOR_H+_sill;
       const _winTopY=_winBaseY+_wH;
-      for(let w=0;w<_n;w++){
-        const t=_startT+(w+0.5)*cell;
+      const bits=(opts?.arch?.has(f)?PANE_ARCH:0)|(opts?.mull?.has(f)?PANE_MULL:0);
+      const ts=[];
+      if(opts?.only&&!opts.only.has(f)){ for(const u of opts.columns||[]) ts.push(u*edgeLen); }   // sparse floor: just the listed columns
+      else for(let w=0;w<_n;w++) ts.push(_startT+(w+0.5)*cell);
+      for(const t of ts){
         const cx=ax+ex*t+inx, cz=az+ez*t+inz;
         const hw=_wW*0.5;
         const blx=cx-ex*hw, blz=cz-ez*hw;
         const brx=cx+ex*hw, brz=cz+ez*hw;
+        _flagPane(glassVerts,bits);
         glassVerts.push(
           blx,_winBaseY,blz,  brx,_winBaseY,brz,  brx,_winTopY,brz,
           blx,_winBaseY,blz,  brx,_winTopY,brz,   blx,_winTopY,blz
@@ -4691,7 +4836,7 @@ function makeGlassMeshes(group, glassVerts, glassIdx){
         const fr=v=>v-Math.floor(v);
         const h1=fr(Math.sin(cx0*12.9898+cz0*78.233+fl*37.719)*43758.5453), h2=fr(Math.sin(cx0*39.346+cz0*11.135+fl*83.155)*24634.6345);
         const gnd=rel<FLOOR_H*0.8?255:0;
-        for(let c=0;c<4;c++) lit.set([Math.round(h1*255),Math.round(h2*255),gnd,glassVerts.lancet?.has(p)?255:0],k*16+c*4);
+        for(let c=0;c<4;c++) lit.set([Math.round(h1*255),Math.round(h2*255),gnd,glassVerts.flags?.get(p)??0],k*16+c*4);
       }
       const q=k*4; ind.set([q,q+1,q+2,q,q+2,q+3],k*6);
       cx+=glassVerts[o]; cz+=glassVerts[o+2];
@@ -4722,6 +4867,96 @@ function makeGlassMeshes(group, glassVerts, glassIdx){
 // painted windows on the walls take over exactly where the real glass ends:
 // uWinFade follows the effective radius.
 const _glSorted=[];
+// Field of view: one setting each for orbit and walk, remembered per browser, set from the advanced slider (Ctrl+A).
+// Left alone while a postcard overlay is open (it drives the FoV itself).
+const _fovKey=()=>'pfviewer.fov.'+(fpsMode?'walk':'orbit');
+function _fovPref(){ try{ const v=parseFloat(localStorage.getItem(_fovKey())); if(v>=30&&v<=110) return v; }catch(e){} return CONFIG.camera.fov; }
+function applyFov(){
+  const sl=document.getElementById('fov-slider'), v=_fovPref();
+  if(sl){ sl.value=v; document.getElementById('fov-val').textContent=Math.round(v); document.getElementById('fov-mode').textContent=fpsMode?'walk':'orbit'; }
+  try{ if(PC.savedFov!=null) return; }catch(e){}   // PC is declared further down (TDZ until then): no overlay yet
+  camera.fov=v; camera.updateProjectionMatrix();
+}
+{ const sl=document.getElementById('fov-slider');
+  sl.addEventListener('input',()=>{ const v=+sl.value; try{ localStorage.setItem(_fovKey(),v); }catch(e){} applyFov(); });
+  sl.addEventListener('dblclick',()=>{ try{ localStorage.removeItem(_fovKey()); }catch(e){} applyFov(); });   // double-click: back to the default
+  applyFov(); }
+// ── Street name labels (L) ─────────────────────────────────────────
+// Names painted flat on the road, along it, for the streets near the camera that exist at the viewed date. Depth-tested, so
+// buildings, trees and the like hide them. Light lettering on the dark summer road, dark on the snowed-over one (tinted by season.snow).
+// Rebuilt when the camera has moved or the month changes; one textured strip per label, text drawn once per name.
+const streetLabels={on:false,group:new THREE.Group(),tex:new Map(),x:1e9,z:1e9,month:-1,tint:0};
+scene.add(streetLabels.group);
+// Lettering is white with a black outline in summer and black with a white outline once snow lies (CONFIG.streetLabels colours):
+// two textures per name, swapped on the label material at snow 0.5.
+function _streetLabelTex(name){
+  let t=streetLabels.tex.get(name); if(t) return t;
+  const SL=CONFIG.streetLabels, hex=h=>'#'+h.toString(16).padStart(6,'0'), F=96, txt=name.toUpperCase();
+  const draw=(fill,edge)=>{
+    const c=document.createElement('canvas'), g=c.getContext('2d');
+    g.font=`bold ${F}px sans-serif`; const w=Math.ceil(g.measureText(txt).width)+40;
+    c.width=w; c.height=F+40; g.font=`bold ${F}px sans-serif`; g.textBaseline='middle'; g.lineJoin='round';
+    g.lineWidth=F*0.18; g.strokeStyle=hex(edge); g.strokeText(txt,20,c.height/2+4);
+    g.fillStyle=hex(fill); g.fillText(txt,20,c.height/2+4);
+    const tex=new THREE.CanvasTexture(c); tex.anisotropy=4; return tex;
+  };
+  const summer=draw(SL.summerColor,SL.winterColor), winter=draw(SL.winterColor,SL.summerColor);
+  t={summer,winter,aspect:summer.image.width/summer.image.height,mat:new THREE.MeshBasicMaterial({map:streetLabels.tint>=0.5?winter:summer,transparent:true,alphaTest:0.45,depthWrite:false,side:THREE.DoubleSide})};
+  streetLabels.tex.set(name,t); return t;
+}
+function rebuildStreetLabels(){
+  const SL=CONFIG.streetLabels, G=streetLabels, cam=camera.position, yr=yearFrac(currentViewDate), R=SL.radius*(lowMemProfile?0.7:1);
+  for(const m of [...G.group.children]){ G.group.remove(m); m.geometry.dispose(); }
+  G.x=cam.x; G.z=cam.z; G.month=Math.floor(yr*12);
+  const cand=[];
+  for(const s of roadSegs){
+    if(!s.name||yr<s.span[0]||yr>=s.span[1]) continue;
+    const dx=s.x2-s.x1, dz=s.z2-s.z1, len=Math.hypot(dx,dz); if(len<SL.minSegM) continue;
+    const mx=(s.x1+s.x2)/2, mz=(s.z1+s.z2)/2, d=Math.hypot(mx-cam.x,mz-cam.z); if(d>R) continue;
+    cand.push({s,dx,dz,len,mx,mz,d});
+  }
+  cand.sort((a,b)=>a.d-b.d);
+  const chosen=new Map(), n=[0];   // name → placed labels
+  for(const c of cand){
+    if(n[0]>=SL.max) break;
+    const list=chosen.get(c.s.name)||chosen.set(c.s.name,[]).get(c.s.name);
+    if(list.some(o=>Math.hypot(o.mx-c.mx,o.mz-c.mz)<SL.spacingM)) continue;
+    list.push(c); n[0]++;
+    let ux=c.dx/c.len, uz=c.dz/c.len;
+    if(ux<-1e-3||(Math.abs(ux)<=1e-3&&uz>0)){ ux=-ux; uz=-uz; }   // read left→right (north-up), or up the page on a north-south street
+    const px=uz, pz=-ux;                                          // text "up": toward the north side
+    const T=_streetLabelTex(c.s.name), hgt=Math.min(SL.maxHeightM,Math.max(SL.minHeightM,c.s.w*SL.heightShare));
+    let wid=hgt*T.aspect, hh=hgt; if(wid>SL.maxLengthM){ hh*=SL.maxLengthM/wid; wid=SL.maxLengthM; }
+    const cols=Math.max(2,Math.ceil(wid/3)+1), pos=new Float32Array(cols*6), uv=new Float32Array(cols*4), ind=[];
+    for(let i=0;i<cols;i++){
+      const t=i/(cols-1), a=(t-0.5)*wid, cx=c.mx+ux*a, cz=c.mz+uz*a;
+      const hx=px*hh/2, hz=pz*hh/2;
+      for(const[k,sgn]of[[0,-1],[1,1]]){
+        const x=cx+hx*sgn, z=cz+hz*sgn, o=i*6+k*3;
+        pos[o]=x; pos[o+1]=surfaceY(x,z,ux,uz)+SL.lift; pos[o+2]=z;
+        uv[i*4+k*2]=t; uv[i*4+k*2+1]=k;
+      }
+      if(i<cols-1){ const q=i*2; ind.push(q,q+2,q+1, q+1,q+2,q+3); }
+    }
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setAttribute('uv',new THREE.BufferAttribute(uv,2)); g.setIndex(ind);
+    const m=new THREE.Mesh(g,T.mat);
+    m.renderOrder=2; m.frustumCulled=true; m.userData.label=true;
+    G.group.add(m);
+  }
+}
+function tickStreetLabels(){
+  const G=streetLabels; if(!G.on) return;
+  const c=camera.position;
+  if((c.x-G.x)**2+(c.z-G.z)**2>CONFIG.streetLabels.moveM**2||Math.floor(yearFrac(currentViewDate)*12)!==G.month) rebuildStreetLabels();
+  const w=season.snow>=0.5?1:0;
+  if(G.tint!==w){ G.tint=w; for(const t of G.tex.values()){ t.mat.map=w?t.winter:t.summer; t.mat.needsUpdate=true; } }
+}
+function setStreetLabels(on){
+  streetLabels.on=on; streetLabels.group.visible=on;
+  if(on) rebuildStreetLabels();
+  showToast(on?'Street names on (L to hide)':'Street names off'); setTimeout(()=>showToast(null),1500);
+}
 function tickGlassLOD(){
   if(OFF.has('glass')) return;
   const G=CONFIG.glass, D=G.maxDistance??1800, T=G.tileMetres??400, budget=G.maxPanes??1e9, perFrame=G.tilesPerFrame??2, c=camera.position, h2=Math.max(0,c.y)**2;
@@ -5977,6 +6212,7 @@ async function buildWater(geojson){
     waterMesh = new THREE.Mesh(_floodGeo, waterMatRef);
     waterMesh.position.y = WATER_BASE;
     scene.add(waterMesh);
+    _scaleFloodPlane();   // out to the outer terrain's edge, if it's loaded
     if(OFF.has('water')) waterMesh.visible=false;
     window.waterMesh = waterMesh;
 
@@ -6619,6 +6855,74 @@ function buildingAliveNow(props){
   return y>=b && y<d;
 }
 // Nearest hovered building that is actually visible at the current date.
+// T: jump to the building under the cursor. The camera lands on the line from the building to where it is now (so you arrive from
+// the side you were looking from), set back and up in proportion to the building's size, and looks at its 3D centre.
+function flyToHoveredBuilding(){
+  const info=firstVisibleHitInfo(); if(!info||info.cx==null) return;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  const cx=info.cx+offX, cz=info.cz+offZ, base=sampleTerrainY(cx,cz);
+  const h=Math.max(MIN_H,(info.floors??1)*FLOOR_H), r=Math.sqrt(Math.max(info.area_m2??100,25))/2;
+  const centre=new THREE.Vector3(cx,base+h/2,cz);
+  let dx=camera.position.x-cx, dz=camera.position.z-cz; const dl=Math.hypot(dx,dz);
+  if(dl<1){ dx=0; dz=1; } else { dx/=dl; dz/=dl; }
+  const back=Math.max(25,1.6*h+1.6*r), up=Math.max(12,0.8*h);
+  camera.position.set(cx+dx*back, Math.max(centre.y+up,base+CONFIG.fpsControls.minCameraY), cz+dz*back);
+  orbit.target.copy(centre);
+  camera.up.set(0,1,0);
+  orbit.update(); clampOrbitAltitude();
+}
+// ── Review: died upper bounds (?review=died) ────────────────────────
+// data/review_died_bounds.json (tools/died_upper_bounds.py): older buildings that a newer, dated building now stands
+// on. ] / [ step through them (Shift: 10 at a time): the date goes to the year before the bound (the old building still
+// standing), the camera flies to it, the old footprint is outlined yellow and the newer one red. The item is logged
+// to the console too, for copying its pf_uid.
+const diedReview={items:null,i:-1,lines:[],el:null};
+async function initDiedReview(){
+  if(new URLSearchParams(location.search).get('review')!=='died') return;
+  try{
+    const r=await fetch('./data/review_died_bounds.json'+DATA_V); if(!r.ok) return;
+    diedReview.items=(await r.json()).items;
+  }catch(e){ console.warn('Died-bound review list:',e); return; }
+  const el=document.createElement('div'); el.id='review-panel';
+  el.style.cssText='position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:40;max-width:min(600px,calc(100vw - 32px));'
+    +'background:rgba(20,18,16,.88);color:#eee;font:13px/1.45 system-ui,sans-serif;padding:8px 12px;border-radius:6px;pointer-events:none;white-space:pre-line';
+  el.textContent=`Died-bound review: ${diedReview.items.length} buildings — ] next, [ previous (Shift: ×10)`;
+  document.body.appendChild(el); diedReview.el=el;
+}
+function _reviewOutline(coords,color){
+  const rings=typeof coords[0][0][0]==='number'?[coords[0]]:coords.map(p=>p[0]);   // Polygon | MultiPolygon → outer rings
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0, seg=[];
+  for(const ring of rings){
+    const pts=ring.map(c=>{const[sx,sy]=project(c[0],c[1]);const x=sx+offX,z=-sy+offZ;return[x,sampleTerrainY(x,z)+0.5,z];});
+    for(let i=0;i<pts.length-1;i++) seg.push(...pts[i],...pts[i+1]);
+  }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(seg,3));
+  const l=new THREE.LineSegments(g,new THREE.LineBasicMaterial({color,depthTest:false,transparent:true}));
+  l.renderOrder=999; return l;
+}
+function stepDiedReview(d){
+  const R=diedReview, n=R.items?.length; if(!n) return;
+  R.i=R.i<0?(d>0?0:n-1):((R.i+d)%n+n)%n;
+  const it=R.items[R.i];
+  for(const l of R.lines){ scene.remove(l); l.geometry.dispose(); l.material.dispose(); }
+  R.lines=[_reviewOutline(it.geo,0xffee44),_reviewOutline(it.by,0xff3030)];
+  for(const l of R.lines) scene.add(l);
+  const y=Math.max(TIMELINE_MIN_YEAR,Math.min(TIMELINE_MAX_YEAR,it.bound_year-1));
+  setCurrentViewDate(new Date(y,6,1),'day');
+  if(!fpsMode){
+    const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0, cx=it.cx+offX, cz=it.cz+offZ, base=sampleTerrainY(cx,cz);
+    let dx=camera.position.x-cx, dz=camera.position.z-cz; const dl=Math.hypot(dx,dz);
+    if(dl<1){ dx=0; dz=1; } else { dx/=dl; dz/=dl; }
+    camera.position.set(cx+dx*60, base+45, cz+dz*60);
+    orbit.target.set(cx,base+4,cz); camera.up.set(0,1,0); orbit.update(); clampOrbitAltitude();
+  }
+  const pc=v=>Math.round(v*100)+'%';
+  R.el.textContent=`${R.i+1}/${n} · ${it.category.replace('_',' ')}${it.bound_year-1>TIMELINE_MAX_YEAR?` (showing ${TIMELINE_MAX_YEAR})`:''}\n`
+    +`${it.name||'(unnamed)'} — born ${it.born}${it.died?`, died ${it.died}`:''} (${it.file.replace('pastforward_2026_','').replace('.geojson','')})\n`
+    +`under ${it.by_address||it.by_osm_id} (${it.by_osm_building||'building'}), built ${it.bound_year} → died ≤ ${it.bound_year}\n`
+    +`covers ${pc(it.cover_old)} of the old footprint, ${pc(it.cover_new)} of the new · IoU ${it.iou}`;
+  console.log('died-bound review',R.i+1,it);
+}
 function firstVisibleHitInfo(){
   raycaster.setFromCamera(mouseNDC,camera);
   const hits=raycaster.intersectObjects(buildingMeshes);
@@ -6679,7 +6983,7 @@ function updateHover(){
 
 // ── FPS ────────────────────────────────────────────────────────────
 function enterFPS(){
-  fpsMode=true;orbit.enabled=false;
+  fpsMode=true;orbit.enabled=false;applyFov();
 
   // Always read yaw/pitch from current camera — never change heading on F
   const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
@@ -6706,7 +7010,7 @@ function enterFPS(){
   document.getElementById('info-panel').style.display='none';setHoverHighlight(null);
 }
 function exitFPS(){
-  fpsMode=false;falling=false;fallVelocity=0;
+  fpsMode=false;falling=false;fallVelocity=0;applyFov();
   sprinting=false; sprintBtn?.classList.remove('active');   // sprint doesn't carry over to the next walk
   arStop();
   if(!isTouchUI){document.exitPointerLock();}
@@ -7186,6 +7490,10 @@ window.addEventListener('keydown',e=>{
     camera.up.set(0,1,0);
     orbit.update();
   }
+  if(e.code==='KeyT'&&!fpsMode&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest?.('input,textarea,[contenteditable]'))flyToHoveredBuilding();
+  if(e.code==='KeyL'&&!e.ctrlKey&&!e.metaKey&&!e.altKey&&!e.target.closest?.('input,textarea,[contenteditable]'))setStreetLabels(!streetLabels.on);
+  if((e.code==='BracketRight'||e.code==='BracketLeft')&&diedReview.items&&!e.target.closest?.('input,textarea,[contenteditable]'))
+    stepDiedReview((e.code==='BracketRight'?1:-1)*(e.shiftKey?10:1));
   if(e.code==='KeyM'&&!fpsMode)toggleMinimap();
   if(e.code==='KeyC'&&document.activeElement?.tagName!=='INPUT')copyCameraToClipboard();
   initAudio();
@@ -10629,20 +10937,18 @@ function initShanties(){
   const nearPermanent=(x,z)=>{ const out=[]; const gx=Math.floor(x/SC), gz=Math.floor(z/SC);
     for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const b of sg.get((gx+i)+','+(gz+j))||[]) if((b.x-x)**2+(b.z-z)**2<PC*PC) out.push(b);
     return out; };
+  const [sx0,sz0,sx1,sz1]=SH.siteWorld??SH.areaWorld;
   const rnd=mulberry('shanties');
   const pos=[],col=[],life=[],build=[], huts=[];
   let tries=0;
   while(huts.length<SH.count&&tries++<SH.count*250){
-    let x,z,minBorn=0, face=rnd()*Math.PI*2;   // the way the hut faces
-    if(rnd()<SH.trackShare){   // beside the yard tracks
-      const s=yard[Math.floor(rnd()*yard.length)], t=rnd(), side=rnd()<0.5?-1:1;
-      const dx=s.x2-s.x1,dz=s.z2-s.z1,L=Math.hypot(dx,dz)||1, off=SH.trackClearM+rnd()*SH.spreadM;
-      x=s.x1+dx*t-dz/L*side*off; z=s.z1+dz*t+dx/L*side*off; face=Math.atan2(dx,dz); if(s.born>0) minBorn=s.born+0.5;   // not before the track beside it
-    }else{                      // open ground anywhere in the area, west and north included
-      x=bx0+rnd()*(bx1-bx0); z=bz0+rnd()*(bz1-bz0);
-    }
-    if(!inBox(x,z)) continue;
-    if(segs.some(q=>dSeg(x,z,q)<SH.trackClearM)) continue;
+    // The open ground between the sidings (siteWorld): clear of every track by openClearM, never wedged between closely spaced sidings
+    const x=sx0+rnd()*(sx1-sx0), z=sz0+rnd()*(sz1-sz0);
+    let dAny=Infinity, near=null, dYard=Infinity;
+    for(const q of segs){ const d=dSeg(x,z,q); if(d<dAny) dAny=d; if(q.yard&&d<dYard){ dYard=d; near=q; } }
+    if(dAny<SH.openClearM||!near) continue;
+    const minBorn=near.born>0?near.born+0.5:0;   // not before the nearest yard track
+    const face=Math.atan2(near.x2-near.x1,near.z2-near.z1)+(rnd()<0.5?0:Math.PI/2);   // along or across it
     if(riverRings.some(r=>pointInPolygon(x,z,r))||sampleTerrainY(x,z)<CONFIG.water.startY+1.2) continue;
     if(huts.some(h=>Math.hypot(h.x-x,h.z-z)<SH.minSpacingM)) continue;
     let born=Math.max(minBorn,SH.years[0]+rnd()*(SH.years[1]-SH.years[0]));
@@ -12211,6 +12517,8 @@ function startLoop(){
     _t(tickConstructionSfx,dt);
     _t(tickStreetLights);
     _t(tickGlassLOD);
+    _t(tickStreetLabels);
+    _t(tickOuterTerrain);
     _t(tickDetailLOD);
     _t(tickFires,dt);
     _t(tickFireEngines,dt);
@@ -13284,7 +13592,8 @@ renderer.render(scene,camera);
   document.getElementById('loading').style.display='flex';
   setProgress(0,'Checking for data…');await tick();
 
-  window._demPrefetch=prefetchDEM(); window._demPrefetch.catch(()=>{});   // DEM downloads alongside the GeoJSON
+  window._demPrefetch=prefetchDEM(); window._demPrefetch.catch(()=>{});
+  window._outerPrefetch=prefetchOuterDEM(); window._outerPrefetch.catch(()=>{});   // DEM downloads alongside the GeoJSON
   let _fetched=0;
   const results=await Promise.all(AUTOLOAD.map(async url=>{
     try{
@@ -13308,6 +13617,8 @@ renderer.render(scene,camera);
   // correctly when they load in the loop below using DEM heights.
   setProgress(35,'Loading terrain…');await tick();
   await applyDEM();
+  await initOuterTerrain();   // after the DEM: its seam follows the inner terrain
+  initDiedReview();           // ?review=died only
   await loadWaterLevels();   // after the DEM: absolute datums need its refElev
   loadMoisture();
   loadStorms();

@@ -1244,6 +1244,117 @@
     "fence_thickness": 0.04,
     "fence_color": "#7B7266"
    }
+  },
+  "0aa04008-e0fd-484d-bff9-60ecf46a1b92": {
+   "name": "Grocer AND Stable",
+   "notes": "Tyndall stone colour chosen by Mike from a photo.",
+   "set": {
+    "wall_color": "#827A6E"
+   }
+  },
+  "f9b00e8a-3a03-5479-bec6-8d29c4d3dcdd": {
+   "name": "Electric Railway Chambers",
+   "address": "213 Notre Dame Avenue",
+   "notes": "Tyndall stone (#959097); the lowest two rows of windows get sandstone-coloured frames and mullions (#5F3D3B, CONFIG.windows.mullionColor). window_mullions = 0-based floors.",
+   "set": {
+    "wall_color": "#959097",
+    "window_mullions": [
+     0,
+     1
+    ]
+   }
+  },
+  "39ec9ded-fb5b-5ab1-be6f-30c318b56171": {
+   "name": "Lindsay Building",
+   "address": "228 Notre Dame Avenue",
+   "notes": "Tyndall stone colour chosen by Mike from a photo.",
+   "set": {
+    "wall_color": "#7E8E9A"
+   }
+  },
+  "e06cbc24-9483-47be-9ceb-4881be2cff03": {
+   "name": "Wholesale Dry Goods Greenshields Western Ltd.",
+   "notes": "Heritage name Robinson, Little and Company Building (1903). Colour, round-arched top-floor windows and the nearly blank south wall are from Mike's photos. window_arch = 0-based floors; window_sides.south: only the listed floors get a full row, the others just single windows at the given fractions along the wall.",
+   "set": {
+    "wall_color": "#DCBBA2",
+    "window_arch": [
+     5
+    ],
+    "window_sides": {
+     "south": {
+      "floors": [
+       0
+      ],
+      "columns": [
+       0.46,
+       0.54
+      ]
+     }
+    }
+   }
+  },
+  "68c81515-cd34-42d7-89a2-b0db17d89a72": {
+   "name": "R. J. Whitla and Co. Ltd. Wholesale Dry Goods",
+   "address": "70 Arthur Street (corner McDermot)",
+   "sources": [
+    "https://heritageguide.ca/rj-whitla-and-company-building-winnipeg-manitoba",
+    "https://www.historicplaces.ca/en/rep-reg/place-lieu.aspx?id=11523"
+   ],
+   "notes": "Built in stages 1899-1911 (James H. Cadham): five-storey 1899 section, repeated by the 1904 and 1911 additions. Windows square-headed on floors 1-4 and round-arched on the 5th. The top two storeys are a \"compatible yet differentiated\" addition; heritage sources do not date it. Modelled as a 1904 addition (a leasing listing says two storeys were added then; Mike sees 7 storeys in Goad 1906). GUESS: the 1904 date.",
+   "set": {
+    "wall_color": "#DCBBA2"
+   },
+   "phases": [
+    {
+     "phase": "original building (storeys 1-5), arched fifth floor",
+     "floors": 5,
+     "born": "1899-11-28",
+     "window_arch": [
+      4
+     ],
+     "date_precision": {
+      "born": "day"
+     }
+    },
+    {
+     "phase": "two-storey addition, storeys 6-7 (date a guess)",
+     "base_floors": 5,
+     "floors": 7,
+     "born": "1904-06-01",
+     "construction_months": 8,
+     "date_precision": {
+      "born": "year"
+     }
+    }
+   ]
+  },
+  "ed434bd5-f22b-4e78-8d49-9a2d471e0be9": {
+   "name": "Daylite Building (Ames Holden Co.), 296 McDermot",
+   "notes": "Red brick (Street View, Apr 2026); painted advertisement on the west wall still to do. Built 1899 for Ames Holden Shoe Co. and Bole Drug (MHS / Archiseek). ASSUMED to be the red building at the west end of the McDermot row.",
+   "set": {
+    "wall_color": "#8B4A3C"
+   }
+  },
+  "ff94d034-1709-4a62-bf71-9835a320d71d": {
+   "name": "Wilson Building (Allen Building), 288 McDermot",
+   "notes": "1905, J. C. Wilson Co., architect John Woodman, 6 storeys, Richardson Romanesque ground floor with three arches (MHS, Archiseek). Tan stone/buff brick in Street View.",
+   "set": {
+    "wall_color": "#BBAE94"
+   }
+  },
+  "e099a4be-d35c-5310-af19-cf3c1f8c1c95": {
+   "name": "Glengarry Block, 290 McDermot",
+   "notes": "1910 by J.H.G. Russell for Arthur Simmons, seven storeys, between the Wilson and Daylite buildings (MHS). Yellow buff brick in Street View. ASSUMED to be the yellow building with the arched top floor.",
+   "set": {
+    "wall_color": "#C9B77C"
+   }
+  },
+  "a520e12b-3660-5ee1-b83b-55ccdacf1454": {
+   "name": "Maltese Cross Building, 66 King",
+   "notes": "1909, J. D. Atchison, seven-storey Chicago-style warehouse: dark red clay brick, dressed stone ground floor (MHS, Archiseek, Historic Places).",
+   "set": {
+    "wall_color": "#7A3E36"
+   }
   }
  }
 }
