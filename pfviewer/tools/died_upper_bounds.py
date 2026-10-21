@@ -12,12 +12,19 @@ stood past Y: that is an upper bound on its died date. Lists every such pair for
 
 Old buildings = every building file pfviewer autoloads (data/pastforward_2026_*.geojson), with building_history.json
 `set.died` applied. A newer footprint counts when it covers >= OVERLAP of either footprint's area and its year is
-after the old building's born year. Categories:
-  new_bound      the old building has no died date (still_standing) — the bound is new information
-  contradicts    its died date is later than the bound
-  same_building  footprints nearly identical (IoU >= SAME_IOU), or both standing at the 1906 survey with a roll year <= 1906:
-                 more likely the same building (redrawn footprint, or the roll's 1905 default year)
-Already-consistent pairs (died <= bound) are left out."""
+after the old building's born year. Categories (`auto` ones are applied by tools/apply_died_bounds.py, the rest are
+for review — pfviewer ?review=died):
+  contradicts        its died date is later than the bound
+  same_building      footprints nearly identical (IoU >= SAME_IOU), the new one at most SAME_GROW × the old with the old
+                     inside it, or both standing at the 1906 survey with a roll year <= 1906: more likely the same
+                     building (redrawn footprint, or the roll's 1905 default year) — no change
+  misaligned         a small overlap (< AUTO_COVER of the old footprint), and the old footprint shifted by up to
+                     SHIFT_M lines up (IoU >= SHIFT_IOU) with some OSM building: registration error, not a replacement
+  possible_addition  the old footprint is (almost) wholly inside one SAME_GROW–ADD_GROW × its size: may still stand
+                     with an addition — review
+  replaced  (auto)   the new footprint covers >= AUTO_COVER of the old one: it can't still stand
+  small_overlap      the rest — review
+Already-consistent pairs (died <= bound) are left out, so applied ones drop off the list on the next run."""
 import sys, os, csv, json, math
 from collections import defaultdict, Counter
 from shapely import wkt, STRtree
@@ -30,6 +37,9 @@ HERE = os.path.dirname(os.path.abspath(__file__)); DATA = os.path.join(HERE, '..
 OLD_FILES = ['pastforward_2026_assessment.geojson', 'pastforward_2026_osm.geojson', 'pastforward_2026_mcphillips1910.geojson',
              'pastforward_2026_stb1880.geojson', 'pastforward_2026_legislature_osm.geojson', 'pastforward_2026_ogilvie_stack.geojson']
 OVERLAP, SAME_IOU = 0.2, 0.7
+AUTO_COVER, INSIDE = 0.4, 0.9           # replaced: new covers >= AUTO_COVER of old; 'inside': >= INSIDE
+SAME_GROW, ADD_GROW = 1.5, 3.0          # new/old area ratios for same_building / possible_addition (old inside)
+SHIFT_M, SHIFT_IOU = 4, 0.6             # misalignment test
 GOAD_YEAR = 1906   # a building standing at the 1906 survey can't have been replaced by one the roll dates <= 1906
 C_LON, C_LAT = -97.135515, 49.895396
 MLON = 111320*math.cos(math.radians(C_LAT)); MLAT = 111320
@@ -73,24 +83,36 @@ print(len(parcels), 'dated parcels')
 
 # ── OSM footprints → parcel year ─────────────────────────────────────────
 old_osm = {pr.get('osm_id') for pr, _ in old if pr.get('osm_id')}
-new, new_g = [], []
+new, new_g, all_g = [], [], []
 with open(osm_path) as fh:
     for line in fh:
         b = json.loads(line); p = b['p']
         oid = ('way/' if p['id'][0] == 'w' else 'relation/') + p['id'][1:]
-        if oid in old_osm: continue            # already a pfviewer building — compare only against others
         coords = b['g']
         geo = {'type': 'MultiPolygon' if isinstance(coords[0][0][0], list) else 'Polygon', 'coordinates': coords}
         try: g = to_m(shape(geo)).buffer(0)
         except Exception: continue
         if g.is_empty or g.area < 8: continue
+        all_g.append(g)                        # every footprint, for the misalignment test
+        if oid in old_osm: continue            # already a pfviewer building — compare only against others
         pt = g.representative_point()
         hit = [i for i in ptree.query(pt, predicate='within')]
         if not hit: continue
         i = hit[0]
         new.append({'osm_id': oid, 'year': pyear[i], 'address': paddr[i], 'osm_building': p.get('building'), 'geo': geo}); new_g.append(g)
-ntree = STRtree(new_g)
+ntree = STRtree(new_g); atree = STRtree(all_g)
 print(len(new), 'OSM footprints with a parcel year')
+
+def aligned_iou(g):
+    """Best IoU of g, shifted by up to SHIFT_M in 1 m steps, with any OSM footprint."""
+    best = 0.0
+    for j in atree.query(g.buffer(SHIFT_M)):
+        o = all_g[j]
+        for dx in range(-SHIFT_M, SHIFT_M+1):
+            for dy in range(-SHIFT_M, SHIFT_M+1):
+                h = sh_transform(g, lambda c: c + [dx, dy]); i = h.intersection(o).area
+                best = max(best, i/(h.area + o.area - i))
+    return best
 
 # ── Pairs ─────────────────────────────────────────────────────────────────
 rows = []; cats = Counter()
@@ -108,18 +130,23 @@ for oi, (pr, geo) in enumerate(old):
     if not best: continue
     Y, _, ni, a, b, iou = best; n = new[ni]
     died = pr.get('died'); dy = int(died[:4]) if died else None
-    if iou >= SAME_IOU or (Y <= GOAD_YEAR and by <= GOAD_YEAR and (dy is None or dy > GOAD_YEAR)): cat = 'same_building'
-    elif dy is None: cat = 'new_bound'
-    elif dy > Y: cat = 'contradicts'
-    else: continue
+    if dy is not None and dy <= Y: continue
+    grow = new_g[ni].area/g.area
+    if iou >= SAME_IOU or (a >= INSIDE and grow <= SAME_GROW) or (Y <= GOAD_YEAR and by <= GOAD_YEAR and (dy is None or dy > GOAD_YEAR)):
+        cat = 'same_building'
+    elif dy is not None: cat = 'contradicts'
+    elif a >= INSIDE and grow <= ADD_GROW: cat = 'possible_addition'
+    elif a >= AUTO_COVER: cat = 'replaced'
+    elif aligned_iou(g) >= SHIFT_IOU: cat = 'misaligned'
+    else: cat = 'small_overlap'
     cats[cat] += 1
     rows.append({'pf_uid': pr.get('pf_uid'), 'name': pr.get('name'), 'file': pr['_file'], 'born': pr['born'], 'died': died,
                  'died_basis': pr.get('died_basis'), 'bound_year': Y, 'category': cat, 'by_osm_id': n['osm_id'],
                  'by_address': n['address'], 'by_osm_building': n['osm_building'], 'cover_old': round(a, 2), 'cover_new': round(b, 2),
-                 'iou': round(iou, 2), 'cx': round(g.centroid.x, 1), 'cz': round(-g.centroid.y, 1), '_geo': geo, '_by': n['geo']})
-rows.sort(key=lambda r: (r['category'] != 'contradicts', r['category'] == 'same_building', r['bound_year']))
+                 'iou': round(iou, 2), 'grow': round(grow, 2), 'auto': cat == 'replaced', 'cx': round(g.centroid.x, 1), 'cz': round(-g.centroid.y, 1), '_geo': geo, '_by': n['geo']})
+ORDER = ['contradicts', 'possible_addition', 'small_overlap', 'replaced', 'misaligned', 'same_building']
+rows.sort(key=lambda r: (ORDER.index(r['category']), r['bound_year']))
 print(dict(cats))
-by_decade = Counter(r['bound_year']//10*10 for r in rows if r['category'] == 'new_bound'); print('new_bound by decade', sorted(by_decade.items()))
 
 strip = lambda r: {k: v for k, v in r.items() if not k.startswith('_')}
 json.dump({'type': 'FeatureCollection', 'features': [{'type': 'Feature', 'properties': strip(r), 'geometry': r['_geo']} for r in rows]},

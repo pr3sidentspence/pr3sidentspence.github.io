@@ -6875,13 +6875,16 @@ function flyToHoveredBuilding(){
 // data/review_died_bounds.json (tools/died_upper_bounds.py): older buildings that a newer, dated building now stands
 // on. ] / [ step through them (Shift: 10 at a time): the date goes to the year before the bound (the old building still
 // standing), the camera flies to it, the old footprint is outlined yellow and the newer one red. The item is logged
-// to the console too, for copying its pf_uid.
+// to the console too, for copying its pf_uid. Only the ones needing a look by default; &cats=replaced,same_building
+// (comma list, or all) for spot checks of the automatic ones.
 const diedReview={items:null,i:-1,lines:[],el:null};
 async function initDiedReview(){
-  if(new URLSearchParams(location.search).get('review')!=='died') return;
+  const q=new URLSearchParams(location.search);
+  if(q.get('review')!=='died') return;
+  const cats=(q.get('cats')||'contradicts,possible_addition,small_overlap').split(',');
   try{
     const r=await fetch('./data/review_died_bounds.json'+DATA_V); if(!r.ok) return;
-    diedReview.items=(await r.json()).items;
+    diedReview.items=(await r.json()).items.filter(it=>cats.includes('all')||cats.includes(it.category));
   }catch(e){ console.warn('Died-bound review list:',e); return; }
   const el=document.createElement('div'); el.id='review-panel';
   el.style.cssText='position:fixed;left:50%;bottom:64px;transform:translateX(-50%);z-index:40;max-width:min(600px,calc(100vw - 32px));'

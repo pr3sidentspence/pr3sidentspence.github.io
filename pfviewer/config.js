@@ -31,7 +31,7 @@ const _SFX_CLASS = {
 const _sfx = (cls, file, o = {}) => ({ path: `./sounds/${file}.mp3`, ..._SFX_CLASS[cls], ...o });
 
 export const CONFIG = {
-  dataVersion: '2026-10-20a',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
+  dataVersion: '2026-10-21a',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
 
   // ── Data files ──────────────────────────────────────────────────────
   // GeoJSON layers loaded automatically on startup. Add/remove/rename
