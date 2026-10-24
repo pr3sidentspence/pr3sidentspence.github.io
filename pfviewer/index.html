@@ -1805,13 +1805,22 @@ function tickCityTiles(){
 // day above strobeAboveM. One Points cloud per source (each city tile, the landmarks, the OSM masts); the vertex shader
 // hides lights whose structure doesn't exist in the view year, like the buildings. aType 0 red flashing, 1 steady red,
 // 2 white strobe (day) / red flashing (night).
+// Hand-written ShaderMaterials need the log-depth chunks (the renderer uses a logarithmic depth buffer) or they fail the
+// depth test against everything but the sky — snow and rain were only seen against the sky, aviation lights only when
+// nothing stood behind them. Adds them to a ShaderMaterial's own vertex / fragment source (main() as the last function).
+function _withLogDepth(mat){
+  const vs=mat.vertexShader, fs=mat.fragmentShader, ve=vs.lastIndexOf('}');
+  mat.vertexShader='#include <common>\n#include <logdepthbuf_pars_vertex>\n'+vs.slice(0,ve)+'\n  #include <logdepthbuf_vertex>\n'+vs.slice(ve);
+  mat.fragmentShader='#include <logdepthbuf_pars_fragment>\n'+fs.replace(/void main\(\)\s*\{/,m=>m+'\n  #include <logdepthbuf_fragment>\n');
+  return mat;
+}
 const obstructionUniforms={uTime:{value:0},uNight:{value:0},uFrom:{value:1946},uSize:{value:3},uPx:{value:1}};   // uYear (buildingYearUniform, declared further down) added in obstructionMaterial()
 let _obstructionMat=null;
 function obstructionMaterial(){
   if(_obstructionMat) return _obstructionMat;
   const O=CONFIG.obstructionLights??{};
   obstructionUniforms.uFrom.value=O.fromYear??1946; obstructionUniforms.uSize.value=O.sizePx??3;
-  return _obstructionMat=new THREE.ShaderMaterial({
+  return _obstructionMat=_withLogDepth(new THREE.ShaderMaterial({
     uniforms:{...obstructionUniforms,uYear:buildingYearUniform,uFlash:{value:60/(O.flashPerMin??30)},uStrobe:{value:60/(O.strobePerMin??40)}},
     vertexShader:`attribute vec2 aLife; attribute float aType, aPhase;
       uniform float uTime,uNight,uYear,uFrom,uSize,uPx,uFlash,uStrobe; varying float vI; varying vec3 vCol;
@@ -1830,7 +1839,7 @@ function obstructionMaterial(){
       void main(){ vec2 d=gl_PointCoord-.5; float r=dot(d,d)*4.; if(vI<.01||r>1.) discard;
         float core=1.-smoothstep(.0,.18,r), halo=(1.-r)*(1.-r);   // hot core + soft halo
         gl_FragColor=vec4(vCol*vI*(core*3.+halo*1.2),1.); }`,
-    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false});
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
 }
 // lights: [x,y,z, born,died, type, phase, ...]
 function obstructionLightPoints(lights){
@@ -1850,6 +1859,82 @@ function obstructionRoofLights(out,xs,zs,top,h,life,phase){
     if(seen.has(best)) continue; seen.add(best);
     out.push(xs[best],top+0.6,zs[best],life[0],life[1],type,phase);
   }
+}
+// ── Airport (data/airport.json, tools/airport.py) ──────────────────
+// Pavement (runways, taxiways, aprons) is ground in earlyYards (kinds runway / taxiway / apron, loaded with the yards).
+// Lights here, all one Points cloud with dates (aLife): runway edges white, thresholds green / ends red, taxiway edges
+// blue, approach lights white with the sequenced flashers (the "rabbit") running in toward the threshold. At night only.
+// The rotating beacon on the control tower: alternating white and green beams sweeping round, faint on a clear night,
+// plain to see across the sky in fog, rain or snow.
+const airport={lights:null,beacon:null,u:{uTime:{value:0},uNight:{value:0},uPx:{value:1},uSize:{value:3}}};
+function initAirport(J){
+  if(!J||OFF.has('airport')) return;
+  const L=[], add=(x,z,r,g,b,born,died,kind,ph)=>L.push(x,sampleTerrainY(x,z)+0.4,z,r,g,b,born,died,kind,ph);
+  const P=(lo,la)=>{ const[x,y]=project(lo,la); return[x,-y]; };
+  for(const R of J.runways??[]){
+    const[a,b]=R.ends.map(q=>P(q[0],q[1])), dx=b[0]-a[0], dz=b[1]-a[1], len=Math.hypot(dx,dz), ux=dx/len, uz=dz/len, nx=-uz, nz=ux, hw=R.width/2+1;
+    const born=_isoYearFrac(R.lightsFrom??R.born,NO_BORN), died=_isoYearFrac(R.died,0)||0;
+    for(let d=0;d<=len;d+=60) for(const s of[-1,1]) add(a[0]+ux*d+nx*s*hw,a[1]+uz*d+nz*s*hw,1,0.96,0.85,born,died,0,0);
+    for(let k=-hw;k<=hw;k+=4){ add(a[0]+nx*k-ux*2,a[1]+nz*k-uz*2,0.2,1,0.3,born,died,0,0); add(b[0]+nx*k+ux*2,b[1]+nz*k+uz*2,0.2,1,0.3,born,died,0,0);
+      add(a[0]+nx*k+ux*2,a[1]+nz*k+uz*2,1,0.12,0.08,born,died,0,0); add(b[0]+nx*k-ux*2,b[1]+nz*k-uz*2,1,0.12,0.08,born,died,0,0); }
+    const ab=_isoYearFrac(R.approachFrom??'1965',NO_BORN);
+    for(const[e,sg] of [[a,-1],[b,1]]) for(let d=30,i=0;d<=(R.approachM??900);d+=30,i++){   // out from each end
+      const x=e[0]+ux*sg*d, z=e[1]+uz*sg*d;
+      for(let k=-2;k<=2;k++) add(x+nx*k*1.2,z+nz*k*1.2,1,0.97,0.9,ab,died,0,0);
+      if(d>=300) add(x,z+0.01,1,1,1,ab,died,1,1-d/(R.approachM??900));   // flasher: phase by distance → runs in toward the runway
+      if(d===300) for(let k=-5;k<=5;k++) add(x+nx*k*1.5,z+nz*k*1.5,1,0.97,0.9,ab,died,0,0);   // the crossbar
+    }
+  }
+  for(const T of J.taxiwayLines??[]){
+    const born=_isoYearFrac(T.born,NO_BORN), pts=T.line.map(q=>P(q[0],q[1]));
+    for(let i=0;i<pts.length-1;i++){ const[a0,a1]=pts[i],[b0,b1]=pts[i+1], len=Math.hypot(b0-a0,b1-a1); if(len<1) continue; const nx=-(b1-a1)/len, nz=(b0-a0)/len, hw=(T.width??20)/2+1;
+      for(let d=0;d<len;d+=45) for(const s of[-1,1]) add(a0+(b0-a0)*d/len+nx*s*hw,a1+(b1-a1)*d/len+nz*s*hw,0.15,0.35,1,born,0,0,0); }
+  }
+  if(L.length){
+    const n=L.length/10, pos=new Float32Array(n*3), col=new Float32Array(n*3), life=new Float32Array(n*2), kp=new Float32Array(n*2);
+    for(let i=0;i<n;i++){ const o=i*10; pos.set(L.slice(o,o+3),i*3); col.set(L.slice(o+3,o+6),i*3); life.set(L.slice(o+6,o+8),i*2); kp.set(L.slice(o+8,o+10),i*2); }
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setAttribute('aCol',new THREE.BufferAttribute(col,3));
+    g.setAttribute('aLife',new THREE.BufferAttribute(life,2)); g.setAttribute('aKP',new THREE.BufferAttribute(kp,2));
+    const m=_withLogDepth(new THREE.ShaderMaterial({uniforms:{...airport.u,uYear:buildingYearUniform},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      vertexShader:`attribute vec3 aCol; attribute vec2 aLife, aKP; uniform float uTime,uNight,uYear,uPx,uSize; varying vec3 vC; varying float vI;
+        void main(){ vec4 mv=modelViewMatrix*vec4(position,1.); gl_Position=projectionMatrix*mv;
+          if(uYear<aLife.x||(aLife.y>0.&&uYear>=aLife.y)||uNight<.02){ gl_Position=vec4(0.,0.,-2.,1.); vI=0.; return; }
+          vC=aCol; vI=uNight;
+          if(aKP.x>.5){ float t=fract(uTime*2.+aKP.y); vI*=step(t,.08)*4.; }   // the rabbit: twice a second, outer end first
+          gl_PointSize=clamp(uSize*700./-mv.z,1.5,uSize*2.5)*uPx*(aKP.x>.5?1.6:1.); }`,
+      fragmentShader:`varying vec3 vC; varying float vI; void main(){ vec2 d=gl_PointCoord-.5; float r=dot(d,d)*4.; if(vI<.01||r>1.) discard; gl_FragColor=vec4(vC*vI*((1.-smoothstep(0.,.25,r))*2.5+(1.-r)*.8),1.); }`}));
+    const pts=new THREE.Points(g,m); pts.frustumCulled=false; pts.renderOrder=5; scene.add(pts); airport.lights=pts;
+  }
+  const B=J.beacon;
+  if(B){   // two beams back to back on one spinning group: white and green
+    const[x,z]=P(B.lon,B.lat), y=sampleTerrainY(x,z)+B.heightM, grp=new THREE.Group(); grp.position.set(x,y,z);
+    const len=B.beamM??2500, geo=new THREE.CylinderGeometry(B.beamEndR??90,0.6,len,16,8,true); geo.translate(0,len/2,0); geo.rotateZ(-Math.PI/2);   // along +x
+    const mk=col=>_withLogDepth(new THREE.ShaderMaterial({uniforms:{uI:{value:0},uC:{value:new THREE.Color(col)},uLen:{value:len}},transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,fog:false,
+      vertexShader:`varying float vT; varying vec3 vN, vV; void main(){ vT=position.x; vN=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
+      fragmentShader:`uniform float uI,uLen; uniform vec3 uC; varying float vT; varying vec3 vN, vV;
+        void main(){ float t=clamp(vT/uLen,0.,1.), along=pow(1.-t,2.2), core=pow(abs(dot(vN,vV)),1.5);   // brightest near the lamp, and through the beam's middle
+          gl_FragColor=vec4(uC*uI*along*core*.35,1.); }`}));
+    const white=mk(0xFFF4DC), green=mk(0x9CFFB4);
+    const b1=new THREE.Mesh(geo,white), b2=new THREE.Mesh(geo,green); b2.rotation.y=Math.PI; b1.rotation.z=b2.rotation.z=(B.tiltDeg??4)*Math.PI/180;
+    b1.frustumCulled=b2.frustumCulled=false; b1.renderOrder=b2.renderOrder=6;
+    grp.add(b1,b2); scene.add(grp);
+    // the lamp itself, on a short mast from the tower roof (shown in its years, day or night)
+    const mh=B.mastM??1.6, mast=new THREE.CylinderGeometry(0.08,0.1,mh,6).translate(0,-mh/2-0.35,0), lamp=new THREE.CylinderGeometry(0.42,0.42,0.7,10);
+    const hw=new THREE.Mesh(mergeGeometries([mast.toNonIndexed(),lamp.toNonIndexed()]),new THREE.MeshLambertMaterial({color:0x4A4E52,emissive:0x202418}));
+    hw.position.set(x,y,z); scene.add(hw);
+    airport.beacon={grp,hw,mats:[white,green],born:_isoYearFrac(B.born,NO_BORN),died:_isoYearFrac(B.died,NO_DIED),rpm:B.rpm??6};
+  }
+  console.log(`🛫 Airport: ${airport.lights?airport.lights.geometry.attributes.position.count:0} lights${B?', beacon':''}`);
+}
+function tickAirport(dt){
+  if(!airport.lights&&!airport.beacon) return;
+  airport.u.uTime.value=performance.now()/1000; airport.u.uNight.value=_nightness; airport.u.uPx.value=renderer.getPixelRatio();
+  const B=airport.beacon; if(!B) return;
+  const yf=buildingYearUniform.value, there=yf>=B.born&&yf<B.died, on=there&&_nightness>0.05;
+  B.hw.visible=there; B.grp.visible=on; if(!on) return;
+  B.grp.rotation.y+=dt*B.rpm/60*Math.PI*2;
+  const thick=Math.min(1,Math.max(_wxK,(scene.fog.density-(CONFIG.scene.fog.density??0))*400));   // rain, snow or fog: the beam lights the murk
+  const I=_nightness*(0.12+1.6*thick); for(const m of B.mats) m.uniforms.uI.value=I;
 }
 function tickObstructionLights(){
   obstructionUniforms.uTime.value=performance.now()/1000;
@@ -2821,8 +2906,8 @@ function _buildConstructionGeometry(recs){
 // on the building's side, strung along the kerb. Road segments come from
 // buildRoads (roadSegs, 40 m grid). Rebuilt with the scaffolding each month.
 const roadSegs=[], _roadSegGrid=new Map(), RSEG_CELL=40;
-function _addRoadSeg(x1,z1,x2,z2,w,span,name){
-  const s={x1,z1,x2,z2,w,span,name}; roadSegs.push(s);
+function _addRoadSeg(x1,z1,x2,z2,w,span,name,outer=false){
+  const s={x1,z1,x2,z2,w,span,name,outer}; roadSegs.push(s);
   const n=Math.max(1,Math.ceil(Math.hypot(x2-x1,z2-z1)/RSEG_CELL));
   const seen=new Set();
   for(let i=0;i<=n;i++){
@@ -5945,6 +6030,7 @@ async function buildRoads(geojson){
   streetcarRailMeshes=[];
   if(cartTrackMesh){cartTrackMesh.geometry.dispose();scene.remove(cartTrackMesh);cartTrackMesh=null;}
   const R2=Math.max(roadDrawRadius,3000)*Math.max(roadDrawRadius,3000), pos=[], col=[], life=[], latF=[];
+  const OUTER=CONFIG.roads?.outer??null, OUTER_R2=(OUTER?.radiusM??14000)**2, OUTER_STRIPS=[[1.0,0.0],[0.0,-1.0]];
 
   // ── Road filtering: skip roads with no nearby buildings ────────────
   // Always render: Main, Portage, Broadway, Higgins (historic arterials).
@@ -6049,14 +6135,18 @@ async function buildRoads(geojson){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
         const[sx2,sy2]=project(line[i+1][0],line[i+1][1]);
         const x1=sx1,z1=-sy1,x2=sx2,z2=-sy2;
-        if(x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2)continue;
+        const far=x1*x1+z1*z1>R2&&x2*x2+z2*z2>R2;
+        if(far&&!(OUTER&&feat.properties.road_born!=null&&x1*x1+z1*z1<OUTER_R2))continue;
         const dx=x2-x1,dz=z2-z1,len=Math.sqrt(dx*dx+dz*dz);
         if(len<0.1)continue;
         // Per-segment building proximity check (Up ≠ N: midpoint in world XZ)
         const mx=(x1+x2)/2, mz=(z1+z2)/2;
-        const span=featSpan(feat,stName,mx,mz);
+        // outer streets (tools/outer_roads.py): no pfviewer building near (or past the inner radius) → the year from the
+        // outer-city buildings beside it; drawn simpler (two strips, longer chunks)
+        let span=far?null:featSpan(feat,stName,mx,mz), outer=false;
+        if(!span&&OUTER&&feat.properties.road_born!=null){ span=[feat.properties.road_born,NO_DIED]; outer=true; }
         if(!span)continue;
-        _addRoadSeg(x1,z1,x2,z2,w,span,stName);
+        _addRoadSeg(x1,z1,x2,z2,w,span,stName,outer);
         cornerSegs.push({x1,z1,x2,z2,w,span,len,name:stName,type:feat.properties.st_type});
         const pxu=(-dz/len),pzu=(dx/len);
         // Lift road slightly above terrain; use each chunk's own mean so the
@@ -6070,7 +6160,7 @@ async function buildRoads(geojson){
           [0.0, -0.35],  // centre to left inner (wet→inner)
           [-0.35,-1.0],  // left shoulder (inner→dry)
         ];
-        const chunks=Math.max(1,Math.ceil(len/ROAD_SAMPLE_STEP));
+        const chunks=Math.max(1,Math.ceil(len/(outer?OUTER.sampleStep??30:ROAD_SAMPLE_STEP)));
         for(let c=0;c<chunks;c++){
           const ct0=c/chunks, ct1=(c+1)/chunks;
           const cx1=x1+dx*ct0, cz1=z1+dz*ct0;
@@ -6079,7 +6169,7 @@ async function buildRoads(geojson){
           let cspan=span;   // the creek bridge's deck stands in for the road while the creek exists
           const bq=roadCutAt((cx1+cx2)/2,(cz1+cz2)/2,stName);
           if(bq){ cspan=[Math.max(span[0],bq.died),span[1]]; if(cspan[0]>=cspan[1]) continue; }
-          for(const[tA,tB]of strips){
+          for(const[tA,tB]of(outer?OUTER_STRIPS:strips)){
             const ax1=cx1+pxu*tA*(w*0.5), az1=cz1+pzu*tA*(w*0.5);
             const bx1=cx1+pxu*tB*(w*0.5), bz1=cz1+pzu*tB*(w*0.5);
             const ax2=cx2+pxu*tA*(w*0.5), az2=cz2+pzu*tA*(w*0.5);
@@ -8306,8 +8396,10 @@ function _sfxPaths(C){
   return out;
 }
 function _sfxLoad(name){
-  const C=CONFIG.audio?.sfx?.[name]; if(!C?.path||!audioCtx) return null;
+  const C=CONFIG.audio?.sfx?.[name]; if(!audioCtx||!C) return null;
   if(_sfxBuf[name]) return _sfxBuf[name];
+  if(!C.path&&C.synth){ const b=_synthSfx(C.synth); _sfxVar[name]=[b]; return (_sfxBuf[name]=b); }   // no recording: made here (diesel engines and horns)
+  if(!C.path) return null;
   const one=p=>fetch(p).then(r=>{if(!r.ok)throw new Error(r.status);return r.arrayBuffer();}).then(a=>audioCtx.decodeAudioData(a));
   const paths=_sfxPaths(C);
   _sfxBuf[name]=one(paths[0]).then(async b=>{
@@ -8315,6 +8407,30 @@ function _sfxLoad(name){
     _sfxVar[name]=vs; return (_sfxBuf[name]=b);
   }).catch(e=>{console.log(`🔈 sfx '${name}': ${paths[0]} not available (${e.message}) — hook idle`);return(_sfxBuf[name]='missing');});
   return _sfxBuf[name];
+}
+// Generated sounds where there's no recording (CONFIG sfx `synth`): a diesel-electric's engine — a two-stroke's firing
+// harmonics over a low rumble, pulsing — at idle and in notch 8, and a five-chime air horn (C♯ E G A C♯, like a K5LA).
+// The loops repeat exactly (every frequency a whole number of cycles in the buffer) so they don't click.
+function _synthSfx(kind){
+  const sr=audioCtx.sampleRate, rnd=mulberry('sfx '+kind);
+  if(kind==='dieselHorn'){
+    const D=2.6, n=Math.floor(sr*D), b=audioCtx.createBuffer(1,n,sr), d=b.getChannelData(0), F=[277.2,329.6,392.0,440.0,554.4];
+    for(let i=0;i<n;i++){ const t=i/sr, env=Math.min(1,t/0.07)*Math.min(1,(D-t)/0.35), vib=1+0.003*Math.sin(t*2*Math.PI*5.5);
+      let v=0; for(const f of F){ const ph=t*f*vib; v+=(2*(ph-Math.floor(ph+0.5)))*0.5+Math.sin(2*Math.PI*ph)*0.5; }   // saw + sine: brassy
+      d[i]=v/F.length*0.55*env; }
+    let lp=0; for(let i=0;i<n;i++){ lp+=(d[i]-lp)*0.35; d[i]=lp; }   // soften the top
+    return b;
+  }
+  const idle=kind==='dieselIdle', D=6, n=Math.floor(sr*D), b=audioCtx.createBuffer(1,n,sr), d=b.getChannelData(0);
+  const f0=idle?20:36, pulse=idle?5:7.5, H=idle?8:14, ph=Array.from({length:H},()=>rnd()*6.283);
+  let br=0;
+  for(let i=0;i<n;i++){ const t=i/sr;
+    let v=0; for(let h=1;h<=H;h++) v+=Math.sin(2*Math.PI*f0*h*t+ph[h-1])/(h*0.8);
+    v*=0.75+0.25*Math.sin(2*Math.PI*pulse*t);
+    br=br*0.995+(rnd()*2-1)*0.05; v+=br*(idle?2:4);               // turbo hiss / rail rumble
+    d[i]=v*(idle?0.18:0.24); }
+  const X=Math.floor(sr*0.2); for(let i=0;i<X;i++){ const k=i/X; d[i]=d[i]*k+d[n-X+i]*(1-k); }   // the noise's seam
+  return b;
 }
 const _sfxPick=name=>{ const v=_sfxVar[name]; return v?.length?v[Math.floor(Math.random()*v.length)]:_sfxBuf[name]; };
 function sfxGainAt(C,x,y,z){
@@ -9577,6 +9693,7 @@ function buildRailRoute(feat){
 // ── Yard gravel (CONFIG.rail.yardGravel): the ground between two different tracks closer than maxGapM is gravel. Candidate cells
 // come from sampling either side of every track; a cell is gravel when tracks on opposite sides of it are both near enough
 // (their distances sum to <= maxGapM) and stand at the same time — it lasts while both do ──
+const _gk=(i,j)=>(i+32768)*65536+(j+32768);   // integer cell key (|i|,|j| < 32768)
 function buildYardGravel(gj){
   if(railGravelMesh){ railGravelMesh.geometry.dispose(); scene.remove(railGravelMesh); railGravelMesh=null; }
   const G=CONFIG.rail.yardGravel; if(!G) return;
@@ -9586,15 +9703,17 @@ function buildYardGravel(gj){
       for(let i=0;i<line.length-1;i++){ const[a,b]=project(line[i][0],line[i][1]),[c,d]=project(line[i+1][0],line[i+1][1]);
         const s={fi,x1:a,z1:-b,x2:c,z2:-d,rb,rd}; if(Math.hypot(c-a,d-b)<0.05) continue; segs.push(s);
         const n=Math.ceil(Math.hypot(c-a,d-b)/GC)+1;
-        for(let k=0;k<=n;k++){ const x=a+(c-a)*k/n, z=-(b+(d-b)*k/n), key=Math.floor(x/GC)+','+Math.floor(z/GC); let L=grid.get(key); if(!L){L=new Set();grid.set(key,L);} L.add(s); } } });
-  const near=(x,z)=>{ const out=new Set(), gx=Math.floor(x/GC), gz=Math.floor(z/GC); for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const s of grid.get((gx+i)+','+(gz+j))||[]) out.add(s); return out; };
-  const cells=new Map();
+        for(let k=0;k<=n;k++){ const x=a+(c-a)*k/n, z=-(b+(d-b)*k/n), key=_gk(Math.floor(x/GC),Math.floor(z/GC)); let L=grid.get(key); if(!L){L=[];grid.set(key,L);} if(L[L.length-1]!==s) L.push(s); } } });
+  // numeric cell keys and plain arrays (a segment may turn up twice in a 3×3 block — harmless: only each track's nearest counts)
+  const nb=[], near=(x,z)=>{ nb.length=0; const gx=Math.floor(x/GC), gz=Math.floor(z/GC); for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++){ const L=grid.get(_gk(gx+i,gz+j)); if(L) for(const s of L) nb.push(s); } return nb; };
+  const cells=new Set();
   for(const s of segs){ const L=Math.hypot(s.x2-s.x1,s.z2-s.z1), px=-(s.z2-s.z1)/L, pz=(s.x2-s.x1)/L;
-    for(let t=0;t<=L;t+=C) for(let o=-maxG;o<=maxG;o+=C){ const x=s.x1+(s.x2-s.x1)*t/L+px*o, z=s.z1+(s.z2-s.z1)*t/L+pz*o; cells.set(Math.floor(x/C)+','+Math.floor(z/C),1); } }
+    for(let t=0;t<=L;t+=C) for(let o=-maxG;o<=maxG;o+=C){ const x=s.x1+(s.x2-s.x1)*t/L+px*o, z=s.z1+(s.z2-s.z1)*t/L+pz*o; cells.add(_gk(Math.floor(x/C),Math.floor(z/C))); } }
   const pos=[], col=[], life=[], rnd=mulberry('yardGravel'), gc=new THREE.Color(G.color);
-  for(const k of cells.keys()){
-    const[i,j]=k.split(',').map(Number), x=(i+0.5)*C, z=(j+0.5)*C;
-    const best=new Map();   // feature → {d, side, rb, rd} nearest segment of each track
+  const best=new Map();   // feature → {d, side, rb, rd} nearest segment of each track
+  for(const k of cells){
+    const i=Math.floor(k/65536)-32768, j=k%65536-32768, x=(i+0.5)*C, z=(j+0.5)*C;
+    best.clear();
     for(const s of near(x,z)){ const dx=s.x2-s.x1, dz=s.z2-s.z1, L2=dx*dx+dz*dz, t=Math.max(0,Math.min(1,((x-s.x1)*dx+(z-s.z1)*dz)/L2));
       const d=Math.hypot(x-s.x1-dx*t,z-s.z1-dz*t); if(d>maxG) continue;
       const e=best.get(s.fi); if(!e||d<e.d) best.set(s.fi,{d,nx:(x-s.x1-dx*t)/(d||1),nz:(z-s.z1-dz*t)/(d||1),rb:s.rb,rd:s.rd}); }
@@ -10668,13 +10787,21 @@ function buildStreetLights(){
     const k=key(x,z); let e=ends.get(k); if(!e){e={x,z,n:0,b:1e9,d:-1e9,w:0};ends.set(k,e);}
     e.n++; e.b=Math.min(e.b,s.span[0]); e.d=Math.max(e.d,s.span[1]); e.w=Math.max(e.w,s.w);
   }
-  for(const e of ends.values()){
-    if(e.n<3||e.x*e.x+e.z*e.z>R2) continue;
+  const outerSet=new Set(); for(const s of roadSegs) if(s.outer) for(const[x,z]of[[s.x1,s.z1],[s.x2,s.z2]]) outerSet.add(key(x,z));
+  for(const[k2,e] of ends){
+    if(e.n<3||e.x*e.x+e.z*e.z>R2||outerSet.has(k2)) continue;
     // on the corner, clear of the carriageway
     lamps.arc.push({x:e.x+e.w*0.35,z:e.z+e.w*0.35,born:Math.max(arcFrom,e.b),died:e.d});
   }
   // Along the blocks
+  const OL=L.outer, outerLamps=[];
   for(const s of roadSegs){
+    if(s.outer){   // outer streets: modern davit lights, one side
+      if(!OL) continue;
+      const dx=s.x2-s.x1, dz=s.z2-s.z1, len=Math.hypot(dx,dz), px=-dz/len, pz=dx/len;
+      for(let d=OL.spacing/2;d<len;d+=OL.spacing) outerLamps.push({x:s.x1+dx*d/len+px*(s.w/2+0.8),z:s.z1+dz*d/len+pz*(s.w/2+0.8),born:Math.max(OL.from,s.span[0]),yaw:Math.atan2(-px,-pz)});
+      continue;
+    }
     const dx=s.x2-s.x1, dz=s.z2-s.z1, len=Math.hypot(dx,dz); if(len<L.spacing*0.8) continue;
     const px=-dz/len, pz=dx/len;
     for(let d=L.spacing/2,i=0;d<len-L.spacing*0.3;d+=L.spacing,i++){
@@ -10701,8 +10828,24 @@ function buildStreetLights(){
     for(const m of meshes){ m.count=0; m.frustumCulled=false; scene.add(m); }
     kinds[kind]={list,meshes,K};
   }
-  streetLights={kinds,key:null};
-  console.log(`💡 Street lights: ${lamps.arc.length} arc (intersections), ${lamps.post.length} posts`);
+  let outer=null;
+  if(OL&&outerLamps.length){
+    const cap=OL.maxDrawn??3000, pole=new THREE.CylinderGeometry(0.08,0.12,OL.height,5); pole.translate(0,OL.height/2,0);
+    const arm=new THREE.BoxGeometry(0.08,0.08,OL.arm); arm.translate(0,OL.height-0.1,OL.arm/2);
+    const head=new THREE.BoxGeometry(0.35,0.14,0.75); head.translate(0,OL.height-0.2,OL.arm);
+    const pool=new THREE.PlaneGeometry(1,1); pool.rotateX(-Math.PI/2);
+    const meshes=[
+      new THREE.InstancedMesh(mergeGeometries([pole,arm],false),new THREE.MeshLambertMaterial({color:OL.color}),cap),
+      new THREE.InstancedMesh(head,new THREE.MeshLambertMaterial({color:0xD8DADC,emissive:OL.glow,emissiveIntensity:0}),cap),
+      new THREE.InstancedMesh(pool,new THREE.MeshBasicMaterial({map:poolTex,color:OL.glow,transparent:true,opacity:0,depthWrite:false,
+        blending:THREE.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4}),cap)];
+    meshes[2].renderOrder=1;
+    for(const m of meshes){ m.count=0; m.frustumCulled=false; scene.add(m); }
+    for(const l of outerLamps) l.y=sampleTerrainY(l.x,l.z)+0.18;
+    outer={list:outerLamps,meshes,K:OL,cap,cx:1e9,cz:1e9,key:null};
+  }
+  streetLights={kinds,key:null,outer};
+  console.log(`💡 Street lights: ${lamps.arc.length} arc (intersections), ${lamps.post.length} posts, ${outerLamps.length} outer`);
 }
 const _slM=new THREE.Matrix4(), _slP=new THREE.Vector3(), _slQ=new THREE.Quaternion(), _slS=new THREE.Vector3(), _slU=new THREE.Vector3(0,1,0);
 function tickStreetLights(){
@@ -10728,6 +10871,23 @@ function tickStreetLights(){
     heads.material.emissiveIntensity=night*1.4;
     pools.material.opacity=night*CONFIG.streetLights.poolOpacity;
     pools.visible=night>0.02;
+  }
+  const O=streetLights.outer;
+  if(O){   // outer streets: the lamps near the camera, re-picked as it moves (or the month changes)
+    const[posts,heads,pools]=O.meshes, p=camera.position, K=O.K;
+    if(rebuild||Math.hypot(p.x-O.cx,p.z-O.cz)>150){
+      O.cx=p.x; O.cz=p.z; const D2=(K.drawM+Math.max(0,p.y)*0.5)**2; let n=0;
+      for(const l of O.list){
+        if(yr<l.born||(l.x-p.x)**2+(l.z-p.z)**2>D2) continue;
+        if(n>=O.cap) break;
+        _slQ.setFromAxisAngle(_slU,l.yaw); _slM.compose(_slP.set(l.x,l.y,l.z),_slQ,_slS.set(1,1,1)); posts.setMatrixAt(n,_slM); heads.setMatrixAt(n,_slM);
+        const ox=Math.sin(l.yaw)*K.arm, oz=Math.cos(l.yaw)*K.arm, r=K.poolRadius;
+        _slM.compose(_slP.set(l.x+ox,l.y+0.05,l.z+oz),_slQ.identity(),_slS.set(r*2,1,r*2)); pools.setMatrixAt(n,_slM); n++;
+      }
+      for(const m of O.meshes){ m.count=n; m.instanceMatrix.needsUpdate=true; }
+      const g=yr>=K.ledFrom?K.led:yr>=K.sodiumFrom?K.sodium:K.glow; heads.material.emissive.set(g); pools.material.color.set(g);   // mercury → sodium → LED
+    }
+    heads.material.emissiveIntensity=night*1.4; pools.material.opacity=night*CONFIG.streetLights.poolOpacity; pools.visible=night>0.02;
   }
 }
 
@@ -11047,21 +11207,22 @@ function tickSoundHooks(dt){
   for(const c of streetcarMeshes) if(c.mesh.visible){ const p=c.mesh.position; cars.push({id:c,x:p.x,y:p.y,z:p.z}); }
   sfxLoopUpdate('streetcarRun',cars); sfxLoopUpdate('streetcarCruise',cars);
   // Trains: speed-smoothed so idle ↔ running crossfade; whistle when one pulls out or comes in
-  const TR=CONFIG.audio.train, trRun=[], trIdle=[], trRails=[];
+  const TR=CONFIG.audio.train, trRun=[], trIdle=[], trRails=[], dsRun=[], dsIdle=[];
   let onboard=0;
   for(const t of trainConsists) if(t.loco?.visible){
     t.loco.getWorldPosition(_hv);
     const x=_hv.x, y=_hv.y, z=_hv.z, tgt=t.moving?1:0;
     t._sv=(t._sv??tgt)+(tgt-(t._sv??tgt))*Math.min(1,step/(TR.fadeSeconds??2.5));
-    if(t._wasMoving!==undefined&&t._wasMoving!==!!t.moving&&near(x,z,2500)&&Math.random()<(t.moving?TR.whistleOnDepart:TR.whistleOnArrive)) playSfx('trainWhistle',x,y+4,z);
+    const dz=t.diesel, horn=dz?'dieselHorn':'trainWhistle';   // diesel-electric (tickTrains): engine and horn instead of steam and whistle
+    if(t._wasMoving!==undefined&&t._wasMoving!==!!t.moving&&near(x,z,2500)&&Math.random()<(t.moving?TR.whistleOnDepart:TR.whistleOnArrive)) playSfx(horn,x,y+4,z);
     t._wasMoving=!!t.moving;
     if(!t.moving&&t.pauseTimer>0){   // about to pull out: the departure sound starts TR.startLeadSeconds before the train moves
-      if(!t._startPlayed&&t.pauseTimer<=(TR.startLeadSeconds??34)){ t._startPlayed=true; if(near(x,z,TR.startRange??900)){ playSfx('trainStart',x,y+2,z); t._startEnd=performance.now()*0.001+(_sfxVar.trainStart?.[0]?.duration??45); } }
+      if(!t._startPlayed&&t.pauseTimer<=(TR.startLeadSeconds??34)&&!dz){ t._startPlayed=true; if(near(x,z,TR.startRange??900)){ playSfx('trainStart',x,y+2,z); t._startEnd=performance.now()*0.001+(_sfxVar.trainStart?.[0]?.duration??45); } }
     }else t._startPlayed=false;
     const sv=t._sv, id=t;
     const rw=t._startEnd?Math.max(0,Math.min(1,(performance.now()*0.001-(t._startEnd-(TR.startFadeSeconds??4)))/(TR.startFadeSeconds??4))):1;   // the start sound plays on past departure; train-run fades in as it ends
-    trRun.push({id,x,y,z,gain:sv*rw}); trRails.push({id,x,y,z,gain:sv}); trIdle.push({id,x,y,z,gain:1-sv});
-    if(rnd(TR.whistleRandomPerSec??1/240)&&near(x,z,2000)) playSfx('trainWhistle',x,y+4,z);
+    (dz?dsRun:trRun).push({id,x,y,z,gain:dz?sv:sv*rw}); trRails.push({id,x,y,z,gain:sv}); (dz?dsIdle:trIdle).push({id,x,y,z,gain:1-sv});
+    if(rnd(TR.whistleRandomPerSec??1/240)&&near(x,z,2000)) playSfx(horn,x,y+4,z);
     if(sv>0.15){   // onboard: the camera is on or beside the train
       let d=Math.hypot(x-cam.x,y-cam.y,z-cam.z);
       for(const c of t.cars) if(c.visible) d=Math.min(d,Math.hypot(c.position.x-cam.x,c.position.y-cam.y,c.position.z-cam.z));
@@ -11069,6 +11230,7 @@ function tickSoundHooks(dt){
     }
   }
   sfxLoopUpdate('trainRun',trRun); sfxLoopUpdate('trainRails',trRails); sfxLoopUpdate('trainIdle',trIdle);
+  sfxLoopUpdate('dieselRun',dsRun); sfxLoopUpdate('dieselIdle',dsIdle);
   sfxBedSet('trainOnboard',onboard);
   // Steamboats (roaming + docked is silent); whistle when one appears (arrives) or leaves
   const boats=[];
@@ -11530,7 +11692,7 @@ function _buildMosquitoes(){
     }`,
     fragmentShader:`uniform vec3 uColor; uniform float uOpacity; varying float vA;
     void main(){ if(vA<0.01) discard; gl_FragColor=vec4(uColor,uOpacity*vA); }`});
-  const pts=new THREE.Points(g,mat); pts.frustumCulled=false; pts.renderOrder=4; scene.add(pts);
+  _withLogDepth(mat); const pts=new THREE.Points(g,mat); pts.frustumCulled=false; pts.renderOrder=4; scene.add(pts);
   // The cloud: over standing water a bad mosquito year looks like a faint black smoke, ~1–3 m up. Soft round puffs, a few metres
   // across, several per anchor (anchors are ~20 m apart along a creek, so they run together into a drifting band).
   const CL=M.cloud||{puffs:4,size:4.5,opacity:0.2,maxPx:140,fade:[40,260],color:0x1A1816}, cn=CL.puffs;
@@ -11552,7 +11714,7 @@ function _buildMosquitoes(){
     }`,
     fragmentShader:`uniform vec3 uColor; uniform float uOpacity; varying float vA;
     void main(){ float r=length(gl_PointCoord*2.0-1.0); float a=pow(clamp(1.0-r,0.0,1.0),1.7); if(a*vA<0.003) discard; gl_FragColor=vec4(uColor,uOpacity*vA*a); }`});
-  const cloud=new THREE.Points(cg,cmat); cloud.frustumCulled=false; cloud.renderOrder=3; scene.add(cloud);
+  _withLogDepth(cmat); const cloud=new THREE.Points(cg,cmat); cloud.frustumCulled=false; cloud.renderOrder=3; scene.add(cloud);
   _mosq={pts,u,cloud,cu,count:A.length};
 }
 window._debugMosq=()=>({max:CONFIG.mosquitoes.maxAnchors,built:_mosq?.count,anchors:mosquitoAnchors.length,dens:+mosquitoDensity().toFixed(2),visible:!!_mosq?.pts.visible});
@@ -12256,6 +12418,13 @@ function buildSmallCraft(kind,yr){
       o.position.set(sx*1.0,0.5,0.2); g.add(o); oars.push(o);
     }
     if(Math.random()<0.5) _person(g,0,0.12,-1.3,0x5A3A4A);   // passenger
+  }else if(kind==='waterTaxi'){   // the Forks water taxis / water buses: open boat, canopy on posts, a few passengers
+    g.add(_lensHull(K.length,K.beam,0.7,K.color,0x8A8E90));
+    const cm=new THREE.MeshLambertMaterial({color:K.canopy});
+    const roof=new THREE.Mesh(new THREE.BoxGeometry(K.beam*0.9,0.08,K.length*0.55),cm); roof.position.set(0,2.15,-0.2); roof.castShadow=true; g.add(roof);
+    for(const sx of[-1,1]) for(const sz of[-1,1]){ const post=new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,1.5,5),new THREE.MeshLambertMaterial({color:0xC8CCD0})); post.position.set(sx*K.beam*0.38,1.4,-0.2+sz*K.length*0.25); g.add(post); }
+    _person(g,0,0.45,K.length*0.32,SC.rower);   // the pilot, at the bow console
+    const n=2+Math.floor(Math.random()*5); for(let i=0;i<n;i++) _person(g,(i%2?-0.5:0.5),0.45,-1.8+Math.floor(i/2)*1.0,pick([0x3E5A6E,0x8B2A1E,0xC9B98F,0x2A4A2A,0x6A4A6A]));
   }else{ // launch
     g.add(_lensHull(K.length,K.beam,0.8,K.color,0x6A5A44));
     const cab=new THREE.Mesh(new THREE.BoxGeometry(K.beam*0.7,1.2,2.8),new THREE.MeshLambertMaterial({color:K.cabin}));
@@ -12267,10 +12436,13 @@ function buildSmallCraft(kind,yr){
   g.userData.oars=oars;
   return g;
 }
+function _routeTAt(route,x,z){ let best=0,bd=1e18; for(let i=0;i<route.pts.length;i++){ const d=(route.pts[i].x-x)**2+(route.pts[i].z-z)**2; if(d<bd){bd=d;best=i;} } return route.dists[best]/route.totalLen; }
 function spawnSmallCraft(kind,yr){
-  const route=Math.random()<SC.redShare?sbRoutes.red:sbRoutes.assiniboine;
-  const [a,b]=SC.stretch, len=Math.min(route.totalLen*0.9,a+Math.random()*(b-a));
-  const t0=Math.random()*(1-len/route.totalLen), t1=t0+len/route.totalLen;
+  const K0=SC[kind], route=K0.river?sbRoutes[K0.river[Math.floor(Math.random()*K0.river.length)]]:Math.random()<SC.redShare?sbRoutes.red:sbRoutes.assiniboine;
+  const [a,b]=K0.stretch??SC.stretch, len=Math.min(route.totalLen*0.9,a+Math.random()*(b-a));
+  let t0=Math.random()*(1-len/route.totalLen);
+  if(K0.through){ const[ax,ay]=project(K0.through[0],K0.through[1]), ta=_routeTAt(route,ax,-ay); t0=Math.max(0,Math.min(1-len/route.totalLen,ta-len/route.totalLen*(0.2+Math.random()*0.6))); }   // a stretch that passes this point (the Forks)
+  const t1=t0+len/route.totalLen;
   const g=buildSmallCraft(kind,yr); scene.add(g);
   const K=SC[kind];
   scBoats.push({kind,group:g,route,t0,t1,t:t0+Math.random()*(t1-t0),dir:Math.random()<0.5?1:-1,
@@ -12290,7 +12462,8 @@ function tickSmallCraft(dt,waterY){
   if(key!==_scYear){
     _scYear=key;
     while(scBoats.length) removeSmallCraft(scBoats.length-1);
-    if(open) for(const kind of['canoe','york','rowboat','launch']){
+    if(open) for(const kind of['canoe','york','rowboat','launch','waterTaxi']){
+      if(!SC[kind]) continue;
       const n=Math.round(sbKey(SC[kind].count,yr));
       for(let i=0;i<n;i++) spawnSmallCraft(kind,yr);
     }
@@ -12941,10 +13114,10 @@ const moundUniforms={ uMYear:{value:0}, uMFade:{value:CONFIG.cemetery?.moundYear
 // Ground patch: polys [[outer, ...holes]] (lon,lat) draped on the terrain `lift` m up. With no `skip` test, the outline is
 // triangulated as drawn and each triangle subdivided to ~st m so it follows the ground — clean edges; with one, st-metre
 // cells (the cemetery paths, which stop at the river bank). Vertex shade jitter (0.8–1) either way, hashed by position.
-function _groundPatch(polys,color,born,died,lift,st,skip){
+function _groundPatch(polys,color,born,died,lift,st,skip,jitter=0.2){
   const pos=[], col=[], rnd=mulberry('ground'+polys.length+born), toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
   if(!skip){
-    const jit=(x,z)=>{ const h=Math.sin(Math.round(x*4)*12.9898+Math.round(z*4)*78.233)*43758.5453; return 0.8+0.2*(h-Math.floor(h)); };
+    const jit=(x,z)=>{ const h=Math.sin(Math.round(x*4)*12.9898+Math.round(z*4)*78.233)*43758.5453; return 1-jitter+jitter*(h-Math.floor(h)); };
     const V=(x,z)=>{ pos.push(x,sampleTerrainY(x,z)+lift,z); const j=jit(x,z); col.push(j,j,j); };
     for(const poly of polys){
       const ring=r=>{ const v=toWz(r).map(q=>new THREE.Vector2(q.x,q.z)); if(v.length>1&&v[0].equals(v[v.length-1])) v.pop(); return v; };
@@ -12953,11 +13126,15 @@ function _groundPatch(polys,color,born,died,lift,st,skip){
       const all=[...outer,...holes.flat()];
       for(const[a,b,c]of THREE.ShapeUtils.triangulateShape(outer,holes)){
         const A=all[a]; let B=all[b], C=all[c]; if((B.x-A.x)*(C.y-A.y)-(B.y-A.y)*(C.x-A.x)<0) [B,C]=[C,B];   // CCW in (x,z), so the reversed order below faces up
-        const n=Math.max(1,Math.ceil(Math.max(A.distanceTo(B),B.distanceTo(C),C.distanceTo(A))/st));
-        const P=(i,j)=>{ const u=i/n, v=j/n; return[A.x+(B.x-A.x)*u+(C.x-A.x)*v, A.y+(B.y-A.y)*u+(C.y-A.y)*v]; };   // barycentric grid over the triangle
-        for(let i=0;i<n;i++) for(let j=0;j<n-i;j++){
-          const p0=P(i,j), p1=P(i+1,j), p2=P(i,j+1); V(p0[0],p0[1]); V(p2[0],p2[1]); V(p1[0],p1[1]);   // x,z CCW seen from below → reversed: faces up
-          if(i+j<n-1){ const p3=P(i+1,j+1); V(p1[0],p1[1]); V(p2[0],p2[1]); V(p3[0],p3[1]); }
+        // split the longest edge until every edge is under st (a barycentric n×n grid with n from the longest edge made
+        // (L/st)² slivers out of every long thin triangle a big polygon triangulates into — the airfield, golf roughs)
+        const stack=[[A.x,A.y,B.x,B.y,C.x,C.y]], st2=st*st;
+        while(stack.length){ const[ax,az,bx,bz,cx,cz]=stack.pop();
+          const ab=(bx-ax)**2+(bz-az)**2, bc=(cx-bx)**2+(cz-bz)**2, ca=(ax-cx)**2+(az-cz)**2, mx=Math.max(ab,bc,ca);
+          if(mx<=st2){ V(ax,az); V(cx,cz); V(bx,bz); continue; }   // x,z CCW seen from below → reversed: faces up
+          if(mx===ab){ const m0=(ax+bx)/2, m1=(az+bz)/2; stack.push([ax,az,m0,m1,cx,cz],[m0,m1,bx,bz,cx,cz]); }
+          else if(mx===bc){ const m0=(bx+cx)/2, m1=(bz+cz)/2; stack.push([bx,bz,m0,m1,ax,az],[m0,m1,cx,cz,ax,az]); }
+          else { const m0=(cx+ax)/2, m1=(cz+az)/2; stack.push([cx,cz,m0,m1,bx,bz],[m0,m1,ax,az,bx,bz]); }
         }
       }
     }
@@ -13200,6 +13377,17 @@ function tickParkFeatures(dt=0){
 // right stones at any date (aBorn in the shader). Older grounds mostly upright stones, newer ones mostly flush markers.
 let otherCemStones=[], _ocT=0;
 const _ocUniforms={uYear:buildingYearUniform};
+// When the k-th share of a cemetery's graves was dug, founded f0 → full f1: burials follow the population (cumulative
+// person-years from CONFIG.cemetery.population, [year, people] pairs, interpolated), not the calendar — Red River's few
+// thousand before 1870 against the city's hundreds of thousands later (Mike, 2026-10-24: the St. Boniface Cathedral
+// cemetery looked full in 1850). Falls back to the old power curve without the table.
+function _cemFillCurve(f0,f1){
+  const P=CONFIG.cemetery?.population; if(!P?.length||f1<=f0) return k=>f0+Math.pow(k,1/(CONFIG.cemetery?.fillPower??0.8))*(f1-f0);
+  const pop=y=>{ if(y<=P[0][0]) return P[0][1]; for(let i=1;i<P.length;i++) if(y<=P[i][0]){ const[a,pa]=P[i-1],[b,pb]=P[i]; return pa+(pb-pa)*(y-a)/(b-a); } return P[P.length-1][1]; };
+  const ys=[f0], cum=[0]; for(let y=f0;y<f1;){ const y2=Math.min(f1,y+1); cum.push(cum[cum.length-1]+pop((y+y2)/2)*(y2-y)); ys.push(y2); y=y2; }
+  const T=cum[cum.length-1];
+  return k=>{ const t=k*T; let i=1; while(i<cum.length-1&&cum[i]<t) i++; return ys[i-1]+(ys[i]-ys[i-1])*Math.max(0,Math.min(1,(t-cum[i-1])/Math.max(1e-9,cum[i]-cum[i-1]))); };
+}
 function _buildOtherCemeteries(){
   const C=CONFIG.cemetery||{}, toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
   const geo=new THREE.BoxGeometry(0.12,1,0.55); geo.translate(0,0.5,0);
@@ -13227,7 +13415,8 @@ function _buildOtherCemeteries(){
     const f0=Q.founded, f1=Q.full??Math.min(2026,f0+90), born=new Float32Array(pts.length), N=pts.length;
     const im=new THREE.InstancedMesh(geo,mat,N);
     let cx=0,cz=0;
-    pts.forEach((p,i)=>{ born[i]=f0+Math.pow((i+1)/N,1/(C.fillPower??0.8))*(f1-f0); e.set(0,(rnd()-0.5)*0.05,0); q.setFromEuler(e);
+    const when=_cemFillCurve(f0,f1);
+    pts.forEach((p,i)=>{ born[i]=when((i+1)/N); e.set(0,(rnd()-0.5)*0.05,0); q.setFromEuler(e);
       mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x,p.z)+0.02,p.z),q,p.flush?new THREE.Vector3(5,0.06,0.75):new THREE.Vector3(p.s,p.h,p.s)); im.setMatrixAt(i,mx);
       const g=0.55+0.25*p.o; im.setColorAt(i,cc.setRGB(g,g,g*0.97)); cx+=p.x; cz+=p.z; });
     im.geometry=geo.clone(); im.geometry.setAttribute('aBorn',new THREE.InstancedBufferAttribute(born,1));
@@ -13237,18 +13426,24 @@ function _buildOtherCemeteries(){
   console.log(`🪦 Other cemeteries: ${otherCemeteries.length}, ${total} stones`);
 }
 const _YARD_COL={stockyard:0x5E5240,lawn:0x5A8636,pond:0x34505E,bed:0x3E5634,
-  golf_rough:0x5C8432,fairway:0x6E9E3C,tee:0x74A440,green:0x7DB246,bunker:0xD8C9A0,golf_water:0x34505E,cem_lawn:0x557E33};   // golf: data/golf_courses.json; other cemeteries' lawns
+  riverwalk:0xB4AC9C,ballfield:0x5E9A3A,runway:0x4C4C4A,taxiway:0x5A5A57,apron:0x8E8E8A,golf_rough:0x5C8432,fairway:0x6E9E3C,tee:0x74A440,green:0x7DB246,bunker:0xD8C9A0,golf_water:0x34505E,cem_lawn:0x557E33,airfield:0x678A3E};   // golf: data/golf_courses.json; other cemeteries' lawns
 // lift (m over the terrain: later kinds draw over earlier) and cell size (m: big golf courses follow the ground in coarser triangles)
-const _YARD_LIFT={pond:0.1,golf_rough:0.05,fairway:0.06,tee:0.066,green:0.07,bunker:0.072,golf_water:0.09,cem_lawn:0.05}, _YARD_ST={golf_rough:6,fairway:4,cem_lawn:5};
-const _TINTED=new Set(['lawn','pond','bed','golf_rough','fairway','tee','green','golf_water','cem_lawn']), _WET=new Set(['pond','golf_water']), _SAND=new Set(['bunker']);
+const _YARD_LIFT={runway:0.08,taxiway:0.075,apron:0.07,riverwalk:0.09,pond:0.1,golf_rough:0.05,fairway:0.06,tee:0.066,green:0.07,bunker:0.072,golf_water:0.09,cem_lawn:0.05,airfield:0.04}, _YARD_ST={runway:8,taxiway:6,apron:8,golf_rough:16,fairway:12,cem_lawn:12,airfield:40};   // no finer than needed: the terrain mesh is a 40 m grid (20 m outside), and every vertex samples it
+// per-vertex shade noise (share of brightness): the default 0.2 reads as speckle on big flat paving and the airfield
+const _YARD_JIT={runway:0.03,taxiway:0.03,apron:0.03,airfield:0.06};
+const _TINTED=new Set(['ballfield','lawn','pond','bed','golf_rough','fairway','tee','green','golf_water','cem_lawn','airfield']), _WET=new Set(['pond','golf_water']), _SAND=new Set(['bunker','riverwalk','runway','taxiway','apron']);   // _SAND: no browning in a dry spell (sand, paving), snow still
+let _groundQ=0, _groundDone=false;
 function tickGrounds(){
   if(!_demLoaded||!(earlyYards.length||cemetery)) return;
   const C=CONFIG.cemetery||{};
-  if(!groundMeshes){
-    groundMeshes=[];
-    for(const Y of earlyYards){   // lawn / pond (modern park ground) are small: 1 m cells, tinted by season below
-      const fine=Y.kind==='lawn'||Y.kind==='pond'||Y.kind==='bed', m=_groundPatch(Y.polys,_YARD_COL[Y.kind]??0x6E6556,Y.born,Y.died,_YARD_LIFT[Y.kind]??0.06,_YARD_ST[Y.kind]??(fine||_TINTED.has(Y.kind)||_SAND.has(Y.kind)?(fine?1:3):3),null);
+  if(!groundMeshes){ groundMeshes=[]; _groundQ=0; }
+  if(_groundQ<earlyYards.length){   // built a few per frame (~10 ms), not all on the first frame after loading
+    const t0=performance.now();
+    while(_groundQ<earlyYards.length&&performance.now()-t0<10){ const Y=earlyYards[_groundQ++];   // lawn / pond (modern park ground) are small: 1 m cells, tinted by season below
+      const fine=Y.kind==='lawn'||Y.kind==='pond'||Y.kind==='bed', m=_groundPatch(Y.polys,_YARD_COL[Y.kind]??0x6E6556,Y.born,Y.died,_YARD_LIFT[Y.kind]??0.06,_YARD_ST[Y.kind]??(fine||_TINTED.has(Y.kind)||_SAND.has(Y.kind)?(fine?1:3):3),null,_YARD_JIT[Y.kind]);
       if(m){ m.userData.kind=Y.kind; groundMeshes.push(m); } }
+  }
+  else if(!_groundDone){ _groundDone=true;
     if(cemetery&&!OFF.has('cemetery')){   // ?off=cemetery: skip paths, headstones, mounds, lawn
       const founded=(cemetery.founded||1901)+'-01-01', minY=C.minGroundY??-3.5, tooLow=(x,z)=>sampleTerrainY(x,z)<minY,   // the digitized west edge runs down the river bank in the DEM: nothing below the bank toe
         pm=_groundPatch(cemetery.paths,0xB0A48A,founded,null,0.08,2,tooLow); if(pm) groundMeshes.push(pm);
@@ -13306,6 +13501,7 @@ function tickGrounds(){
       cemStones={mesh:im,mound,total:pts.length,founded:cemetery.founded||1901}; console.log(`🪦 Cemetery headstones: ${pts.length}`);
     }
     if(otherCemeteries.length) _buildOtherCemeteries();
+    if(airportData) initAirport(airportData);
     console.log(`🏭 Yards built: ${earlyYards.length}`);
   }
   if(otherCemStones.length&&((_ocT-=1)<0)){ _ocT=20;   // every ~20 frames: hide the far ones
@@ -13335,6 +13531,30 @@ window._debugBump=()=>Object.fromEntries(Object.entries(wallMatsAll).map(([k,a])
 window._debugPick=(lon,lat)=>{ const[x,y]=project(lon,lat), rc=new THREE.Raycaster(new THREE.Vector3(x,5000,-y),new THREE.Vector3(0,-1,0));
   return rc.intersectObjects(scene.children,true).slice(0,8).map(h=>({name:h.object.name,type:h.object.type,kind:h.object.userData?.kind,col:(Array.isArray(h.object.material)?h.object.material[0]:h.object.material)?.color?.getHexString?.(),y:+h.point.y.toFixed(2),vis:h.object.visible})); };
 window._debugGrounds=()=>({park:parkMeshes&&parkMeshes.length,paving:parkPaving.length,sculpt:parkSculpt.length,mist:_mistPool?_mistPool.filter(q=>q.on).length:null,parkTrees:riverTreeMeshes.reduce((n,e)=>n+(e.list?e.list.filter(t=>t.g0===0.3).length:0),0),yards:earlyYards.length,cem:!!cemetery,meshes:groundMeshes&&groundMeshes.length,stones:cemStones&&[cemStones.total,cemStones.mesh.count],interments:cemCum&&cemCum.total});
+// Headlight on the ground ahead of a locomotive at night (CONFIG.trains.headlight: [year, brightness, reach m, width m]
+// steps, eased between): oil lamps, then electric arc / incandescent, sealed beams, and the bright LED headlights and ditch
+// lights of today. A soft additive pool laid on the track ahead, not a real light (cheap for every train).
+let _beamTex=null;
+function _trainBeam(train,head,yf){
+  const HL=CONFIG.trains.headlight; if(!HL) return;
+  const night=_nightness; if(night<0.03&&!train.beam) return;
+  if(!train.beam){
+    if(!_beamTex){ const c=document.createElement('canvas'); c.width=64; c.height=256; const g=c.getContext('2d'), gr=g.createRadialGradient(32,256,4,32,256,250);
+      gr.addColorStop(0,'rgba(255,244,214,1)'); gr.addColorStop(0.35,'rgba(255,238,200,0.55)'); gr.addColorStop(1,'rgba(255,230,190,0)'); g.fillStyle=gr; g.fillRect(0,0,64,256);
+      _beamTex=new THREE.CanvasTexture(c); _beamTex.colorSpace=THREE.SRGBColorSpace; }
+    const geo=new THREE.PlaneGeometry(1,1); geo.rotateX(-Math.PI/2); geo.translate(0,0,0.5);   // from the nose forward (+z)
+    train.beam=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({map:_beamTex,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,polygonOffset:true,polygonOffsetFactor:-4,fog:true}));
+    train.beam.renderOrder=3; scene.add(train.beam);
+  }
+  let k=HL.length-1; while(k>0&&yf<HL[k][0]) k--;
+  const a=HL[k], b=HL[Math.min(HL.length-1,k+1)], f=b===a?0:Math.max(0,Math.min(1,(yf-a[0])/(b[0]-a[0])));
+  const br=a[1]+(b[1]-a[1])*f, reach=a[2]+(b[2]-a[2])*f, wid=a[3]+(b[3]-a[3])*f, B=train.beam;
+  B.visible=night>0.03&&train.loco.visible;
+  if(!B.visible) return;
+  const yaw=train.loco.rotation.y, fx=Math.sin(yaw), fz=Math.cos(yaw), nose=LOCO_BODY_L*0.5+0.6, p=train.loco.position;
+  B.position.set(p.x+fx*nose,p.y+0.12,p.z+fz*nose); B.rotation.y=yaw; B.scale.set(wid,1,reach);
+  B.material.opacity=br*night; B.material.color.setRGB(1,1,1);
+}
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -13350,6 +13570,7 @@ function tickTrains(dt){
     for(let i=0;i<train.cars.length;i++) train.cars[i].visible=visible&&i<nShow;
     if(!visible){
       for(const slot of train.smoke) if(slot.spr) slot.spr.visible=false;
+      if(train.beam) train.beam.visible=false;
       train.moving=false;
       continue;
     }
@@ -13383,8 +13604,10 @@ function tickTrains(dt){
     }
 
     train.loco.updateMatrixWorld(true);
+    const TD=CONFIG.trains.diesel; train.diesel=!!TD&&viewYf>=(train.dieselYear??=TD.from+seededRand(train.route.totalLen*0.37+(train.born??0))*(TD.allBy-TD.from));
     train.loco.userData.stackAnchor.getWorldPosition(_smokeVec);
-    tickSmoke(train,dt,_smokeVec,moving);
+    tickSmoke(train,dt,_smokeVec,moving&&!train.diesel);   // diesels: no smoke
+    _trainBeam(train,head,viewYf);
     train.moving=moving;
   }
 }
@@ -13559,7 +13782,7 @@ function startLoop(){
     _t(tickWeather,dt);
     _t(tickFloes,dt);
     _t(tickTrainAudio,dt);
-    _t(tickFovBlend,dt);
+    _t(tickFovBlend,dt); _t(tickAirport,dt);
     _t(tickCityTrees,dt);
     _t(tickChimneySmoke,dt);    plumeUniforms.uPlumeTime.value=now*0.001;
     if(_frameN===1 && window.pfDiag) gpuCensus('first render');
@@ -13597,7 +13820,8 @@ function updateStatBar(){
   }
 }
 
-function buildLayerBar(skipRoads=false){   // skipRoads: a deferred chunk just opened — roads/ground cover/haze already count its buildings (activeCents includes unbuilt chunks)
+function buildLayerBar(skipRoads=false){   // skipRoads 'ifSame': only rebuild roads if the active layer changes here (autoload: already built for it)
+  const _layerWas=activeLayer;   // skipRoads: a deferred chunk just opened — roads/ground cover/haze already count its buildings (activeCents includes unbuilt chunks)
   const bar=document.getElementById('layer-bar');
   if(!bar)return;
 
@@ -13642,6 +13866,7 @@ function buildLayerBar(skipRoads=false){   // skipRoads: a deferred chunk just o
     // Rebuild roads for active layer — segment filtering uses active-layer centroids
     if(roadGeojson&&!skipRoads) buildRoads(roadGeojson).catch(e=>console.error('Road rebuild error:',e));
   }
+  if(skipRoads==='ifSame') skipRoads=activeLayer===_layerWas;
   applyVisibility(); skipRoads=false;   // later layer-button clicks do rebuild  // always run — hides non-active layers even if bar is suppressed
 
   if(!hasMultiple){bar.style.display='none';return;}
@@ -13811,7 +14036,7 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
-let earlyBridges=[], earlyMarshes=[], earlyYards=[], otherCemeteries=[], elmRows=null, cemetery=null, cemCum=null, cemTrees=null, parkFeatures=[];
+let earlyBridges=[], earlyMarshes=[], earlyYards=[], airportData=null, otherCemeteries=[], elmRows=null, cemetery=null, cemCum=null, cemTrees=null, parkFeatures=[];
 async function loadEarlyBridges(){
   const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.marshFile;
   const getJSON=async u=>{ const r=await fetch(u+DATA_V); return r.ok?r.json():null; };
@@ -13819,6 +14044,7 @@ async function loadEarlyBridges(){
     (async()=>{ if(!f) return; try{ const j=await getJSON(f); if(j){ earlyBridges=j.bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }catch(e){ console.warn('Creek bridges: failed to load',e); } })(),
     (async()=>{ if(!pf) return; try{ const j=await getJSON(pf); if(j){ earlyMarshes=j.marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }catch(e){ console.warn('Marshes: failed to load',e); } })(),
     (async()=>{ try{ const j=await getJSON('./data/early_yards.json'); if(j) earlyYards=earlyYards.concat(j.yards||[]); }catch(e){ console.warn('Yards: failed to load',e); } })(),
+    (async()=>{ if(OFF.has('airport')) return; try{ const j=await getJSON('./data/airport.json'); if(j){ airportData=j; for(const Y of j.pavement??[]) earlyYards.push(Y); } }catch(e){ console.warn('Airport: failed to load',e); } })(),
     (async()=>{ if(OFF.has('golf')) return; try{ const j=await getJSON('./data/golf_courses.json'); if(j) for(const G of j.courses) for(const P of G.parts) earlyYards.push({name:G.name+': '+P.kind,kind:P.kind,born:G.born,died:G.died??null,polys:P.polys}); }catch(e){ console.warn('Golf courses: failed to load',e); } })(),
     (async()=>{ if(OFF.has('cemetery')) return; try{ const j=await getJSON('./data/cemeteries_other.json'); if(j){ otherCemeteries=j.cemeteries||[]; for(const Q of otherCemeteries) earlyYards.push({name:Q.name+': lawn',kind:'cem_lawn',born:String(Q.founded)+'-01-01',died:null,polys:Q.polys}); } }catch(e){ console.warn('Cemeteries: failed to load',e); } })(),
     (async()=>{ try{ const j=await getJSON('./data/park_features.json'); if(j) parkFeatures=j.parks||[]; }catch(e){ console.warn('Park features: failed to load',e); } })(),
@@ -13939,8 +14165,8 @@ function _makePrecip(kind){
   const u={uCam:{value:new THREE.Vector3()},uTime:{value:0},uBox:{value:C.boxSize??180},uLen:{value:P.streakLength??0},
     uSize:{value:P.size??1},uGust:{value:P.gust??0},uVel:{value:new THREE.Vector3(P.windSpeed,-P.fallSpeed,P.windSpeed*0.35)},
     uColor:{value:new THREE.Color(P.color)},uOpacity:{value:P.opacity}};
-  const m=new THREE.ShaderMaterial({uniforms:u,vertexShader:_precipVS,fragmentShader:_precipFS,
-    defines:snow?{SNOW:1}:{},transparent:true,depthWrite:false,fog:false});
+  const m=_withLogDepth(new THREE.ShaderMaterial({uniforms:u,vertexShader:_precipVS,fragmentShader:_precipFS,
+    defines:snow?{SNOW:1}:{},transparent:true,depthWrite:false,fog:false}));
   const o=snow?new THREE.Points(g,m):new THREE.LineSegments(g,m);
   o.frustumCulled=false; o.visible=false; o.renderOrder=5; scene.add(o);
   return{o,u,n,verts:snow?1:2};
@@ -14769,7 +14995,7 @@ renderer.render(scene,camera);
     .addEventListener('input',e=>setTimeOfDay(parseFloat(e.target.value)));
   initDateControl();
   window.toggleWinter=toggleWinter;
-  buildLayerBar();updateStatBar();startLoop();enableLiveDrops();
+  buildLayerBar('ifSame');updateStatBar();startLoop();enableLiveDrops();
   buildChimneyPool();
   buildCityHaze();
   setTimeOfDay(parseFloat(document.getElementById('tod-slider').value||CONFIG.start.timeOfDay));

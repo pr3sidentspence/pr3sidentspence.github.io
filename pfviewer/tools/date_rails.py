@@ -29,6 +29,7 @@ W = lambda q: ((q[0] - C_LON) * M, -(q[1] - C_LAT) * 111320)
 
 # name: (born, died, confidence, basis)
 LINES = {
+  'cn_highline': ('1908-06-01', None, 'low', 'CN high line into Union Station over the Assiniboine (guess: 1905–1911)'),
   'cpr_louise':  ('1881-07-26', None, 'high',
       'CPR yards at Point Douglas and the line over the Louise Bridge: first CPR train into Winnipeg 26 Jul 1881 (CBC / MHS)'),
   'cpr_west':    ('1881-12-01', None, 'medium',
@@ -75,6 +76,12 @@ SPLITS = {246: [(0, 2, 'cpr_eastbank'), (2, 3, 'cpr_bridge'), (3, 14, 'cpr_louis
 #   then over the Louise Bridge ("Combination CPR/City Bridge until 1904" — City of
 #   Winnipeg chronology) and a schematic curve joining the east-bank line (vertex 1 of feature 246).
 EXTRAS = [
+  # CN's high line south from Union Station over the Assiniboine just east of Main St (Mike, 2026-10-23: that bridge never
+  # appeared): OSM way/13800808 + way/13800303 (CN Rivers subdivision); the bridge is in pastforward_2026_bridges.geojson
+  # (tools/twin_bridges.py). Year a guess with the station's approaches (High-Line 1905, station 1908–11).
+  {'id': 1010, 'name': 'CN over the Assiniboine to Union Station', 'line': 'cn_highline', 'born': '1908-06-01', 'died': None,
+   'pts': [(281, 1118), (246, 989), (242, 974)],
+   'basis': 'OSM CN Rivers subdivision over the Assiniboine east of Main St; year a guess (winnipegarchitecture.ca: High-Line Bridge 1905)'},
   {'id': 1001, 'name': 'CPR to the Louise Bridge (gap)', 'line': 'cpr_louise', 'born': '1881-07-26', 'died': None,
    'pts': [(770, -992), (860, -980), (979, -942)],
    'basis': 'joins feature 70 to feature 280 on the CPR route to the Louise Bridge (schematic)'},

@@ -795,6 +795,10 @@ export const CONFIG = {
   // Main St ran through the site of Upper Fort Garry's east wall/bastions,
   // which came down at the start of 1881 (Main St straightened, 1881–82);
   // until then the road went round the outside of the east wall.
+  // Outer streets (tools/outer_roads.py road_born): every street past the hand-built city, from the year of the buildings
+  // beside it, drawn within radiusM of downtown in fewer, longer pieces (sampleStep m)
+  roads: { outer: { radiusM: 14000, sampleStep: 30 } },
+
   roadHistory: {
     // Early streets wander: a smooth displacement field (amp metres) that fades out
     // between fromYear and toYear as the town straightens its streets. amp 0 = off.
@@ -835,6 +839,10 @@ export const CONFIG = {
     poolOpacity: 0.55,
     arc:  { height: 9.0, arm: 1.6, headSize: 0.32, color: 0x2A2622, glow: 0xF2F0FF, poolRadius: 16 },   // arc light: bluish white
     post: { height: 4.6, arm: 0.5, headSize: 0.24, color: 0x1E2A22, glow: 0xFFD49A, poolRadius: 9 },     // incandescent: warm
+    // outer streets: modern davit ("cobra-head") lights, one side, from `from` (or the street's year); sodium orange from
+    // sodiumFrom, LED white from ledFrom. Drawn within drawM of the camera (rebuilt as it moves)
+    outer: { from: 1950, spacing: 55, height: 9.0, arm: 2.2, headSize: 0.3, color: 0x8A8E90, poolRadius: 14, drawM: 2200,
+             glow: 0xF0EEE6, sodiumFrom: 1972, sodium: 0xFFB45A, ledFrom: 2016, led: 0xF4F6FF },
   },
 
   // ── Parades (recorded dates) ────────────────────────────────────────
@@ -1124,6 +1132,10 @@ export const CONFIG = {
     rowboat: { count: [[1868,0],[1882,3],[1912,5],[1935,3],[1960,2]], speed: 0.9, length: 4.4, beam: 1.3,
                colors: [0xE6E0CE,0x3E5A6E,0x7A5E3E,0x8B2A1E] },
     launch:  { count: [[1904,0],[1910,2],[1930,3],[1960,3]],      speed: 3.5, length: 8, beam: 2.1, color: 0xEDE8DA, cabin: 0x7A5E3E },
+    // the Forks water taxis / water buses (Splash Dash): from the 1990s, today — stretches through the Forks on both rivers
+    // (start year and colours a guess)
+    waterTaxi: { count: [[1990,0],[1991,2],[2005,4],[2026,4]], speed: 4.0, length: 7.5, beam: 2.7, color: 0xF2F0EA, canopy: 0x2A5C9A,
+                 river: ['red', 'assiniboine'], stretch: [900, 2200], through: [-97.1295, 49.8868] },
     redShare: 0.65,          // share on the Red (rest on the Assiniboine)
     stretch: [350, 1400],    // metres of river each boat works back and forth
     rower: 0x2A2622,         // people
@@ -1338,7 +1350,12 @@ export const CONFIG = {
   cemetery: { treesFile: './data/cemetery_trees.json', treeSpreadYears: 55, treeJitterYears: 8, treeTauYears: 60, treeMinScale: 0.5, treeScalePerRating: 0.9, grassColor: 0x4A6330, fence: { height: 1.8, spacing: 2.4, fadeNear: 70, fadeFar: 150, color: 0x16161A },   // black iron fence round the grounds (a texture card per ~2.4 m, dithered out with distance)
     gate: { halfWidthM: 3.2, pierSize: 0.8, pierHeight: 2.7, pierColor: 0xB9AA84, capColor: 0x8A8068 },   // stone piers at the east entrance (where the path meets the east edge)
     moundLength: 2, moundWidth: 0.9, moundHeight: 0.22, moundYears: 0.5, moundSoil: 0x4A3828, minGroundY: -3.5, fullYear: 1990, fillPower: 0.8, rowGapM: 3.2, stoneGapM: 1.5,
-    otherDrawM: 3000, otherMaxStones: 30000 },   // other cemeteries (data/cemeteries_other.json): drawn within otherDrawM; a big one gets a coarser grid past otherMaxStones   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
+    otherDrawM: 3000, otherMaxStones: 30000,
+    // other cemeteries fill in step with the population (person-years), not the calendar: [year, people] — Red River
+    // Settlement then Winnipeg (approximate, from memory: 1849 census ≈5,400; city census 1881–1921; metro after)
+    population: [[1818, 300], [1831, 2400], [1849, 5400], [1871, 12000], [1881, 8000 + 12000], [1891, 26000 + 9000], [1901, 42000 + 12000],
+                 [1911, 136000 + 20000], [1921, 179000 + 50000], [1941, 222000 + 80000], [1961, 265000 + 210000], [1981, 564000],
+                 [2001, 619000], [2021, 749000]] },   // other cemeteries (data/cemeteries_other.json): drawn within otherDrawM; a big one gets a coarser grid past otherMaxStones   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
   marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
 
   // ── Water towers (initWaterTowers): tank on four braced legs. heightM = top of the roof's level ball; tankR / tankH the
@@ -1599,6 +1616,11 @@ export const CONFIG = {
 
   // ── Trains ────────────────────────────────────────────────────────
   trains: {
+    // Steam gives way to diesel-electric between from and allBy (each train its own year; CN and CP in Winnipeg were all
+    // diesel by about 1960): no smoke, the diesel engine and horn sounds (audio.sfx dieselRun / dieselIdle / dieselHorn)
+    diesel: { from: 1950, allBy: 1960 },
+    // headlight pool on the track ahead at night: [year, brightness 0..1, reach m, width m], eased between
+    headlight: [[1850, 0.10, 25, 5], [1895, 0.30, 55, 7], [1940, 0.50, 90, 9], [1975, 0.75, 130, 12], [2005, 1.0, 170, 16]],
     speedMps: { passenger: 9.0, freight: 6.5, switcher: 2.3 },       // stylised, not literal scale
     dwellSecondsRange: { passenger: [40, 60], freight: [45, 75], switcher: [40, 60] },   // must exceed audio.train.startLeadSeconds (34) so the departure sound has time to play before they move
     passengerRouteCount: 12,        // top-N longest segments get passenger service
@@ -1667,6 +1689,10 @@ export const CONFIG = {
       trainRun:        { path: './sounds/train-run.mp3',        loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 1.5, maxDistance: 600 },
       trainStart:      { path: './sounds/train-start.mp3',      gain: 0.9, refDistance: 40, rolloffPower: 1.5, maxDistance: 900 },   // starts ~34 s before the train moves (train.startLeadSeconds)
       trainWhistle:    { path: './sounds/train-whistle-2.mp3',  gain: 1.0, refDistance: 60, rolloffPower: 1.2, maxDistance: 3000, minGap: 10, duck: 0.5 },
+      // diesel-electrics (CONFIG.trains.diesel): generated in the viewer (synth) until there are recordings (set path to use a file)
+      dieselRun:       { synth: 'dieselRun',  loop: true, maxConcurrent: 2, gain: 0.8, refDistance: 25, rolloffPower: 1.5, maxDistance: 700 },
+      dieselIdle:      { synth: 'dieselIdle', loop: true, maxConcurrent: 2, gain: 0.6, refDistance: 18, rolloffPower: 1.6, maxDistance: 400 },
+      dieselHorn:      { synth: 'dieselHorn', gain: 0.9, refDistance: 70, rolloffPower: 1.2, maxDistance: 3500, minGap: 10, duck: 0.5 },
       steamboatEngine: { path: './sounds/steamboat-engine.mp3', loop: true, maxConcurrent: 2, gain: 0.7, refDistance: 20, rolloffPower: 2, maxDistance: 500 },
       steamboatWhistle:{ path: './sounds/steamboat-whistle.mp3',gain: 1.0, refDistance: 80, rolloffPower: 1.2, maxDistance: 3500, minGap: 10, duck: 0.5 },
       launchEngine:    { path: './sounds/launch-engine.mp3',    loop: true, maxConcurrent: 2, gain: 0.5, refDistance: 10, rolloffPower: 2, maxDistance: 300 },
@@ -1909,7 +1935,8 @@ export const CONFIG = {
     lighting: { sun: { shadowMapSize: 1024 } },
     trees:    { spacing: 14 },
     seasons:  { floeCount: 450 },
-    streetLights: { spacing: 70, radius: 1800 },
+    streetLights: { spacing: 70, radius: 1800, outer: { drawM: 1400 } },
+    roads: { outer: { radiusM: 8000, sampleStep: 40 } },
     trains:   { maxCars: 25 },
     storms:   { snowpack: { drifts: { radius: 150, max: 300 } } },
     animals:  { radius: { horse: 200, cow: 260, pig: 160, dog: 140, cat: 90, chicken: 80 }, max: { horse: 90, cow: 90, pig: 40, dog: 60, cat: 60, chicken: 140 } },

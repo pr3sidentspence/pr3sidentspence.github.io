@@ -29625,13 +29625,9 @@
    }
   },
   "24fdf811-e23e-467b-a9de-43ab465ab9d8": {
-   "sources": [
-    "tools/clear_forks.py (Mike, 2026-10-23: the Forks cleared the year before it opened to the public, 1989)"
-   ],
-   "notes": "Cleared with the CN East Yards before the Forks opened (tools/clear_forks.py).",
+   "sources": [],
+   "notes": "",
    "set": {
-    "died": "1988-07-01",
-    "died_basis": "site_cleared",
     "date_precision": {
      "died": "year"
     }
@@ -30094,7 +30090,7 @@
   },
   "f3c283aa-659c-44e4-bb0d-ef5fd3238146": {
    "sources": [
-    "tools/clear_forks.py (Mike, 2026-10-23: the Forks cleared the year before it opened to the public, 1989); was died 2013-09-09"
+    "tools/clear_forks.py (Mike, 2026-10-23: the Forks cleared the year before it opened to the public, 1989)"
    ],
    "notes": "Cleared with the CN East Yards before the Forks opened (tools/clear_forks.py).",
    "set": {
@@ -30120,7 +30116,7 @@
   },
   "42f3ed7d-6d22-4116-a1a7-3c219502b16a": {
    "sources": [
-    "tools/clear_forks.py (Mike, 2026-10-23: the Forks cleared the year before it opened to the public, 1989); was died 2013-02-02"
+    "tools/clear_forks.py (Mike, 2026-10-23: the Forks cleared the year before it opened to the public, 1989)"
    ],
    "notes": "Cleared with the CN East Yards before the Forks opened (tools/clear_forks.py).",
    "set": {

@@ -87,6 +87,31 @@
     ]
    ],
    "length_m": 584
+  },
+  {
+   "id": 1010,
+   "name": "CN over the Assiniboine to Union Station",
+   "rail_class": "through",
+   "line": "cn_highline",
+   "born": "1908-06-01",
+   "died": null,
+   "basis": "OSM CN Rivers subdivision over the Assiniboine east of Main St; year a guess (winnipegarchitecture.ca: High-Line Bridge 1905)",
+   "confidence": "low",
+   "coordinates": [
+    [
+     -97.1315965,
+     49.8852851
+    ],
+    [
+     -97.1320845,
+     49.8864518
+    ],
+    [
+     -97.1321403,
+     49.8865874
+    ]
+   ],
+   "length_m": 149
   }
  ],
  "lines": {

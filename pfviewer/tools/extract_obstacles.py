@@ -38,6 +38,9 @@ class H(osmium.SimpleHandler):
         except osmium.InvalidLocationError: return
         self.add(w.tags, sum(p[0] for p in pts)/len(pts), sum(p[1] for p in pts)/len(pts))
 H().apply_file(sys.argv[1], locations=True)
+HAND = {(267.5, 785.9): (1947, 'CN steam plant stack (Citytv), 1947')}   # hand years by position (winnipegarchitecture.ca, The Forks tour)
+for r in items:
+    if (r[0], r[1]) in HAND: r[4], r[5] = HAND[(r[0], r[1])]
 items.sort(key=lambda r: -r[2])
 json.dump({'fields': 'x, z (m, viewer frame), heightDm, kind (index into kinds), born (0 = unknown), name',
            'kinds': KINDS, 'source': 'tools/extract_obstacles.py', 'attribution': '© OpenStreetMap contributors (ODbL)', 'items': items},

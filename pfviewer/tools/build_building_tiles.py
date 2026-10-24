@@ -259,12 +259,27 @@ def make_landmark(b, g, p, h, y, basis, kind, pr):
         for poly in (getattr(rest, 'geoms', None) or [rest]):
             if poly.geom_type == 'Polygon' and poly.area >= 20 and not poly.buffer(-1.0).is_empty:
                 vols.append({'ring': ringxz(poly), 'min': 0, 'max': h, 'osm': 'rest'})
+    elif fp == 'drawn':
+        vols = drawn_volumes(L, ringxz)
     else:
         vols.append({'ring': ringxz(g.minimum_rotated_rectangle if fp == 'rect' else g), 'min': 0, 'max': L.get('heightM') or h})
     for v in vols: v.update(L.get('volumeStyles', {}).get(v.get('osm'), {}))   # per-part overrides
     vols = [v for v in vols if not v.pop('skip', False)]                     # {"skip": true}: a part left out
     L['volumes'] = vols; L['osm_id'] = b['oid']; L['heightM'] = max(v['max'] for v in vols)
     return L
+
+def drawn_volumes(L, ringxz):
+    """footprint 'drawn': volumes given by hand in lon/lat (L['volumesLL']: [{ring: [[lon, lat], …], min, max, …styles}]),
+    or a ring of n sides round a point ({circle: [lon, lat], r: metres, n}) — a building OSM doesn't have (any more)."""
+    vols = []
+    for v in L['volumesLL']:
+        v = dict(v)
+        if 'circle' in v:
+            (lon, lat), r, n = v.pop('circle'), v.pop('r'), v.pop('n', 12)
+            v['ring'] = [[lon + r*math.cos(2*math.pi*k/n)/MLON, lat + r*math.sin(2*math.pi*k/n)/MLAT] for k in range(n)]
+        v['ring'] = ringxz(to_m(Polygon(v['ring'])))
+        vols.append(v)
+    return vols
 
 AUTO_LANDMARK_M = 45     # every building at least this tall gets the landmark renderer (windows, night lights)
 stats = Counter(); tiles = defaultdict(list); metas = defaultdict(list); groups = defaultdict(list); undated = []
@@ -380,6 +395,17 @@ for b in blds:
         emit(g, h, 0, roof, bcol)
     if len(tiles[(tx, tz)]) - first > 1: groups[(tx, tz)].append([first, len(tiles[(tx, tz)]) - first])   # one building: one ground height
     stats['kept'] += 1; stats['basis_' + basis] += 1; stats['kind_' + kind] += 1
+
+# lost buildings: hand landmarks with no OSM footprint (demolished before anyone mapped them, or since), drawn volumes only
+for oid, hand in LANDMARKS.items():
+    if not hand.get('lost') or oid in landmarks_out: continue
+    L = {'style': 'tower', 'basis': 'manual', 'kind': 'commercial', 'auto': False, 'footprint': 'drawn', 'osm_building': None, **hand}
+    def ringxz(q):
+        ring = list(q.exterior.coords)[:-1]
+        if q.exterior.is_ccw: ring = ring[::-1]
+        return [[round(x, 2), round(-yn, 2)] for x, yn in ring]
+    L['volumes'] = drawn_volumes(L, ringxz); L['osm_id'] = oid; L['heightM'] = max(v['max'] for v in L['volumes'])
+    landmarks_out[oid] = L; stats['landmark_lost'] += 1
 
 os.makedirs(os.path.join(out_dir, 'm'), exist_ok=True)
 for (tx, tz), bl in tiles.items():

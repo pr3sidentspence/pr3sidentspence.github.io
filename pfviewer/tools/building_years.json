@@ -100,6 +100,86 @@
     "way/306582264": {
       "year": 1911,
       "source": "Union Station track-level building (OSM building=train_station, 89 Main); with the station (guess)"
+    },
+    "way/27073048": {
+      "year": 1909,
+      "source": "Forks Market: the Canadian Northern (Great Northern) stable 1909 and the GTP stable 1910 (MHS; https://winnipegarchitecture.ca/digital-tours/the-forks/); the market opened 1989 — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/50319806": {
+      "year": 1947,
+      "source": "CN steam plant heating the East Yards, Union Station, the Fort Garry and the Manitoba Club (1947); A-Channel / Citytv studios from the later 1990s (https://winnipegarchitecture.ca/digital-tours/the-forks/) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/50319805": {
+      "year": 1999,
+      "source": "Manitoba Theatre for Young People: new building, 1999 (https://winnipegarchitecture.ca/digital-tours/the-forks/) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/96898542": {
+      "year": 1989,
+      "source": "Forks Market tower, with the market conversion (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/96898543": {
+      "year": 1989,
+      "source": "with the Forks Market conversion (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/250706849": {
+      "year": 1989,
+      "source": "with the Forks Market conversion (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/96899287": {
+      "year": 1991,
+      "source": "Travel Manitoba / Explore Manitoba centre (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/50319804": {
+      "year": 1990,
+      "source": "Forks parkade (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/444013731": {
+      "year": 2005,
+      "source": "Forks kiosk (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/1392423083": {
+      "year": 2010,
+      "source": "Forks steps (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/1392423084": {
+      "year": 2010,
+      "source": "Forks steps (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "way/1392423085": {
+      "year": 2010,
+      "source": "Forks steps (guess) — Mike, 2026-10-23: these Forks buildings stand after 1988"
+    },
+    "relation/19828744": {
+      "year": 2011,
+      "source": "new terminal (César Pelli), opened 30 Oct 2011 (Wikipedia; YWG) — Mike, 2026-10-23: add the airport"
+    },
+    "relation/4189076": {
+      "year": 1964,
+      "source": "1964 Administration Building with the 125-ft control tower, Green Blankstein Russell; the new airport opened Nov 1963 / Jan 1964 (http://westenddumplings.blogspot.com/2011/10/looking-back-at-winnipegs-airports-part_30.html) — Mike, 2026-10-23: add the airport"
+    },
+    "way/312490411": {
+      "year": 1964,
+      "source": "the 1964 control tower (125 ft; OSM height 40 m) (http://westenddumplings.blogspot.com/2011/10/looking-back-at-winnipegs-airports-part_30.html) — Mike, 2026-10-23: add the airport"
+    },
+    "relation/4193797": {
+      "year": 2009,
+      "source": "airport parkade, built for the new terminal (guess) — Mike, 2026-10-23: add the airport"
+    },
+    "way/250874306": {
+      "year": 2011,
+      "source": "Grand Winnipeg Airport Hotel, by the new terminal (guess) — Mike, 2026-10-23: add the airport"
+    },
+    "way/250874307": {
+      "year": 2017,
+      "source": "Courtyard by Marriott Winnipeg Airport (guess) — Mike, 2026-10-23: add the airport"
+    },
+    "way/31324742": {
+      "year": 1965,
+      "source": "airport hotel on Wellington Ave (now Lakeview Signature) (guess) — Mike, 2026-10-23: add the airport"
+    },
+    "way/1044672921": {
+      "year": 2022,
+      "source": "Royal Aviation Museum of Western Canada, opened 2022 (from memory — check) — Mike, 2026-10-23: add the airport"
     }
   },
   "names": {
@@ -186,6 +266,10 @@
     "way/307460807": {
       "colour": "#A8A49B",
       "source": "Mike, 2026-10-22: non-glass parts concrete"
+    },
+    "relation/4189076": {
+      "colour": "#E4DDCB",
+      "source": "Manitoba Tyndall stone, white against the dark terminal (westenddumplings); Mike's postcard, 2026-10-24"
     }
   }
 }

@@ -43,6 +43,7 @@ for fn in OLD_FILES:
         died = None if mine else s.get('died', p.get('died'))
         if died and died < CLEARED: continue
         name = h.get('name') or p.get('name') or ''
+        if p.get('type') == 'bridge' or 'bridge' in name.lower(): kept.append((uid, name, 'a bridge (the rail bridge is the Historic Rail Bridge now)', 1)); continue
         under = [(g.intersection(kg).area / g.area if g.area else (1 if g.intersects(kg) else 0), kn) for kn, kg in keep if kg.intersects(g)]
         share, kn = max(under or [(0, None)])
         if share >= KEEP_SHARE: kept.append((uid, name, kn, share)); continue
@@ -57,5 +58,10 @@ if '--apply' in sys.argv:
         s = e.setdefault('set', {})
         s.update(died=CLEARED, died_basis='site_cleared'); s.setdefault('date_precision', {})['died'] = 'year'
         for k in ('died_low', 'died_high', 'replaced_by'): s.pop(k, None)
+    for uid, *_ in kept:   # an earlier run's entry for one that's kept now: undo it
+        e = H.get(uid)
+        if e and TAG in json.dumps(e.get('sources', [])):
+            e['sources'] = [x for x in e['sources'] if TAG not in x]; e['notes'] = e.get('notes', '').replace(NOTE, '').strip()
+            for k in ('died', 'died_basis'): e.get('set', {}).pop(k, None)
     json.dump(hist, open(os.path.join(DATA, 'building_history.json'), 'w'), indent=1, ensure_ascii=False)
     print('written', len(out))
