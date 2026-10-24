@@ -307,11 +307,11 @@ body:not(.advanced) #fov-control{display:none !important;}
     <input type="date" id="date-picker" style="background:#1e1610;border:1px solid #3a2810;border-radius:4px;color:#C8A05A;font-family:Georgia,serif;font-size:0.72rem;padding:3px 6px;color-scheme:dark;">
   </div>
   <div style="display:flex;align-items:center;gap:10px;width:100%;">
-    <span style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1850</span>
+    <span id="date-min-label" style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1850</span>
     <button id="year-dec" title="Back one year" style="background:transparent;border:1px solid #3a2810;border-radius:5px;width:26px;height:26px;color:#C8A05A;font-size:0.95rem;line-height:1;cursor:pointer;flex-shrink:0;pointer-events:auto;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;">‹</button>
     <input type="range" id="date-slider" min="0" max="443" step="1" value="228" style="flex:1;accent-color:#C8A05A;cursor:pointer;">
     <button id="year-inc" title="Forward one year" style="background:transparent;border:1px solid #3a2810;border-radius:5px;width:26px;height:26px;color:#C8A05A;font-size:0.95rem;line-height:1;cursor:pointer;flex-shrink:0;pointer-events:auto;font-family:Georgia,serif;display:flex;align-items:center;justify-content:center;">›</button>
-    <span style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1960</span>
+    <span id="date-max-label" style="font-size:0.62rem;color:#4a3820;letter-spacing:0.06em;">1960</span>
   </div>
 </div>
 <div id="layer-bar" style="display:none;position:fixed;top:100px;left:50%;transform:translateX(-50%);background:rgba(9,8,10,0.85);border:1px solid #2a1e0e;border-radius:8px;padding:4px;gap:3px;pointer-events:auto;z-index:10;"></div>
@@ -466,7 +466,7 @@ const DATA_V='?v='+(new URLSearchParams(location.search).has('fresh')?Date.now()
 // fit), one layer's building files, smaller shadows, lower pixel ratio.
 // ?profile=mobile forces it (testing on desktop); ?profile=desktop skips it.
 const _profile=new URLSearchParams(location.search).get('profile');
-// ?off=haze,ground,plume,shadows,paint,water,trees,vehicles,fences,glass,facades,outer — switch
+// ?off=haze,ground,plume,shadows,paint,water,trees,vehicles,fences,glass,facades,outer,city — switch
 // features off to find what a device's GPU chokes on (see ?debug=1)
 const OFF=new Set((new URLSearchParams(location.search).get('off')||'').split(',').map(x=>x.trim()).filter(Boolean));
 if(OFF.size) window.pfDiag?.add('info','features off: '+[...OFF].join(', '));
@@ -579,7 +579,31 @@ sun.shadow.camera.near = CONFIG.lighting.sun.shadowNear; sun.shadow.camera.far  
 sun.shadow.camera.left = CONFIG.lighting.sun.shadowBounds.left; sun.shadow.camera.right  = CONFIG.lighting.sun.shadowBounds.right;
 sun.shadow.camera.top  = CONFIG.lighting.sun.shadowBounds.top; sun.shadow.camera.bottom = CONFIG.lighting.sun.shadowBounds.bottom;
 sun.shadow.bias = CONFIG.lighting.sun.shadowBias;
-scene.add(sun);
+scene.add(sun); scene.add(sun.target);
+// The shadow camera follows the view (it was fixed round the origin, so shadows stopped ~900 m out — about the edge of the
+// Goad sheets): centred on what the camera looks at, sized to the viewing distance, snapped to whole shadow texels in the
+// light's frame so the shadow edges don't crawl as the view moves (CONFIG.lighting.sun.shadowFollow).
+const _sunDir=new THREE.Vector3(0,1,0), _shFocus=new THREE.Vector3(), _shR=new THREE.Vector3(), _shU=new THREE.Vector3();
+let _shHalf=0;
+function tickSunShadow(){
+  const F=CONFIG.lighting.sun.shadowFollow; if(!F) return;
+  if(fpsMode){ _shFocus.set(-Math.sin(yaw),0,-Math.cos(yaw)).multiplyScalar(F.fpsAheadM??120).add(camera.position); _shFocus.y=camera.position.y; }
+  else _shFocus.copy(orbit.target);
+  const d=camera.position.distanceTo(_shFocus);
+  let half=Math.min(F.maxHalf,Math.max(F.minHalf,(fpsMode?F.fpsHalf??300:d*F.k)));
+  half=Math.pow(2,Math.round(Math.log2(half)*4)/4);   // a few fixed sizes, so it doesn't re-fit every frame
+  const C=sun.shadow.camera;
+  if(half!==_shHalf){ _shHalf=half; C.left=-half; C.right=half; C.top=half; C.bottom=-half;
+    const R=Math.max(900,half*1.5); C.far=R+half*1.6+600; C.updateProjectionMatrix(); }
+  // snap the focus to the texel grid in the light's frame (right / up across the sun direction)
+  const tex=2*half/sun.shadow.mapSize.width;
+  _shR.set(0,1,0).cross(_sunDir).normalize(); if(_shR.lengthSq()<1e-6) _shR.set(1,0,0);
+  _shU.copy(_sunDir).cross(_shR).normalize();
+  const a=Math.round(_shFocus.dot(_shR)/tex)*tex, b=Math.round(_shFocus.dot(_shU)/tex)*tex, c=_shFocus.dot(_sunDir);
+  sun.target.position.copy(_shR).multiplyScalar(a).addScaledVector(_shU,b).addScaledVector(_sunDir,c);
+  sun.target.updateMatrixWorld();
+  sun.position.copy(_sunDir).multiplyScalar(Math.max(900,half*1.5)).add(sun.target.position);
+}
 
 // ── Time of day ────────────────────────────────────────────────────
 // t=0..1 spans 04:00–22:00.
@@ -691,11 +715,12 @@ function setTimeOfDay(t){
   // Up    = sin(decl)·sin(lat) + cos(decl)·cos(h)·cos(lat)
   const R = 900;
   const sUp = Math.sin(decl)*Math.sin(LAT) + Math.cos(decl)*Math.cos(h)*Math.cos(LAT);
-  sun.position.set(
-     R * -Math.cos(decl) * Math.sin(h),          // worldX = east
-     R * Math.max(0.05, sUp),                     // worldY = up
-     R * (Math.cos(decl)*Math.cos(h)*Math.sin(LAT) - Math.sin(decl)*Math.cos(LAT)) // worldZ = south
+  _sunDir.set(
+     -Math.cos(decl) * Math.sin(h),          // worldX = east
+     Math.max(0.05, sUp),                     // worldY = up
+     (Math.cos(decl)*Math.cos(h)*Math.sin(LAT) - Math.sin(decl)*Math.cos(LAT)) // worldZ = south
   );
+  sun.position.copy(_sunDir).multiplyScalar(R).add(sun.target.position);   // tickSunShadow keeps it over the view
   const s=sampleSky(phase);
   scene.background.setHex(s.sky);scene.fog.color.setHex(s.fog);
   sun.color.setHex(s.sunCol);sun.intensity=s.sunInt;
@@ -1633,6 +1658,565 @@ function tickOuterTerrain(){
     t.lo.visible=!t.hi;
   }
   if(built) O.last=null;   // two new fine tiles a frame at most; look again next frame
+}
+
+// ── City tiles ──────────────────────────────────────────────────────
+// The rest of the city — OSM footprints dated from the assessment roll (tools/build_building_tiles.py → data/tiles/b):
+// everything outside the hand-built buildings, out to the outer terrain's edge, and the post-1939 city inside it.
+// Plain shapes, one merged mesh per 1 km tile, fetched and built within loadRadiusM of the camera, dropped past
+// unloadRadiusM. Walls and roofs carry their born/died years (aLife); the vertex shader collapses a building that
+// doesn't exist in the view year, so moving the date costs nothing. Gable roofs on near-rectangular houses and garages
+// (over the footprint's oriented rectangle, ridge along its long side), flat otherwise. Roofs whiten with season.snow.
+const cityTiles={index:null,tiles:new Map(),last:null,pending:0,mat:null,u:null};
+function _cityHash(x,z){ const s=Math.sin(x*12.9898+z*78.233)*43758.5453; return s-Math.floor(s); }
+function _cityColours(kind,born,h){   // [wall, roof] hex
+  const P=CONFIG.cityTiles.palette, pick=(a,k)=>a[Math.floor(h*a.length*(k??1))%a.length];
+  const era=born<1940?'pre1940':born<1970?'mid':born<2000?'late':'new';
+  const k=CONFIG.cityTiles.kinds?.[kind]??kind;
+  if(k==='house'||k==='garage') return [pick(P.siding[era]), pick(P.shingles,7.3)];
+  return [pick(P.walls[k]??P.walls.other), pick(P.flatRoof,5.1)];
+}
+function _cityTileMesh(data){
+  // Indexed, compact: position f32, colour u8×4 (alpha = 1 on roofs), aLife u16×2 (born, died); normals come from
+  // screen-space derivatives (flatShading), so shared corners are fine — about 1 KB per building.
+  const C=CONFIG.cityTiles, kinds=cityTiles.index.kinds, [ox,oz]=data.o, pitch=C.roofPitch??0.55;
+  const pos=[], col=[], life=[], idx=[], c=new THREE.Color();
+  const pick={tri:[], vtx:[], n:[], box:[], rec:[], kind:[], basis:[], h:[]}, lights=[];   // per building, for hover (cityPickAt)
+  let wallRGB, roofRGB, L;
+  const v=(x,y,z,roof)=>{ const rgb=roof?roofRGB:wallRGB; pos.push(x,y,z); col.push(rgb[0],rgb[1],rgb[2],roof?255:0); life.push(L[0],L[1]); return pos.length/3-1; };
+  const up=(a,b,d)=>{   // roof triangle, wound to face up
+    const pa=a*3,pb=b*3,pd=d*3, ny=(pos[pb+2]-pos[pa+2])*(pos[pd]-pos[pa])-(pos[pb]-pos[pa])*(pos[pd+2]-pos[pa+2]);
+    if(ny>=0) idx.push(a,b,d); else idx.push(a,d,b);
+  };
+  const rgb=hex=>{ c.set(hex); return [Math.round(c.r*255),Math.round(c.g*255),Math.round(c.b*255)]; };
+  const grpOf=new Map(); for(const[f,cnt] of data.grp??[]) for(let i=0;i<cnt;i++) grpOf.set(f+i,f);   // a building's parts share one ground height
+  const baseOf=new Map();
+  for(let bi=0;bi<data.b.length;bi++){
+    const b=data.b[bi], [born,died,hdm,kind,basis,roof,mindm,colour]=b, n=(b.length-8)>>1; if(n<3) continue;
+    const xs=new Array(n), zs=new Array(n); let cx=0, cz=0;
+    for(let i=0;i<n;i++){ xs[i]=ox+b[8+2*i]/10; zs[i]=oz+b[9+2*i]/10; cx+=xs[i]; cz+=zs[i]; }
+    cx/=n; cz/=n;
+    const gi=grpOf.get(bi), base=gi==null?sampleTerrainY(cx,cz):(baseOf.get(gi)??baseOf.set(gi,sampleTerrainY(cx,cz)).get(gi)), y0=mindm?base+mindm/10:base-0.6, top=base+hdm/10;
+    const [wall,roofCol]=_cityColours(kinds[kind],born,_cityHash(cx,cz));
+    wallRGB=rgb(colour?colour-1:wall); roofRGB=colour?rgb(colour-1).map(v=>v*0.8|0):rgb(roofCol); L=[born,died];
+    let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9;
+    for(let i=0;i<n;i++){ x0=Math.min(x0,xs[i]); x1=Math.max(x1,xs[i]); z0=Math.min(z0,zs[i]); z1=Math.max(z1,zs[i]); }
+    pick.tri.push(idx.length/3); pick.vtx.push(pos.length/3); pick.n.push(n); pick.rec.push(bi); pick.kind.push(kind); pick.basis.push(basis); pick.h.push(hdm);
+    pick.box.push(x0,y0,z0,x1,top+(roof?pitch*Math.max(x1-x0,z1-z0)/2:0),z1);
+    if(hdm/10>=(CONFIG.obstructionLights?.minHeightM??1e9)) obstructionRoofLights(lights,xs,zs,top,hdm/10,L,_cityHash(cz,cx));
+    for(let i=0;i<n;i++){   // walls: ring is counter-clockwise seen from above, so (a, t1, b) faces out
+      const j=(i+1)%n, a=v(xs[i],y0,zs[i],0), bb=v(xs[j],y0,zs[j],0), t1=v(xs[j],top,zs[j],0), t0=v(xs[i],top,zs[i],0);
+      idx.push(a,t1,bb, a,t0,t1);
+    }
+    if(!roof){
+      const tri=THREE.ShapeUtils.triangulateShape(xs.map((x,i)=>new THREE.Vector2(x,zs[i])),[]);
+      const r0=pos.length/3;
+      for(let i=0;i<n;i++) v(xs[i],top,zs[i],1);
+      for(const[i,j,k] of tri) up(r0+i,r0+j,r0+k);
+      if(mindm){   // a part over others / overhanging: close it underneath (wound to face down)
+        const b0=pos.length/3;
+        for(let i=0;i<n;i++) v(xs[i],y0,zs[i],0);
+        for(const[i,j,k] of tri){ const s0=idx.length; up(b0+i,b0+j,b0+k); const t=idx[s0+1]; idx[s0+1]=idx[s0+2]; idx[s0+2]=t; }
+      }
+      continue;
+    }
+    // gable over the oriented rectangle: u along the ridge (bearing from north; world z is south), v across
+    const th=(roof-1)*Math.PI/180, ux=Math.sin(th), uz=-Math.cos(th), vx=-uz, vz=ux;
+    let u0=1e9,u1=-1e9,v0=1e9,v1=-1e9;
+    for(let i=0;i<n;i++){ const dx=xs[i]-cx, dz=zs[i]-cz, u=dx*ux+dz*uz, w=dx*vx+dz*vz; u0=Math.min(u0,u); u1=Math.max(u1,u); v0=Math.min(v0,w); v1=Math.max(v1,w); }
+    const vm=(v0+v1)/2, ridge=top+pitch*(v1-v0)/2;
+    const P=(u,w,y,roofF)=>v(cx+u*ux+w*vx,y,cz+u*uz+w*vz,roofF);
+    const e00=P(u0,v0,top,1), e10=P(u1,v0,top,1), r0=P(u0,vm,ridge,1), r1=P(u1,vm,ridge,1), e01=P(u0,v1,top,1), e11=P(u1,v1,top,1);
+    up(e00,r0,e10); up(e10,r0,r1); up(e01,e11,r0); up(e11,r1,r0);
+    const g00=P(u0,v0,top,0), g01=P(u0,v1,top,0), gr0=P(u0,vm,ridge,0), g10=P(u1,v0,top,0), g11=P(u1,v1,top,0), gr1=P(u1,vm,ridge,0);
+    idx.push(g00,g01,gr0, g00,gr0,g01, g10,gr1,g11, g10,g11,gr1);   // gable ends, both sides
+  }
+  if(!pos.length) return null;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
+  g.setAttribute('color',new THREE.Uint8BufferAttribute(col,4,true));
+  g.setAttribute('aLife',new THREE.Uint16BufferAttribute(life,2));
+  g.setIndex(pos.length/3>65535?new THREE.Uint32BufferAttribute(idx,1):new THREE.Uint16BufferAttribute(idx,1));
+  g.computeBoundingSphere();
+  const m=new THREE.Mesh(g,cityTiles.mat); m.matrixAutoUpdate=false; m.receiveShadow=true;
+  if(CONFIG.cityTiles.castShadow!==false){ m.castShadow=true; m.customDepthMaterial=collapseDepthMaterial(); }
+  pick.tri.push(idx.length/3);
+  m.userData.city={tri:Uint32Array.from(pick.tri), vtx:Uint32Array.from(pick.vtx), n:Uint16Array.from(pick.n), rec:Uint16Array.from(pick.rec),
+    kind:Uint8Array.from(pick.kind), basis:Uint8Array.from(pick.basis), h:Uint16Array.from(pick.h), box:Float32Array.from(pick.box)};
+  if(lights.length) m.add(obstructionLightPoints(lights));
+  return m;
+}
+function _cityMaterial(){
+  const u={uCityYear:buildingYearUniform,uCitySnow:{value:0},uCitySnowCol:{value:new THREE.Color(CONFIG.cityTiles.snowColor??0xF2F4F7)}};
+  const m=new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true});
+  m.onBeforeCompile=sh=>{
+    Object.assign(sh.uniforms,u);
+    sh.vertexShader='attribute vec2 aLife; uniform float uCityYear; varying float vRoof;\n'+sh.vertexShader
+      .replace('#include <project_vertex>','#include <project_vertex>\n  vRoof=color.a;\n  if(uCityYear<aLife.x||(aLife.y>0.&&uCityYear>=aLife.y)) gl_Position=vec4(0.,0.,-2.,1.);');
+    sh.fragmentShader='uniform float uCitySnow; uniform vec3 uCitySnowCol; varying float vRoof;\n'+sh.fragmentShader
+      .replace('#include <color_fragment>','#include <color_fragment>\n  diffuseColor.a=1.;\n  diffuseColor.rgb=mix(diffuseColor.rgb,uCitySnowCol,vRoof*uCitySnow*0.85);');
+  };
+  m.customProgramCacheKey=()=>'cityTiles2';
+  cityTiles.u=u; return m;
+}
+async function initCityTiles(){
+  const C=CONFIG.cityTiles; if(!C?.index||OFF.has('city')) return;   // ?off=city
+  try{
+    const r=await fetch(C.index+DATA_V); if(!r.ok) return;
+    cityTiles.index=await r.json();
+  }catch(e){ console.warn('City tiles index:',e); return; }
+  cityTiles.mat=_cityMaterial();
+  console.log(`🏘 City tiles: ${Object.keys(cityTiles.index.tiles).length} tiles, ${Object.values(cityTiles.index.tiles).reduce((a,b)=>a+b,0)} buildings`);
+}
+function tickCityTiles(){
+  const T=cityTiles, I=T.index; if(!I) return;
+  T.u.uCitySnow.value=season.snow;
+  const p=camera.position;
+  if(T.last&&T.last.distanceToSquared(p)<150*150) return;
+  (T.last??=new THREE.Vector3()).copy(p);
+  const C=CONFIG.cityTiles, S=I.tileM, R=C.loadRadiusM??7000, RU=C.unloadRadiusM??R*1.25, alt=Math.max(0,p.y);
+  const distTo=(tx,tz)=>Math.hypot(Math.max(0,tx*S-p.x,p.x-(tx+1)*S),Math.max(0,tz*S-p.z,p.z-(tz+1)*S),alt*0.5);
+  for(const[key,t] of T.tiles){
+    if(distTo(t.tx,t.tz)<=RU) continue;
+    if(t.mesh){ scene.remove(t.mesh); t.mesh.geometry.dispose(); for(const c of t.mesh.children) c.geometry.dispose(); }
+    t.dead=true; T.tiles.delete(key);
+  }
+  const want=[];
+  for(const key in I.tiles){
+    if(T.tiles.has(key)) continue;
+    const[tx,tz]=key.split(',').map(Number), d=distTo(tx,tz);
+    if(d<=R) want.push([d,key,tx,tz]);
+  }
+  want.sort((a,b)=>a[0]-b[0]);
+  for(const[,key,tx,tz] of want){
+    if(T.pending>=(C.maxPending??4)){ T.last=null; break; }   // more to fetch: look again next frame
+    const t={tx,tz,mesh:null,dead:false}; T.tiles.set(key,t); T.pending++;
+    fetch(`${C.index.replace(/index\.json$/,'')}${tx}_${tz}.json${DATA_V}`).then(r=>r.ok?r.json():null).then(data=>{
+      T.pending--; T.last=null;
+      if(!data||t.dead) return;
+      t.mesh=_cityTileMesh(data); if(t.mesh){ t.mesh.userData.city.tile=`${tx}_${tz}`; scene.add(t.mesh); }
+    }).catch(()=>{ T.pending--; });
+  }
+}
+// ── Aviation obstruction lights ─────────────────────────────────────
+// Structures at least minHeightM tall (Transport Canada's 90 m rule; CONFIG.obstructionLights) carry red lights on top
+// once lighting became the norm (fromYear): medium-intensity red flashing at night (flashPerMin, every light on one
+// structure in step, structures out of step with each other), steady red lower down on tall masts, and white strobes by
+// day above strobeAboveM. One Points cloud per source (each city tile, the landmarks, the OSM masts); the vertex shader
+// hides lights whose structure doesn't exist in the view year, like the buildings. aType 0 red flashing, 1 steady red,
+// 2 white strobe (day) / red flashing (night).
+const obstructionUniforms={uTime:{value:0},uNight:{value:0},uFrom:{value:1946},uSize:{value:3},uPx:{value:1}};   // uYear (buildingYearUniform, declared further down) added in obstructionMaterial()
+let _obstructionMat=null;
+function obstructionMaterial(){
+  if(_obstructionMat) return _obstructionMat;
+  const O=CONFIG.obstructionLights??{};
+  obstructionUniforms.uFrom.value=O.fromYear??1946; obstructionUniforms.uSize.value=O.sizePx??3;
+  return _obstructionMat=new THREE.ShaderMaterial({
+    uniforms:{...obstructionUniforms,uYear:buildingYearUniform,uFlash:{value:60/(O.flashPerMin??30)},uStrobe:{value:60/(O.strobePerMin??40)}},
+    vertexShader:`attribute vec2 aLife; attribute float aType, aPhase;
+      uniform float uTime,uNight,uYear,uFrom,uSize,uPx,uFlash,uStrobe; varying float vI; varying vec3 vCol;
+      void main(){
+        vec4 mv=modelViewMatrix*vec4(position,1.); gl_Position=projectionMatrix*mv;
+        if(uYear<max(aLife.x,uFrom)||(aLife.y>0.&&uYear>=aLife.y)){ gl_Position=vec4(0.,0.,-2.,1.); return; }
+        vCol=vec3(1.,.06,.03);
+        float tf=fract(uTime/uFlash+aPhase), flash=smoothstep(0.,.06,tf)*(1.-smoothstep(.3,.42,tf));
+        if(aType<.5) vI=flash*uNight;
+        else if(aType<1.5) vI=uNight;
+        else { float ts=fract(uTime/uStrobe+aPhase), strobe=1.-smoothstep(0.,.05,ts);
+               vI=mix(strobe,flash,step(.5,uNight)); if(uNight<.5) vCol=vec3(1.,1.,.97); }
+        gl_PointSize=clamp(uSize*900./-mv.z,uSize*.8,uSize*3.)*uPx*(.5+.5*vI);
+      }`,
+    fragmentShader:`varying float vI; varying vec3 vCol;
+      void main(){ vec2 d=gl_PointCoord-.5; float r=dot(d,d)*4.; if(vI<.01||r>1.) discard;
+        float core=1.-smoothstep(.0,.18,r), halo=(1.-r)*(1.-r);   // hot core + soft halo
+        gl_FragColor=vec4(vCol*vI*(core*3.+halo*1.2),1.); }`,
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false});
+}
+// lights: [x,y,z, born,died, type, phase, ...]
+function obstructionLightPoints(lights){
+  const n=lights.length/7, pos=new Float32Array(n*3), life=new Float32Array(n*2), type=new Float32Array(n), ph=new Float32Array(n);
+  for(let i=0;i<n;i++){ const o=i*7; pos.set(lights.slice(o,o+3),i*3); life[i*2]=lights[o+3]; life[i*2+1]=lights[o+4]; type[i]=lights[o+5]; ph[i]=lights[o+6]; }
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.BufferAttribute(pos,3)); g.setAttribute('aLife',new THREE.BufferAttribute(life,2));
+  g.setAttribute('aType',new THREE.BufferAttribute(type,1)); g.setAttribute('aPhase',new THREE.BufferAttribute(ph,1));
+  const p=new THREE.Points(g,obstructionMaterial()); p.frustumCulled=false; p.matrixAutoUpdate=false; p.renderOrder=5;
+  return p;
+}
+// Roof corners of a tall building (the footprint's extreme points in the four diagonal directions), one phase for all.
+function obstructionRoofLights(out,xs,zs,top,h,life,phase){
+  const O=CONFIG.obstructionLights??{}, type=h>=(O.strobeAboveM??150)?2:0, seen=new Set();
+  for(const[sx,sz] of [[1,1],[1,-1],[-1,1],[-1,-1]]){
+    let best=0, bv=-1e9; for(let i=0;i<xs.length;i++){ const v=sx*xs[i]+sz*zs[i]; if(v>bv){ bv=v; best=i; } }
+    if(seen.has(best)) continue; seen.add(best);
+    out.push(xs[best],top+0.6,zs[best],life[0],life[1],type,phase);
+  }
+}
+function tickObstructionLights(){
+  obstructionUniforms.uTime.value=performance.now()/1000;
+  obstructionUniforms.uNight.value=_nightness;
+  obstructionUniforms.uPx.value=renderer.getPixelRatio();
+}
+// Tall masts / towers / chimneys from OSM with a height tag (tools/extract_obstacles.py): a plain mast or stack and its
+// lights. Born year unknown for most (0) → shown from CONFIG.obstructionLights.mastPlaceholderYear.
+async function initObstacles(){
+  const O=CONFIG.obstructionLights; if(!O?.obstacles||OFF.has('obstacles')) return;
+  let J; try{ const r=await fetch(O.obstacles+DATA_V); if(!r.ok) return; J=await r.json(); }catch(e){ return; }
+  const lights=[], geos=[], steel=new THREE.MeshLambertMaterial({color:0xB8BCC0}), brick=new THREE.MeshLambertMaterial({color:0x9A6A58});
+  const groups={mast:[],chimney:[]};
+  for(const[x,z,hdm,k,born0,name] of J.items){
+    const h=hdm/10, kind=J.kinds[k], base=sampleTerrainY(x,z), born=born0||(O.mastPlaceholderYear??1960), ph=_cityHash(x,z);
+    const g=kind==='chimney'?new THREE.CylinderGeometry(h/45,h/28,h,10,1,true):new THREE.CylinderGeometry(0.25,0.6,h,4,1,true);
+    g.translate(x,base+h/2,z); g.setAttribute('aLife',new THREE.Float32BufferAttribute(Array.from({length:g.attributes.position.count*2},(_,i)=>i%2?0:born),2));
+    (kind==='chimney'?groups.chimney:groups.mast).push(g);
+    const type=h>=(O.strobeAboveM??150)?2:0;
+    lights.push(x,base+h+0.4,z,born,0,type,ph);
+    for(let y=h-45;y>h*0.3&&h>=105;y-=45) lights.push(x,base+y,z,born,0,1,ph);   // steady red part-way down tall masts
+  }
+  for(const[k,list] of Object.entries(groups)){
+    if(!list.length) continue;
+    const m=new THREE.Mesh(mergeGeometries(list),k==='chimney'?brick:steel);
+    _lifespanCollapse(m.material); scene.add(m);
+  }
+  if(lights.length) scene.add(obstructionLightPoints(lights));
+  console.log(`🗼 ${J.items.length} OSM masts/towers/chimneys with heights`);
+}
+// ── Water towers (CONFIG.waterTowers): a steel tank — round, hemispherical bottom, shallow cone roof, catwalk — on four
+// braced legs. phases: [{from, to, heightM}] when the tower was raised (St. Boniface, 1945); lettering on two faces. ──
+function initWaterTowers(){
+  const L=CONFIG.waterTowers; if(!L?.length||OFF.has('watertowers')) return;
+  const byCol=new Map(), lettered=[];
+  const life=(g,b,d)=>{ g.setAttribute('aLife',new THREE.Float32BufferAttribute(Array.from({length:g.attributes.position.count*2},(_,i)=>i%2?d:b),2)); return g; };
+  for(const T of L){
+    const[x0,y0]=project(T.lon,T.lat), x=x0, z=-y0, base=sampleTerrainY(x,z), R=T.tankR??4, TH=T.tankH??6, col=T.colour??'#3A3C3E';
+    const phases=T.phases??[{from:T.born,to:T.died??null,heightM:T.heightM}];
+    for(const P of phases){
+      const b=_isoYearFrac(String(P.from??T.born),NO_BORN), d=P.to?_isoYearFrac(String(P.to),0):0, H=P.heightM, tb=H-TH-R*0.5;   // tb: bottom of the tank's straight side
+      const gs=[];
+      const tank=new THREE.CylinderGeometry(R,R,TH,24,1); tank.translate(0,tb+TH/2,0); gs.push(tank);
+      const bowl=new THREE.SphereGeometry(R,24,8,0,Math.PI*2,Math.PI/2,Math.PI/2); bowl.scale(1,0.5,1); bowl.translate(0,tb,0); gs.push(bowl);
+      const roof=new THREE.ConeGeometry(R*1.03,R*0.35,24,1); roof.translate(0,tb+TH+R*0.175,0); gs.push(roof);
+      const ball=new THREE.SphereGeometry(0.45,10,6); ball.translate(0,tb+TH+R*0.35+0.35,0); gs.push(ball);   // the level indicator
+      const walk=new THREE.CylinderGeometry(R+0.9,R+0.9,0.12,24,1); walk.translate(0,tb+0.4,0); gs.push(walk);
+      const rail=new THREE.CylinderGeometry(R+0.9,R+0.9,1.0,24,1,true); rail.translate(0,tb+0.95,0); gs.push(rail);
+      const legTop=tb+0.2, spread=R*(T.legSpread??1.15), foot=spread*1.35;
+      for(let k=0;k<4;k++){ const a=Math.PI/4+k*Math.PI/2, ax=Math.cos(a), az=Math.sin(a);
+        const p0=new THREE.Vector3(ax*foot,0,az*foot), p1=new THREE.Vector3(ax*spread,legTop,az*spread), len=p0.distanceTo(p1);
+        const leg=new THREE.CylinderGeometry(0.28,0.36,len,6,1); leg.translate(0,len/2,0);
+        leg.applyMatrix4(new THREE.Matrix4().lookAt(p0,p1,new THREE.Vector3(0,1,0)).multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2)));   // +y along p0→p1
+        leg.translate(p0.x,p0.y,p0.z); gs.push(leg); }
+      // bracing: a horizontal strut ring every ~9 m and X-cables between the legs
+      const corner=(k,y)=>{ const a=Math.PI/4+k*Math.PI/2, r=foot+(spread-foot)*(y/legTop); return new THREE.Vector3(Math.cos(a)*r,y,Math.sin(a)*r); };
+      const bar=(p,q,r)=>{ const len=p.distanceTo(q), g=new THREE.CylinderGeometry(r,r,len,4,1); g.translate(0,len/2,0);
+        g.applyMatrix4(new THREE.Matrix4().lookAt(p,q,new THREE.Vector3(0,1,0)).multiply(new THREE.Matrix4().makeRotationX(-Math.PI/2))); g.translate(p.x,p.y,p.z); gs.push(g); };
+      const nb=Math.max(2,Math.round(legTop/9));
+      for(let j=1;j<=nb;j++){ const ya=legTop*(j-1)/nb, yb=legTop*j/nb;
+        for(let k=0;k<4;k++){ const k2=(k+1)%4; bar(corner(k,yb),corner(k2,yb),0.12); bar(corner(k,ya),corner(k2,yb),0.04); bar(corner(k2,ya),corner(k,yb),0.04); } }
+      const ladder=new THREE.BoxGeometry(0.5,legTop,0.08); ladder.translate(0,legTop/2,0); ladder.translate(foot*0.3,0,0); gs.push(ladder);
+      const g=mergeGeometries(gs.map(q=>q.index?q.toNonIndexed():q)); g.translate(x,base,z); life(g,b,d);
+      if(!byCol.has(col)) byCol.set(col,[]); byCol.get(col).push(g);
+      if(T.text) lettered.push({T,x,z,y:base+tb+TH*0.55,R,b,d});
+    }
+  }
+  for(const[col,list] of byCol){
+    const m=new THREE.Mesh(mergeGeometries(list),new THREE.MeshLambertMaterial({color:new THREE.Color(col)}));
+    _lifespanCollapse(m.material); m.castShadow=true; m.receiveShadow=true; m.customDepthMaterial=collapseDepthMaterial(); m.name='water towers'; scene.add(m);
+  }
+  for(const Q of lettered){   // painted lettering: a curved band on each face the text faces (bearings), white on the tank colour
+    const c=document.createElement('canvas'); c.width=1024; c.height=96; const x2=c.getContext('2d');
+    x2.fillStyle=Q.T.textColour??'#E8E8E2'; x2.font='bold 64px sans-serif'; x2.textAlign='center'; x2.textBaseline='middle'; x2.fillText(Q.T.text,512,50);
+    const tex=new THREE.CanvasTexture(c); tex.colorSpace=THREE.SRGBColorSpace; tex.anisotropy=4;
+    const mat=new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2}); _lifespanCollapse(mat);
+    for(const br of Q.T.textBearings??[0,180]){
+      const arc=Math.PI*0.75, g=new THREE.CylinderGeometry(Q.R+0.03,Q.R+0.03,Q.R*0.55,24,1,true,0,arc);
+      const th=(br*Math.PI/180);   // compass bearing → the band centred on that face (+x east, -z north)
+      g.rotateY(Math.PI-arc/2-th); life(g,Q.b,Q.d);   // CylinderGeometry θ runs from +z toward +x; the face at bearing b is θ = π − b
+      const me=new THREE.Mesh(g,mat); me.position.set(Q.x,Q.y,Q.z); scene.add(me);
+    }
+  }
+  console.log(`🚰 ${L.length} water tower(s)`);
+}
+// Collapse geometry outside its aLife [born, died) — the same test the city tiles use — on a stock material.
+function _lifespanCollapse(mat){
+  mat.onBeforeCompile=sh=>{
+    sh.uniforms.uCityYear=buildingYearUniform;
+    sh.vertexShader='attribute vec2 aLife; uniform float uCityYear;\n'+sh.vertexShader.replace('#include <project_vertex>',
+      '#include <project_vertex>\n  if(uCityYear<aLife.x||(aLife.y>0.&&uCityYear>=aLife.y)) gl_Position=vec4(0.,0.,-2.,1.);');
+  };
+  mat.customProgramCacheKey=()=>'lifeCollapse';
+}
+// The shadow-pass twin of _lifespanCollapse: city tiles and landmarks cast shadows only while they stand
+let _collapseDepthMat=null;
+function collapseDepthMaterial(){
+  if(!_collapseDepthMat){ _collapseDepthMat=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking}); _lifespanCollapse(_collapseDepthMat); _collapseDepthMat.customProgramCacheKey=()=>'lifeCollapseDepth'; }
+  return _collapseDepthMat;
+}
+
+// ── Landmarks ───────────────────────────────────────────────────────
+// OSM buildings drawn with more care than the city tiles (tools/landmarks.json → data/tiles/b/landmarks.json): each is a
+// set of volumes — its OSM building:parts (min/max height, mirror|glass → curtain wall) or one box — standing on one
+// ground height. Facades are drawn in the shader from wall coordinates (u along the face, v up from the ground, metres),
+// so a tower costs a handful of triangles: 0 punched windows in bays between solid corner piers with a tall glazed
+// lobby; 1 glass curtain wall (mullions per bay and floor, dark spandrels); 2 blank (fluted precast); 3 fritted glass
+// (curtain grid with scattered white/bronze panels, never lit); 4 open frame (steel grid round empty glass). An optional top
+// band (mechanical penthouse) is blank or glass. At night windows are lit or dark by a hash, upper floors going dark
+// through the night on the painted windows' schedule (uWinNight / uWinLate). Signs (with the years they hung) light up
+// at night; antennas carry obstruction lights. Hover works like a city-tile building.
+const landmarks={list:[],meshes:[]};
+window._landmarks=landmarks;   // debug handle
+async function initLandmarks(){
+  if(!CONFIG.cityTiles?.index||OFF.has('landmarks')) return;
+  let J; try{ const r=await fetch(CONFIG.cityTiles.index.replace(/index\.json$/,'')+'landmarks.json'+DATA_V); if(!r.ok) return; J=await r.json(); }catch(e){ return; }
+  for(const L of Object.values(J.landmarks)) if(L.style==='tower'&&L.volumes?.length){ try{ _buildLandmark(L); }catch(e){ console.warn('Landmark',L.name,e); } }
+  console.log(`🏙 ${landmarks.list.length} landmark(s)`);
+}
+function _ringCentroid(ring){ let cx=0,cz=0; for(const[x,z] of ring){ cx+=x; cz+=z; } return [cx/ring.length,cz/ring.length]; }
+function _ringArea(r){ let a=0; for(let i=0;i<r.length;i++){ const[x1,z1]=r[i],[x2,z2]=r[(i+1)%r.length]; a+=x1*z2-x2*z1; } return Math.abs(a)/2; }
+function _landmarkFaces(ring){
+  // edges with outward normals (from the ring's winding: counter-clockwise seen from above), l→r as seen from outside
+  const n=ring.length, faces=[]; let sa=0;
+  for(let i=0;i<n;i++){ const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n]; sa+=x1*z2-x2*z1; }
+  const sgn=sa>0?1:-1;
+  for(let i=0;i<n;i++){
+    const[ax,az]=ring[i],[bx,bz]=ring[(i+1)%n], len=Math.hypot(bx-ax,bz-az); if(len<0.05) continue;
+    const nx=sgn*(bz-az)/len, nz=-sgn*(bx-ax)/len, rx=nz, rz=-nx;   // outward normal (either winding); "right" seen from outside
+    const[l,r]=(ax*rx+az*rz)<(bx*rx+bz*rz)?[[ax,az],[bx,bz]]:[[bx,bz],[ax,az]];
+    faces.push({l,r,nx,nz,len,bearing:(Math.atan2(nx,-nz)*180/Math.PI+360)%360});
+  }
+  return faces;
+}
+const _TYPES={punched:0,curtain:1,blank:2,glass:1,frit:3,frame:4,band:5};
+function _buildLandmark(L){
+  const born=L.born??0, died=L.died??0, vols=L.volumes;
+  const all=vols.flatMap(v=>v.ring), base=Math.min(...all.map(([x,z])=>sampleTerrainY(x,z)));
+  const Hmax=Math.max(...vols.map(v=>v.max)), main=vols.reduce((a,b)=>b.max>a.max||(b.max===a.max&&_ringArea(b.ring)>_ringArea(a.ring))?b:a);
+  const [cx,cz]=_ringCentroid(main.ring), group=new THREE.Group();
+  const rp=[], rl=[], rc=[], tb=L.topBand;   // tb {m, type}: the top m of the tallest volume(s)
+  const _rc=new THREE.Color();
+  for(const V of vols){
+    // roof (up) and, for volumes that start above ground, an underside (down). V.roof {h, k, colour}: a sloped roof instead
+    // of the flat one, rising h m to the ring shrunk k× toward its centre (k 0 = a point), with a flat cap there
+    const y0=V.min>0?base+V.min:base-0.6, y1=base+V.max, R=V.roof;
+    const [vx,vz]=_ringCentroid(V.ring), top=R?V.ring.map(([x,z])=>[vx+(x-vx)*(R.k??0),vz+(z-vz)*(R.k??0)]):V.ring, yt=R?y1+R.h:y1;
+    _rc.set(R?(R.colour??V.wall??L.roof??0x6E6C68):(L.roof??0x6E6C68));
+    const P=(x,y,z,c)=>{ rp.push(x,y,z); rl.push(born,died); rc.push(c.r,c.g,c.b); };
+    for(let[i,j,k] of THREE.ShapeUtils.triangulateShape(V.ring.map(([x,z])=>new THREE.Vector2(x,z)),[])){
+      const[ax,az]=V.ring[i],[bx,bz]=V.ring[j],[dx,dz]=V.ring[k], upw=(bz-az)*(dx-ax)-(bx-ax)*(dz-az)>=0;
+      const T=upw?[i,j,k]:[i,k,j];
+      for(const q of T) P(top[q][0],yt,top[q][1],_rc);
+      if(V.min>0) for(const q of [T[0],T[2],T[1]]) P(V.ring[q][0],y0,V.ring[q][1],_rc);
+    }
+    if(R){ // the slope: each edge of the ring up to the shrunk ring, facing out
+      let sa=0; for(let i=0;i<V.ring.length;i++){ const[x1,z1]=V.ring[i],[x2,z2]=V.ring[(i+1)%V.ring.length]; sa+=x1*z2-x2*z1; }
+      for(let i=0;i<V.ring.length;i++){ let a=i, b=(i+1)%V.ring.length; if(sa<0) [a,b]=[b,a];
+        const A=V.ring[a], B=V.ring[b], At=top[a], Bt=top[b];
+        P(A[0],y1,A[1],_rc); P(At[0],yt,At[1],_rc); P(B[0],y1,B[1],_rc);
+        P(B[0],y1,B[1],_rc); P(At[0],yt,At[1],_rc); P(Bt[0],yt,Bt[1],_rc); }
+    }
+  }
+  // walls, once per facade phase (phases: [{from, to, facade, wall, glass, curtain, topBand}] — e.g. a re-cladding)
+  const wallMeshes=[];
+  for(const P of L.phases??[{}]){
+    const C={...L,...P,facade:{...(L.facade??{}),...(P.facade??{})}}, F=C.facade, tbP=C.topBand, pb=Math.max(born,P.from??0), pd=P.to??died;
+    const pos=[], fac=[], fl=[], sty=[], life=[], idx=[], vcol=[], vol=[], wc=new THREE.Color();
+    vols.forEach((V,vi)=>{
+      const type=V.type!=null?_TYPES[V.type]:V.glass?1:_TYPES[F.type??'punched'];
+      const topFrom=tbP&&V.max>=Hmax-0.5?V.max-tbP.m:1e6, topType=tbP?_TYPES[tbP.type??'blank']:2;
+      const y0=V.min>0?base+V.min:base-0.6, y1=base+V.max, v0=V.min>0?V.min:-0.6;
+      wc.set(V.wall??C.wall??'#B7B0A3');   // a volume can have its own wall colour (Fort Garry Place's copper top)
+      _landmarkFaces(V.ring).forEach((f,fi)=>{
+        const k=pos.length/3, [lx,lz]=f.l, [rx,rz]=f.r;
+        pos.push(lx,y0,lz, rx,y0,rz, rx,y1,rz, lx,y1,lz);
+        fac.push(0,v0, f.len,v0, f.len,V.max, 0,V.max);
+        for(let j=0;j<4;j++){ fl.push(f.len,vi*64+fi); sty.push(type,topFrom,topType,0); life.push(pb,pd); vcol.push(wc.r,wc.g,wc.b); vol.push(V.min,V.max); }
+        idx.push(k,k+1,k+2, k,k+2,k+3);
+      });
+    });
+    const g=new THREE.BufferGeometry();
+    g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('aFac',new THREE.Float32BufferAttribute(fac,2));
+    g.setAttribute('aFace',new THREE.Float32BufferAttribute(fl,2)); g.setAttribute('aStyle',new THREE.Float32BufferAttribute(sty,4));
+    g.setAttribute('aLife',new THREE.Float32BufferAttribute(life,2)); g.setAttribute('color',new THREE.Float32BufferAttribute(vcol,3));
+    g.setAttribute('aVol',new THREE.Float32BufferAttribute(vol,2)); g.setIndex(idx); g.computeVertexNormals();
+    const floorH=F.floorH??(C.floors?Hmax/C.floors:3.8);
+    const mat=new THREE.MeshLambertMaterial({color:0xFFFFFF,vertexColors:true});
+    const U={uCityYear:buildingYearUniform, uTGlass:{value:new THREE.Color(C.glass??'#2E3640')}, uTCurtain:{value:new THREE.Color(C.curtain??'#4E6E88')},
+      uTFloorH:{value:floorH}, uTBay:{value:F.bayM??2.2}, uTCBay:{value:F.curtainBayM??1.5}, uTWin:{value:new THREE.Vector2(F.winW??0.45,F.winH??0.5)},
+      uTCorner:{value:F.cornerM??1.5}, uTLobby:{value:F.lobbyM??floorH*1.3}, uTLit:{value:CONFIG.nightLights?.litShare??0.6}};
+    mat.onBeforeCompile=sh=>{
+      Object.assign(sh.uniforms,U,windowPaintUniforms);
+      sh.vertexShader='attribute vec2 aFac, aFace, aLife, aVol; attribute vec4 aStyle; uniform float uCityYear; varying vec2 vFac, vFace, vVol; varying vec4 vStyle;\n'+sh.vertexShader
+        .replace('#include <project_vertex>','#include <project_vertex>\n  vFac=aFac; vFace=aFace; vStyle=aStyle; vVol=aVol;\n  if(uCityYear<aLife.x||(aLife.y>0.&&uCityYear>=aLife.y)) gl_Position=vec4(0.,0.,-2.,1.);');
+      sh.fragmentShader=`uniform vec3 uTGlass, uTCurtain, uWinGlow; uniform float uTFloorH,uTBay,uTCBay,uTCorner,uTLobby,uTLit,uWinNight,uWinLate; uniform vec2 uTWin;
+        varying vec2 vFac, vFace, vVol; varying vec4 vStyle;
+        float tHash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }\n`+sh.fragmentShader
+        .replace('#include <color_fragment>',`#include <color_fragment>
+          float tType=vStyle.x; if(vFac.y>=vStyle.y) tType=vStyle.z;   // top band
+          float tF=floor(vFac.y/uTFloorH), tFv=fract(vFac.y/uTFloorH), tWin=0., tLitW=0.;
+          if(tType<.5){   // punched
+            float tInner=vFace.x-2.*uTCorner, tU=vFac.x-uTCorner, n=floor(tInner/uTBay);
+            if(vFac.y>0.&&n>=1.&&tU>0.&&tU<tInner){
+              float bw=tInner/n, c=floor(tU/bw), fu=fract(tU/bw);
+              if(vFac.y<uTLobby) tWin=step(.06,fu)*step(fu,.94)*step(.04,vFac.y/uTLobby)*step(vFac.y/uTLobby,.92);
+              else tWin=step(abs(fu-.5),uTWin.x*.5)*step(abs(tFv-.55),uTWin.y*.5);
+              tLitW=vFac.y<uTLobby?1.:step(tHash(vec2(c+vFace.y*97.,tF)),uTLit*(1.-uWinLate));
+              diffuseColor.rgb*=1.-.25*step(abs(fu-.5),uTWin.x*.5+.04)*step(abs(tFv-.55),uTWin.y*.5+.05)*(1.-tWin);   // reveal
+            }
+            diffuseColor.rgb=mix(diffuseColor.rgb,uTGlass,tWin);
+          } else if(tType<1.5){   // curtain wall
+            float c=floor(vFac.x/uTCBay), fu=fract(vFac.x/uTCBay), mull=step(fu,.04)+step(.96,fu)+step(tFv,.03);
+            float spandrel=step(tFv,.2);
+            vec3 gc=uTCurtain*(.85+.3*fract(vFac.y/37.+vFace.y*.13))*(1.-.35*spandrel);   // a little variation in the reflection
+            diffuseColor.rgb=mix(gc,diffuseColor.rgb*.7,clamp(mull,0.,1.));
+            tWin=(1.-clamp(mull,0.,1.))*(1.-spandrel); tLitW=step(tHash(vec2(c+vFace.y*97.,tF)),uTLit*(1.-uWinLate));
+          } else if(tType<2.5){   // blank
+            diffuseColor.rgb*=.93+.07*step(.5,fract(vFac.x/.9));
+          } else if(tType<3.5){   // fritted glass: the curtain grid with scattered white and bronze panels (unoccupied — never lit)
+            float c=floor(vFac.x/uTCBay), fu=fract(vFac.x/uTCBay), mull=clamp(step(fu,.04)+step(.96,fu)+step(tFv,.03),0.,1.), h=tHash(vec2(c+vFace.y*97.,tF*1.7+3.));
+            vec3 gc=uTCurtain*(.9+.2*fract(vFac.y/37.+vFace.y*.13));
+            gc=mix(gc,vec3(.86,.88,.88),step(.86,h)); gc=mix(gc,vec3(.55,.47,.38),step(h,.06));
+            diffuseColor.rgb=mix(gc,diffuseColor.rgb*.7,mull);
+          } else if(tType>4.5){   // ribbon windows: a solid sill, then glass all the way round between thin mullions — always lit at night
+            float t=(vFac.y-vVol.x)/max(vVol.y-vVol.x,.01), fu=fract(vFac.x/1.6);
+            tWin=step(.32,t)*step(t,.9)*step(.06,fu)*step(fu,.94); tLitW=1.;
+            diffuseColor.rgb=mix(diffuseColor.rgb,uTGlass,tWin);
+          } else {   // open frame: pale steel grid round mostly empty glass
+            float fu=fract(vFac.x/(uTCBay*2.)), bar=clamp(step(fu,.05)+step(.95,fu)+step(tFv,.07),0.,1.);
+            diffuseColor.rgb=mix(mix(uTCurtain,vec3(.8,.86,.92),.55),vec3(.86,.88,.89),bar);
+          }`)
+        .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n  totalEmissiveRadiance+=uWinGlow*tWin*tLitW*uWinNight*.9;');
+    };
+    mat.customProgramCacheKey=()=>'landmarkTower4';
+    const w=new THREE.Mesh(g,mat); w.receiveShadow=true; w.castShadow=true; w.customDepthMaterial=collapseDepthMaterial(); group.add(w); wallMeshes.push(w);
+  }
+  const walls=wallMeshes[0];
+  const rg=new THREE.BufferGeometry(); rg.setAttribute('position',new THREE.Float32BufferAttribute(rp,3)); rg.setAttribute('aLife',new THREE.Float32BufferAttribute(rl,2));
+  rg.setAttribute('color',new THREE.Float32BufferAttribute(rc,3)); rg.computeVertexNormals();
+  const roofMat=new THREE.MeshLambertMaterial({color:0xFFFFFF,vertexColors:true,side:vols.some(V=>V.roof)?THREE.DoubleSide:THREE.FrontSide}); _lifespanCollapse(roofMat);
+  const roof=new THREE.Mesh(rg,roofMat); roof.castShadow=true; roof.receiveShadow=true; roof.customDepthMaterial=collapseDepthMaterial(); group.add(roof);
+  // signs: {kind, text, from, to, bearings:[compass], u, height (m above ground; default the middle of the top band), size}
+  const mainFaces=_landmarkFaces(main.ring);
+  for(const S of L.signs??[]){
+    const sb=Math.max(born,S.from??0), sd=S.to??died, sz=S.size??6, hgt=base+(S.height??(Hmax-(tb?tb.m/2:sz/2+1)));
+    const lm=new THREE.MeshBasicMaterial({map:_landmarkLogoTexture(S),transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-2});
+    _lifespanCollapse(lm); (landmarks.signMats??=[]).push(lm);
+    for(const br of S.bearings??[0,90,180,270]){
+      let f=null, bd=1e9; for(const q of mainFaces){ if(q.len<Math.min(sz,4)) continue; const d=Math.abs(((q.bearing-br+540)%360)-180); if(d<bd){ bd=d; f=q; } }
+      if(!f||bd>40) continue;
+      const u=(S.u??0.5)*f.len, ex=(f.r[0]-f.l[0])/f.len, ez=(f.r[1]-f.l[1])/f.len, off=S.offset??0.15;
+      const px=f.l[0]+ex*u+f.nx*off, pz=f.l[1]+ez*u+f.nz*off, asp=S.aspect??1;
+      const pg=new THREE.PlaneGeometry(sz*asp,sz); pg.setAttribute('aLife',new THREE.Float32BufferAttribute([sb,sd,sb,sd,sb,sd,sb,sd],2));
+      const pm=new THREE.Mesh(pg,lm); pm.position.set(px,hgt,pz); pm.lookAt(px+f.nx,hgt,pz+f.nz); group.add(pm);
+    }
+  }
+  // antennas: [east m, north m, height, radius] from the tallest volume's centroid, on its roof
+  const lights=[], ph=_cityHash(cx,cz), O=CONFIG.obstructionLights??{}, top=base+main.max, ag=[];
+  for(const[e,n,h,r] of L.antennas??[]){
+    const x=cx+e, z=cz-n;
+    const m=new THREE.CylinderGeometry(r*0.5,r,h,6,1,true); m.translate(x,top+h/2,z); ag.push(m);
+    const bar=new THREE.BoxGeometry(r*6,0.12,0.12); bar.translate(x,top+h*0.7,z); ag.push(bar);
+    lights.push(x,top+h+0.3,z,born,died,main.max+h>=(O.strobeAboveM??150)?2:0,ph);
+  }
+  if(ag.length){
+    const q=mergeGeometries(ag.map(a=>a.toNonIndexed())), am=new THREE.MeshLambertMaterial({color:0xC8CCD0}); _lifespanCollapse(am);
+    q.setAttribute('aLife',new THREE.Float32BufferAttribute(Array.from({length:q.attributes.position.count*2},(_,i)=>i%2?died:born),2));
+    group.add(new THREE.Mesh(q,am));
+  }
+  if(Hmax>=(O.minHeightM??1e9)) obstructionRoofLights(lights,main.ring.map(p=>p[0]),main.ring.map(p=>p[1]),top,Hmax,[born,died],ph);
+  if(lights.length) group.add(obstructionLightPoints(lights));
+  scene.add(group);
+  const outline=vols.reduce((a,b)=>_ringArea(b.ring)>_ringArea(a.ring)?b:a).ring;
+  const entry={L,group,walls,roof,ring:outline,cx,cz,base};
+  for(const w of wallMeshes) w.userData.landmark=entry;
+  roof.userData.landmark=entry;
+  landmarks.list.push(entry); landmarks.meshes.push(...wallMeshes,roof);
+}
+// Sign textures: 'richardsonR' (approximation from Mike's photos), 'text' ({text, fg, bg, font}), 'image' ({src})
+function _landmarkLogoTexture(S){
+  const asp=S.aspect??1, c=document.createElement('canvas'); c.width=Math.round(256*asp); c.height=256; const x=c.getContext('2d');
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4;
+  if(S.kind==='richardsonR'){
+    x.fillStyle='#E9B526'; x.fillRect(46,40,26,176);
+    x.fillStyle='#1E56C8'; x.font='bold 220px Georgia, "Times New Roman", serif'; x.textAlign='center'; x.textBaseline='middle'; x.fillText('R',140,134);
+  } else if(S.kind==='image'){
+    const im=new Image(); im.onload=()=>{ x.drawImage(im,0,0,c.width,c.height); t.needsUpdate=true; }; im.src=S.src;
+  } else {
+    if(S.bg){ x.fillStyle=S.bg; x.fillRect(0,0,c.width,c.height); }
+    x.fillStyle=S.fg??'#fff'; x.font=S.font??`bold ${Math.round(150/Math.max(1,(S.text??'').length/(2.2*asp)))}px Arial, sans-serif`;
+    x.textAlign='center'; x.textBaseline='middle'; x.fillText(S.text??'',c.width/2,c.height/2+6);
+    if(S.underline){ x.fillStyle=S.underline; x.fillRect(c.width*.12,c.height*.8,c.width*.76,c.height*.07); }
+  }
+  return t;
+}
+function tickLandmarks(){
+  if(!landmarks.signMats) return;
+  const v=0.78+0.5*_nightness;   // signs light up at night
+  for(const m of landmarks.signMats) m.color.setScalar(v);
+}
+// A building's name in the view year: a string, or [[from, to, name], …] (to null: still) when it was renamed
+function _nameIn(n,y=buildingYearUniform.value){
+  if(!Array.isArray(n)) return n??null;
+  for(const[a,b,nm] of n) if(y>=(a??-1e9)&&(b==null||y<b)) return nm;
+  return n[y<(n[0][0]??0)?0:n.length-1][2];
+}
+function landmarkPickAt(ray,maxDist){
+  if(!landmarks.meshes.length) return null;
+  const rc=new THREE.Raycaster(ray.origin,ray.direction,0,maxDist), y=buildingYearUniform.value;
+  for(const h of rc.intersectObjects(landmarks.meshes,false)){
+    const e=h.object.userData.landmark, L=e.L;
+    if(y<(L.born??0)||(L.died&&y>=L.died)) continue;
+    let area=0; const r=e.ring; for(let i=0;i<r.length;i++){ const[a,b]=r[i],[c2,d]=r[(i+1)%r.length]; area+=a*d-c2*b; }
+    const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+    return {city:true, landmark:true, dist:h.distance, kind:L.kind??'commercial', basis:L.auto?(L.basis??'roll'):(L.basis==='roll'?'roll':'landmark'), born:L.born, died:L.died||null, height:L.heightM,
+      colour:new THREE.Color(L.wall??'#B7B0A3').getHex(), meta:[L.osm_id,L.osm_building,_nameIn(L.name,y),L.address,L.use,'osm_height'], metaPending:false, name:_nameIn(L.name,y),
+      cx:e.cx-offX, cz:e.cz-offZ, floors:L.heightM/FLOOR_H, area_m2:Math.abs(area)/2, feat:{properties:{uid:'landmark:'+L.osm_id}, ringXZ:e.ring}};
+  }
+  return null;
+}
+
+// Hover: the nearest city-tile building under the ray that exists in the view year, closer than maxDist. Box test per
+// building, then only that building's triangles. Details (OSM id, address, property use) come from the tile's m/ file,
+// fetched the first time something in it is hovered.
+const _cpBox=new THREE.Box3(), _cpA=new THREE.Vector3(), _cpB=new THREE.Vector3(), _cpC=new THREE.Vector3(), _cpP=new THREE.Vector3();
+function cityPickAt(ray,maxDist){
+  let best=null, bestD=maxDist;
+  const y=buildingYearUniform.value;
+  for(const t of cityTiles.tiles.values()){
+    const m=t.mesh; if(!m||!ray.intersectsSphere(m.geometry.boundingSphere)) continue;
+    const P=m.userData.city, pos=m.geometry.attributes.position.array, ix=m.geometry.index.array, life=m.geometry.attributes.aLife.array;
+    for(let k=0;k<P.rec.length;k++){
+      const v0=P.vtx[k], born=life[v0*2], died=life[v0*2+1];
+      if(y<born||(died>0&&y>=died)) continue;
+      const B=P.box; _cpBox.min.set(B[k*6],B[k*6+1],B[k*6+2]); _cpBox.max.set(B[k*6+3],B[k*6+4],B[k*6+5]);
+      if(!ray.intersectBox(_cpBox,_cpP)||ray.origin.distanceTo(_cpP)>=bestD) continue;
+      for(let f=P.tri[k];f<P.tri[k+1];f++){
+        const a=ix[f*3]*3, b=ix[f*3+1]*3, c=ix[f*3+2]*3;
+        _cpA.set(pos[a],pos[a+1],pos[a+2]); _cpB.set(pos[b],pos[b+1],pos[b+2]); _cpC.set(pos[c],pos[c+1],pos[c+2]);
+        if(!ray.intersectTriangle(_cpA,_cpB,_cpC,false,_cpP)) continue;
+        const d=ray.origin.distanceTo(_cpP); if(d<bestD){ bestD=d; best={m,k}; }
+      }
+    }
+  }
+  return best&&_cityInfo(best.m,best.k);
+}
+const _cityMeta=new Map();   // tile → array | 'loading'
+function _cityInfo(m,k){
+  const P=m.userData.city, I=cityTiles.index, pos=m.geometry.attributes.position.array, col=m.geometry.attributes.color.array, life=m.geometry.attributes.aLife.array;
+  const v0=P.vtx[k], n=P.n[k], ring=[];
+  for(let i=0;i<n;i++){ const a=(v0+4*i)*3; ring.push([pos[a],pos[a+2]]); }   // wall quads start at each corner's bottom vertex
+  let area=0, cx=0, cz=0;
+  for(let i=0;i<n;i++){ const[xa,za]=ring[i],[xb,zb]=ring[(i+1)%n]; area+=xa*zb-xb*za; cx+=xa; cz+=za; }
+  const h=P.h[k]/10;
+  let meta=_cityMeta.get(P.tile);
+  if(meta===undefined){
+    _cityMeta.set(P.tile,'loading');
+    fetch(`${CONFIG.cityTiles.index.replace(/index\.json$/,'')}m/${P.tile}.json${DATA_V}`).then(r=>r.ok?r.json():null)
+      .then(j=>{ _cityMeta.set(P.tile,j); _hoverHLKey=null; if(!fpsMode) updateHover(); }).catch(()=>_cityMeta.set(P.tile,null));
+  }
+  const md=Array.isArray(meta)?meta[P.rec[k]]:null;
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  return {city:true, kind:I.kinds[P.kind[k]], basis:I.basis[P.basis[k]], born:life[v0*2], died:life[v0*2+1]||null, height:h,
+    colour:(col[v0*4]<<16)|(col[v0*4+1]<<8)|col[v0*4+2], meta:md, metaPending:meta==='loading'||meta===undefined,
+    name:_nameIn(md?.[2])||md?.[3]||null, cx:cx/n-offX, cz:cz/n-offZ, floors:h/FLOOR_H, area_m2:Math.abs(area)/2,
+    feat:{properties:{uid:`city:${P.tile}:${P.rec[k]}`}, ringXZ:ring}};
 }
 
 // Terrain is only ever resolved at its own ~10m grid above — sampling
@@ -2600,6 +3184,35 @@ function buildRoofGeometry(ring,roofBaseY,ridgeHOverride=null,overhang=0){
   geom.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   geom.computeVertexNormals(); if(gab.length) geom.userData.gable=gab; return geom;
 }
+// Pyramid (roof_type 'pyramid'): every eave edge slopes up to one apex over the centre of the outline's
+// minimum rectangle — a square house's hipped roof with no ridge. Slopes always face up.
+function buildPyramidRoof(ring,roofBaseY,H){
+  const n=ring.length; if(n<3) return null;
+  let x0=Infinity,x1=-Infinity,z0=Infinity,z1=-Infinity; for(const[x,z]of ring){x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);}
+  let cx=0,cz=0; for(const[x,z]of ring){cx+=x;cz+=z;} cx/=n; cz/=n;
+  const top={x:cx,y:roofBaseY+H,z:cz}, pos=[];
+  const tri=(a,b,c)=>{ const ny=(b.z-a.z)*(c.x-a.x)-(b.x-a.x)*(c.z-a.z); if(ny<0) pos.push(a.x,a.y,a.z,c.x,c.y,c.z,b.x,b.y,b.z); else pos.push(a.x,a.y,a.z,b.x,b.y,b.z,c.x,c.y,c.z); };
+  for(let i=0;i<n;i++){ const[xa,za]=ring[i],[xb,zb]=ring[(i+1)%n]; tri({x:xa,y:roofBaseY,z:za},{x:xb,y:roofBaseY,z:zb},top); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.computeVertexNormals(); return g;
+}
+// Shed / lean-to (roof_type 'shed' + shed_down_bearing): one plane, rise H on the high side, falling toward the
+// compass bearing given (away from the wall it leans on). The wall above the eave line (the sloped side walls and
+// the high wall) goes in userData.gable, drawn as wall like a gable end.
+function buildShedRoof(ring,roofBaseY,H,downBearingDeg){
+  const n=ring.length; if(n<3) return null;
+  const b=downBearingDeg*Math.PI/180, dx=Math.sin(b), dz=-Math.cos(b);   // x east, z south
+  let p0=Infinity,p1=-Infinity; for(const[x,z]of ring){const p=x*dx+z*dz; p0=Math.min(p0,p); p1=Math.max(p1,p);}
+  const hy=(x,z)=>roofBaseY+H*(1-(x*dx+z*dz-p0)/Math.max(0.01,p1-p0));
+  const pts=ring.map(([x,z])=>new THREE.Vector2(x,z)); if(THREE.ShapeUtils.isClockWise(pts)) pts.reverse();
+  const tris=THREE.ShapeUtils.triangulateShape(pts,[]), pos=[], gab=[];
+  for(const[a,c,e]of tris){ for(const k of[a,e,c]){ const v=pts[k]; pos.push(v.x,hy(v.x,v.y),v.y); } }   // CCW in x,z (y down from above) → reversed so the slope faces up
+  let A=0; for(let i=0;i<n;i++){const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n];A+=x1*z2-x2*z1;}
+  for(let i=0;i<n;i++){ const[x1,z1]=ring[i],[x2,z2]=ring[(i+1)%n], h1=hy(x1,z1), h2=hy(x2,z2);
+    if(h1-roofBaseY<0.02&&h2-roofBaseY<0.02) continue;
+    const q=A>=0?[[x1,roofBaseY,z1],[x2,roofBaseY,z2],[x2,h2,z2],[x1,h1,z1]]:[[x2,roofBaseY,z2],[x1,roofBaseY,z1],[x1,h1,z1],[x2,h2,z2]];
+    gab.push(...q[0],...q[2],...q[1],...q[0],...q[3],...q[2]); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.computeVertexNormals(); if(gab.length) g.userData.gable=gab; return g;
+}
 // True mansard: steep slopes from the eaves up to an inset ring, then a flat deck. Works on any outline (courtyards, wings) because it follows
 // the footprint instead of finding a ridge. Slopes and deck always face up. Used by roof_type 'mansard' on complex outlines (Fort Garry Hotel).
 function buildMansardRoof(ring,roofBaseY,H,insetM){
@@ -2877,6 +3490,31 @@ function buildingColour(mat,uid,floors,areaSqM){
   return MATS[mat]?.color??CONFIG.materials.unknown.color;
 }
 
+// A colonnade on one face (building_history portico: {bearing, columns, height, diameter, base, span:[u0,u1], out, color}):
+// the face whose outward normal is nearest bearing (compass °), columns evenly from span[0] to span[1] along it, standing
+// on a stylobate base m high, out m in front of the wall, with a shaded recess panel behind them. Indexed, vertex-coloured.
+function buildPortico(ring,P,wallH,wallCol){
+  let f=null, best=0;
+  for(const q of _landmarkFaces(ring)){ const d=Math.abs(((q.bearing-(P.bearing??0)+540)%360)-180); if(d<=40&&q.len>best){ best=q.len; f=q; } }
+  if(!f) return null;
+  const N=Math.max(2,P.columns??6), D=P.diameter??1.2, R=D/2, base=P.base??1.0, H=Math.min(P.height??wallH*0.65,wallH-base), out=P.out??D*0.7;
+  const [u0,u1]=P.span??[0.14,0.86], ex=(f.r[0]-f.l[0])/f.len, ez=(f.r[1]-f.l[1])/f.len, rotBox=Math.atan2(-ez,ex), col=P.color!=null?wallColourOverride({wall_color:P.color}):wallCol;
+  const parts=[], put=(g,c,x,y,z,ry=0)=>{ g.deleteAttribute('uv'); if(ry) g.rotateY(ry); g.translate(x,y,z); applyVertexColour(g,c); parts.push(g); };
+  const at=(u,o)=>[f.l[0]+ex*u+f.nx*o, f.l[1]+ez*u+f.nz*o];
+  const shade=c=>((((c>>16)&255)*.62)<<16)|((((c>>8)&255)*.62)<<8)|((c&255)*.62);
+  const a=u0*f.len, b=u1*f.len, mid=(a+b)/2, w=b-a+D*1.4;
+  { const[x,z]=at(mid,(out+R*1.6)/2); put(new THREE.BoxGeometry(w,base,out+R*1.6),col,x,base/2,z,rotBox); }   // stylobate
+  { const[x,z]=at(mid,0.04), pg=new THREE.PlaneGeometry(b-a+D,H); put(pg,shade(col),x,base+H/2,z,Math.atan2(f.nx,f.nz)); }   // recess in shadow
+  for(let i=0;i<N;i++){
+    const[x,z]=at(a+(b-a)*i/(N-1),out);
+    put(new THREE.BoxGeometry(D*1.3,0.35,D*1.3),col,x,base+0.175,z,rotBox);                              // plinth
+    put(new THREE.CylinderGeometry(R*0.86,R,H-1.1,16),col,x,base+0.35+(H-1.1)/2,z);                    // shaft (slight taper)
+    put(new THREE.CylinderGeometry(R*1.3,R*0.86,0.5,16),col,x,base+H-0.75+0.25,z);                     // capital
+    put(new THREE.BoxGeometry(D*1.45,0.25,D*1.45),col,x,base+H-0.125,z,rotBox);                         // abacus
+  }
+  { const[x,z]=at(mid,out/2+R*0.3); put(new THREE.BoxGeometry(w,0.9,out+R*1.6),col,x,base+H+0.45,z,rotBox); }   // architrave over the columns back to the wall
+  return mergeGeometries(parts,false);
+}
 function applyVertexColour(geom, hexCol){
   // Apply a flat colour to all vertices of a (possibly indexed) geometry.
   const r=((hexCol>>16)&0xff)/255;
@@ -3281,7 +3919,7 @@ const DORMER_EMBED  = CONFIG.dormers.embed;
 // Pushes its window glass into glassVerts and returns {wallGeom, gableGeom,
 // roofGeom} (any may be null if construction failed) for the caller to merge in.
 // Hoisted from buildCity's per-feature scope
-const PEAKED_ROOF_TYPES=new Set(['gabled','hip','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod','wings']);
+const PEAKED_ROOF_TYPES=new Set(['gabled','hip','pyramid','mansard','shed','gambrel','jerkinhead','sawtooth','conical','dome','bell','barrel','sod','wings']);
 
 // All glass for one building polygon: church lancets, procedural or mask windows, half-storey dormer windows.
 // Shared by buildCity and rebuildGlassMesh so the two can't drift apart. Verts are appended to glassVerts and
@@ -3304,9 +3942,9 @@ function placeBuildingGlass(glassVerts,props,outer,mat,baseY,partyGrid,_featIdx,
   const isLumberYard=props.type==='lumber', isWalkway=props.type==='walkway';
   const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
   const nm=(props.name||'').toLowerCase();
-  const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
+  const isChurch=props.church!=null?!!props.church:nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
                ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
-               ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks
+               ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks; props.church overrides (false: a hall named after its church)
   const isElevator=nm.includes('elevator');
   const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
   const noWindows=isWall||isElevator||isLumberYard||isWalkway;
@@ -4092,9 +4730,9 @@ async function buildCity(geojson){
       const isBridge=props.type==='bridge';
       const isUpperFort=props.name==='Upper Fort Gaarry'||props.name==='Upper Fort Garry';
       const nm=(props.name||'').toLowerCase();
-      const isChurch=nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
+      const isChurch=props.church!=null?!!props.church:nm.includes('church')||nm.includes('cathedral')||nm.includes('chapel')
                    ||nm.includes('presbyterian')||nm.includes('methodist')||nm.includes('baptist')
-                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks
+                   ||nm.includes('anglican')||nm.includes('parish')||nm.includes('trinity');   // not 'st.' — that caught hospitals, academies, "St. …" blocks; props.church overrides (false: a hall named after its church)
       const isElevator=nm.includes('elevator');
       const isWall=props.no_windows||nm.endsWith(' wall')||nm.endsWith('walls');
       const noWindows=isWall||isElevator||isLumberYard||isWalkway;
@@ -4129,6 +4767,8 @@ async function buildCity(geojson){
         // Complex outlines (> 14 points, or roof_type 'wings'): a roof per wing; simple ones: one ridge
         const rg=roofTypeOverride==='mansard'&&outer.length>14
           ?buildMansardRoof(ring,height+0.05,props.roof_height??FLOOR_H*2,(props.roof_height??FLOOR_H*2)*0.45)   // complex mansard (château hotel): follows the footprint
+          :roofTypeOverride==='pyramid'?buildPyramidRoof(ring,height+0.05,props.roof_height??FLOOR_H*1.2)
+          :roofTypeOverride==='shed'&&props.shed_down_bearing!=null?buildShedRoof(ring,height+0.05,props.roof_height??FLOOR_H*0.4,props.shed_down_bearing)
           :(roofTypeOverride==='wings'||outer.length>14)
           ?buildWingRoof(ring,height+0.05,props.roof_height??null)
           :buildRoofGeometry(ring,height+0.05,props.roof_height??null,CONFIG.building.roofOverhangM??0);
@@ -4144,7 +4784,13 @@ async function buildCity(geojson){
         for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
         const churchRidgeH=height*0.8;
         const rg=buildRoofGeometry(ring,height+0.05,churchRidgeH,CONFIG.building.roofOverhangM??0);
-        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);roofGeos[mat].push(rg);wallCums[mat][wallCums[mat].length-1]+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));}
+        if(rg&&roofGeos[mat]){rg.translate(0,buildingBaseY,0);wallCums[mat][wallCums[mat].length-1]+=pushRoofGables(rg,wallGeos[mat],bldgCol,buildingBaseY);rg.computeBoundingBox();_roofRise=Math.max(_roofRise,rg.boundingBox.max.y-(buildingBaseY+height));
+          if(props.roof_color){ applyVertexColour(rg,wallColourOverride({wall_color:props.roof_color,uid:props.uid})??CONFIG.palettes.named.slate); towerRoofGeos.push(rg); }
+          else roofGeos[mat].push(rg);}
+      }
+      if(props.portico&&areaOk){   // colonnade (building_history portico)
+        const ring=[]; for(let j=0;j<outer.length-1;j++){const[sx,sy]=project(outer[j][0],outer[j][1]);ring.push([sx,-sy]);}
+        const pg=buildPortico(ring,props.portico,height,bldgCol); if(pg){ pg.translate(0,buildingBaseY,0); towerRoofGeos.push(pg); }
       }
 
       // ── Brick flat-roof details ──────────────────────────────────
@@ -4213,7 +4859,7 @@ async function buildCity(geojson){
       {
         const CHIM=CONFIG.chimneys;
         const chimDef=CHIM.materials[mat];
-        if(chimDef&&!isPlatform&&!isLumberYard&&!isBridge&&!isWall&&mat!=='blue'&&floors>=CHIM.minFloors){
+        if(chimDef&&!isPlatform&&!isLumberYard&&!isBridge&&!isWall&&mat!=='blue'&&floors>=CHIM.minFloors&&props.chimney!==false&&(ringAreaM2(outer)||props.area_m2||100)>=(CHIM.minAreaM2??4)){   // not on a flag pole / post
           const uid=props.uid||String(props.id||i);
           const h0=simpleHash(uid);
           // Volume proxy drives chimney count: large/tall buildings get more stacks
@@ -4729,7 +5375,7 @@ async function buildCity(geojson){
     const tMat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:20,specular:0x222222});
     tagMaterialForLifespan(tMat,0,true);
     const tDepth=makeLifespanDepthMaterial(true);
-    for(const{geom}of mergeByTile(towerRoofGeos,towerRoofKeys)){
+    for(const{geom}of mergeByTile(towerRoofGeos.map(g=>g.index?g.toNonIndexed():g),towerRoofKeys)){   // curved roofs/porticos are indexed, gabled ones aren't
       releaseAfterUpload(geom);
       const tm=new THREE.Mesh(geom,tMat); tm.name='tower roofs';
       tm.customDepthMaterial=tDepth;
@@ -4871,11 +5517,20 @@ const _glSorted=[];
 // Left alone while a postcard overlay is open (it drives the FoV itself).
 const _fovKey=()=>'pfviewer.fov.'+(fpsMode?'walk':'orbit');
 function _fovPref(){ try{ const v=parseFloat(localStorage.getItem(_fovKey())); if(v>=30&&v<=110) return v; }catch(e){} return CONFIG.camera.fov; }
-function applyFov(){
+// smooth: going in or out of walk mode eases from one FoV to the other over CONFIG.camera.fovBlendS (tickFovBlend)
+const _fovBlend={from:0,to:0,t:1};
+function applyFov(smooth=false){
   const sl=document.getElementById('fov-slider'), v=_fovPref();
   if(sl){ sl.value=v; document.getElementById('fov-val').textContent=Math.round(v); document.getElementById('fov-mode').textContent=fpsMode?'walk':'orbit'; }
   try{ if(PC.savedFov!=null) return; }catch(e){}   // PC is declared further down (TDZ until then): no overlay yet
-  camera.fov=v; camera.updateProjectionMatrix();
+  if(smooth&&Math.abs(camera.fov-v)>0.05&&(CONFIG.camera.fovBlendS??0)>0){ _fovBlend.from=camera.fov; _fovBlend.to=v; _fovBlend.t=0; return; }
+  _fovBlend.t=1; camera.fov=v; camera.updateProjectionMatrix();
+}
+function tickFovBlend(dt){
+  if(_fovBlend.t>=1) return;
+  try{ if(PC.savedFov!=null){ _fovBlend.t=1; return; } }catch(e){}
+  _fovBlend.t=Math.min(1,_fovBlend.t+dt/CONFIG.camera.fovBlendS); const k=_fovBlend.t*_fovBlend.t*(3-2*_fovBlend.t);
+  camera.fov=_fovBlend.from+(_fovBlend.to-_fovBlend.from)*k; camera.updateProjectionMatrix();
 }
 { const sl=document.getElementById('fov-slider');
   sl.addEventListener('input',()=>{ const v=+sl.value; try{ localStorage.setItem(_fovKey(),v); }catch(e){} applyFov(); });
@@ -5327,8 +5982,8 @@ async function buildRoads(geojson){
     centGrid.get(k).push(c);
   }
   console.log(`buildRoads: ${activeCents.length} active centroids, ${centGrid.size} grid cells`);
-  // Returns the [born,died) span during which at least one nearby building
-  // exists — earliest born to latest died — or null if none are near. The
+  // Returns the [born, forever) span from the first nearby building on, or
+  // null if none are near. The
   // span is tagged onto the road vertices (aLifespan) so the same shader
   // discard that hides buildings also hides roads until something is built
   // beside them. Min/max is a slight over-approximation: a gap between one
@@ -5348,8 +6003,9 @@ async function buildRoads(geojson){
         }
       }
     }
-    return born===Infinity?null:[born,died];
-  }
+    return born===Infinity?null:[born,NO_DIED];   // every street in wpg_roads still exists: once one appears it stays (the modern
+  }                                                // buildings that replace the old ones beside it are city tiles, not counted here);
+                                                   // closed streets get a died date in CONFIG.roadHistory.segments
   // Per-segment visibility: each segment tested independently so only the
   // portion of a road near buildings renders. No name-level caching.
   const ALWAYS_SPAN=[NO_BORN,NO_DIED];
@@ -5556,12 +6212,13 @@ async function buildRoads(geojson){
   const RAIL_H=CONFIG.rail.railHeight;
   const RAIL_GAUGE=CONFIG.rail.gaugeHalfWidth;
   const RAIL_LANE=STREETCAR_LANE; // match streetcar lane offset
-  const railBuckets=new Map(); // streetcar_start year -> flat vertex array
+  const railBuckets=new Map(); // "streetcar_start year|street" -> flat vertex array (per street so each can be lifted on its own date)
   for(const feat of geojson.features){
     const startYear=feat.properties.streetcar_start;
     if(startYear==null) continue;
-    let railPos=railBuckets.get(startYear);
-    if(!railPos){railPos=[];railBuckets.set(startYear,railPos);}
+    const bk=startYear+'|'+(feat.properties.st_name||'');
+    let railPos=railBuckets.get(bk);
+    if(!railPos){railPos=[];railBuckets.set(bk,railPos);}
     for(const line of feat.geometry.coordinates){
       for(let i=0;i<line.length-1;i++){
         const[sx1,sy1]=project(line[i][0],line[i][1]);
@@ -5598,8 +6255,9 @@ async function buildRoads(geojson){
     }
   }
   let railSegTotal=0;
-  for(const[startYear,railPos]of railBuckets){
+  for(const[bk,railPos]of railBuckets){
     if(railPos.length===0)continue;
+    const[startYear,street]=[+bk.split('|')[0],bk.split('|')[1]];
     const rGeom=new THREE.BufferGeometry();
     rGeom.setAttribute('position',new THREE.Float32BufferAttribute(railPos,3));
     rGeom.computeVertexNormals();
@@ -5612,7 +6270,7 @@ async function buildRoads(geojson){
     mesh.receiveShadow=true;
     mesh.visible=false; // corrected every frame in tickStreetcars once the date is known
     scene.add(mesh);
-    streetcarRailMeshes.push({year:startYear,mesh});
+    streetcarRailMeshes.push({year:startYear,gone:streetcarRailsGone(street),mesh});
     railSegTotal+=railPos.length/18;
   }
   console.log(`Streetcar rails: ${streetcarRailMeshes.length} year-buckets, ${railSegTotal} segments`);
@@ -5861,7 +6519,13 @@ function _treeArchetype(shape){
     vase:  {trunkH:5.5, trunkR:0.38, blobs:[[2.4,10,0,3.0],[-1.2,10.5,2.1,3.0],[-1.2,10.2,-2.1,3.0],[0,12.3,0,2.8]]},
     round: {trunkH:3.2, trunkR:0.26, blobs:[[0.8,6.5,0.3,2.8],[-0.8,7.2,-0.4,2.6]]},
     tall:  {trunkH:6.5, trunkR:0.45, blobs:[[0.5,10,0.4,3.4],[-0.6,13,-0.3,3.1],[0.2,15.8,0.1,2.4]]},
+    cone:  {trunkH:1.6, trunkR:0.22, cones:[[1.2,2.6,4.2],[4.0,2.0,3.6],[6.6,1.4,3.2],[9.0,0.8,2.6]]},   // spruce: stacked cones [base y, radius, height]
   }[shape];
+  if(A.cones){
+    const trunk=new THREE.CylinderGeometry(A.trunkR*0.6,A.trunkR,A.cones.at(-1)[0]+1,5,1,true).toNonIndexed(); trunk.translate(0,(A.cones.at(-1)[0]+1)/2,0);
+    const crown=A.cones.map(([y,r,h])=>{ const c=new THREE.ConeGeometry(r,h,7,1).toNonIndexed(); c.translate(0,y+h/2,0); return c; });
+    return {wood:trunk, crown:mergeGeometries(crown,false)};
+  }
   const wood=[], crown=[];
   const trunk=new THREE.CylinderGeometry(A.trunkR*0.75,A.trunkR,A.trunkH,6,1,true).toNonIndexed();
   trunk.translate(0,A.trunkH/2,0); wood.push(trunk);
@@ -6027,10 +6691,21 @@ function buildRiverTrees(){
     }
     console.log(`🌳 Cemetery trees: ${nc}`);
   }
+  // ── Park trees (data/park_features.json): planted as nursery stock in the park's opening year (or the tree's own year), growing on from there ──
+  { let np=0;
+    for(const P of parkFeatures) for(const[lo,la,tb] of P.trees??[]){
+      const[sx,sy]=project(lo,la), x=sx, z=-sy, y=sampleTerrainY(x,z);
+      let pick=rnd()*wTot, sp=T.species[0]; for(const s of T.species){if((pick-=s.weight)<=0){sp=s;break;}}
+      placed[sp.shape].push({x,y:y-0.3,z,rot:rnd()*Math.PI*2,sc:0.75+0.3*rnd(),sy:0.9+0.2*rnd(),sp:sp.name,phase:rnd()*0.5,aPhase:rnd()*0.4,hide:null,
+        plant:_isoYearFrac(tb??P.born,NO_BORN),g0:0.3,tau:25,col:T.crownColors[Math.floor(rnd()*T.crownColors.length)]});
+      np++;
+    }
+    if(np) console.log(`🌳 Park trees: ${np}`); }
 
   // ── Instanced meshes ──
   const barkMat=new THREE.MeshLambertMaterial({color:T.barkColor});
-  const crownMat=new THREE.MeshLambertMaterial({color:0xFFFFFF});
+  const crownMat=new THREE.MeshLambertMaterial({color:0xFFFFFF}), crownDepth=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking});
+  for(const M of[crownMat,crownDepth]) _leafDensityPatch(M);
   const m=new THREE.Matrix4(), q=new THREE.Quaternion(), sv=new THREE.Vector3(), pv=new THREE.Vector3(), col=new THREE.Color();
   let total=0;
   for(const shape of Object.keys(placed)){
@@ -6038,7 +6713,8 @@ function buildRiverTrees(){
     if(!list.length) continue;
     const g=_treeArchetype(shape);
     const wood=new THREE.InstancedMesh(g.wood,barkMat,list.length);
-    const crown=new THREE.InstancedMesh(g.crown,crownMat,list.length);
+    const cg=g.crown.clone(); cg.setAttribute('aLeaf',new THREE.InstancedBufferAttribute(new Float32Array(list.length).fill(1),1));
+    const crown=new THREE.InstancedMesh(cg,crownMat,list.length); crown.customDepthMaterial=crownDepth;
     list.forEach((t,i)=>{
       q.setFromAxisAngle(_brY,t.rot);
       sv.set(t.sc,t.sc*t.sy,t.sc);
@@ -6837,6 +7513,10 @@ renderer.domElement.addEventListener('click',e=>{
   const props=info.feat?.properties||{};
   console.log('📍 Building clicked:',JSON.parse(JSON.stringify(props)));
 });
+renderer.domElement.addEventListener('click',()=>{   // city-tile buildings: log what the hover panel shows
+  if(fpsMode||!cityTiles.index) return;
+  const info=firstVisibleHitInfo(); if(info?.city) console.log('📍 City building clicked:',{...info,feat:undefined});
+});
 
 // ── Hover ──────────────────────────────────────────────────────────
 function queryBuilding(faceIndex,mesh){
@@ -6881,7 +7561,7 @@ const diedReview={items:null,i:-1,lines:[],el:null};
 async function initDiedReview(){
   const q=new URLSearchParams(location.search);
   if(q.get('review')!=='died') return;
-  const cats=(q.get('cats')||'contradicts,possible_addition,small_overlap').split(',');
+  const cats=(q.get('cats')||'contradicts,replaced_early,possible_addition,small_overlap').split(',');
   try{
     const r=await fetch('./data/review_died_bounds.json'+DATA_V); if(!r.ok) return;
     diedReview.items=(await r.json()).items.filter(it=>cats.includes('all')||cats.includes(it.category));
@@ -6920,7 +7600,7 @@ function stepDiedReview(d){
     orbit.target.set(cx,base+4,cz); camera.up.set(0,1,0); orbit.update(); clampOrbitAltitude();
   }
   const pc=v=>Math.round(v*100)+'%';
-  R.el.textContent=`${R.i+1}/${n} · ${it.category.replace('_',' ')}${it.bound_year-1>TIMELINE_MAX_YEAR?` (showing ${TIMELINE_MAX_YEAR})`:''}\n`
+  R.el.textContent=`${R.i+1}/${n} · ${it.category.replaceAll('_',' ')}${it.bound_year-1>TIMELINE_MAX_YEAR?` (showing ${TIMELINE_MAX_YEAR})`:''}\n`
     +`${it.name||'(unnamed)'} — born ${it.born}${it.died?`, died ${it.died}`:''} (${it.file.replace('pastforward_2026_','').replace('.geojson','')})\n`
     +`under ${it.by_address||it.by_osm_id} (${it.by_osm_building||'building'}), built ${it.bound_year} → died ≤ ${it.bound_year}\n`
     +`covers ${pc(it.cover_old)} of the old footprint, ${pc(it.cover_new)} of the new · IoU ${it.iou}`;
@@ -6931,9 +7611,13 @@ function firstVisibleHitInfo(){
   const hits=raycaster.intersectObjects(buildingMeshes);
   for(const h of hits){
     const info=queryBuilding(h.faceIndex,h.object);
-    if(info && buildingAliveNow(info.feat?.properties)) return info;
+    if(info && buildingAliveNow(info.feat?.properties)) return _nearerCity(h.distance)||info;
   }
-  return null;
+  return _nearerCity(Infinity);
+}
+function _nearerCity(maxD){   // a city-tile or landmark building nearer than maxD along the hover ray
+  const lm=landmarkPickAt(raycaster.ray,maxD);
+  return (cityTiles.index&&cityPickAt(raycaster.ray,lm?lm.dist:maxD))||lm;
 }
 // Yellow footprint outline of the building being reported, so it's unambiguous
 // which one the hover info belongs to. Cached by uid — only rebuilt when the
@@ -6945,12 +7629,15 @@ function setHoverHighlight(feat){
   if(key===_hoverHLKey) return;
   _hoverHLKey=key;
   if(_hoverHL){scene.remove(_hoverHL);_hoverHL.geometry.dispose();_hoverHL.material.dispose();_hoverHL=null;}
-  if(!feat||!feat.geometry) return;
-  const g=feat.geometry;
-  const rings = g.type==='Polygon'?[g.coordinates[0]]:g.type==='MultiPolygon'?g.coordinates.map(p=>p[0]):[];
-  if(!rings.length) return;
-  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
+  if(!feat||!(feat.geometry||feat.ringXZ)) return;
   const seg=[];
+  if(feat.ringXZ){   // city-tile building: world x, z already
+    const r=feat.ringXZ, pts=r.map(([x,z])=>[x,sampleTerrainY(x,z)+0.4,z]);
+    for(let i=0;i<pts.length;i++) seg.push(...pts[i],...pts[(i+1)%pts.length]);
+  }
+  const g=feat.geometry||{};
+  const rings = g.type==='Polygon'?[g.coordinates[0]]:g.type==='MultiPolygon'?g.coordinates.map(p=>p[0]):[];
+  const offX=CONFIG.scene?.buildingOffsetX??0, offZ=CONFIG.scene?.buildingOffsetZ??0;
   for(const ring of rings){
     const pts=ring.map(c=>{const[sx,sy]=project(c[0],c[1]);const x=sx+offX,z=-sy+offZ;return[x,sampleTerrainY(x,z)+0.4,z];});
     for(let i=0;i<pts.length-1;i++) seg.push(pts[i][0],pts[i][1],pts[i][2],pts[i+1][0],pts[i+1][1],pts[i+1][2]);
@@ -6966,9 +7653,10 @@ function updateHover(){
   const panel=document.getElementById('info-panel');
   if(!info){panel.style.display='none';setHoverHighlight(null);return;}
   setHoverHighlight(info.feat);
+  if(info.city){ showCityInfo(info); panel.style.display='block'; return; }
   const hex='#'+(MATS[info.material]?.color||0x888888).toString(16).padStart(6,'0');
   const label=MATS[info.material]?.label||info.material;
-  document.getElementById('info-name').textContent=info.name||'(unnamed building)';
+  document.getElementById('info-name').textContent=_nameIn(info.feat?.properties?.names)||info.name||'(unnamed building)';   // names: renamed over the years
   const props=info.feat?.properties||{};
   const uid=props.uid||props.pf_uid||props.id;
   document.getElementById('info-rows').innerHTML=[
@@ -6983,10 +7671,37 @@ function updateHover(){
   ].filter(Boolean).join('<br>');
   panel.style.display='block';
 }
+const CITY_BASIS={roll:'assessment roll',osm_start_date:'OpenStreetMap start_date',after_predecessor:'after the building before it',
+  neighbours:'estimated (nearby buildings)',placeholder:'placeholder (no data)'};
+const CITY_HSRC={osm_height:'OpenStreetMap',osm_levels:'OpenStreetMap levels',roll_storeys:'assessment storeys',default:'guess by type'};
+function showCityInfo(info){
+  const md=info.meta, esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  document.getElementById('info-name').textContent=_nameIn(md?.[2])||md?.[3]||(info.metaPending?'…':`(${info.kind})`);
+  document.getElementById('info-rows').innerHTML=[
+    `<span class="info-dot" style="background:#${info.colour.toString(16).padStart(6,'0')}"></span>Type: <span>${info.kind}${md?.[1]&&md[1]!=='yes'?` (OSM ${esc(md[1])})`:''}</span>`,
+    md?.[2]&&md?.[3]?`Address: <span>${esc(md[3])}</span>`:'',
+    md?.[4]?`Use: <span>${esc(md[4].replace(/^\w+ - /,'').toLowerCase())}</span>`:'',
+    `Height: <span>${info.height.toFixed(1)} m${md?` (${CITY_HSRC[md[5]]??md[5]})`:''}</span>`,
+    `Footprint: <span>${info.area_m2.toFixed(0)} m²</span>`,
+    `Born: <span>${info.born}${info.basis!=='roll'&&info.basis!=='landmark'?` — ${CITY_BASIS[info.basis]??info.basis}`:''}</span>`,
+    info.died?`Died: <span>${info.died}</span>`:'',
+    md?.[0]?`OSM: <span style="font-size:0.82em;">${esc(md[0])}</span>`:'',
+  ].filter(Boolean).join('<br>');
+}
 
 // ── FPS ────────────────────────────────────────────────────────────
+// OrbitControls keeps its damped spin / pan / zoom left over from the last drag in private state, and it isn't
+// updated during walk mode — so it played out on the way back (the view swung or slid after Esc). Applying it with
+// damping off clears it; the pose is put back exactly.
+function orbitKillMomentum(){
+  const p=camera.position.clone(), q=camera.quaternion.clone(), t=orbit.target.clone(), d=orbit.enableDamping;
+  orbit.enableDamping=false; orbit.update();
+  camera.position.copy(p); orbit.target.copy(t); orbit.update(); camera.quaternion.copy(q);
+  orbit.enableDamping=d;
+}
 function enterFPS(){
-  fpsMode=true;orbit.enabled=false;applyFov();
+  orbitKillMomentum();
+  fpsMode=true;orbit.enabled=false;applyFov(true);
 
   // Always read yaw/pitch from current camera — never change heading on F
   const fwd=new THREE.Vector3(0,0,-1).applyQuaternion(camera.quaternion);
@@ -7013,7 +7728,7 @@ function enterFPS(){
   document.getElementById('info-panel').style.display='none';setHoverHighlight(null);
 }
 function exitFPS(){
-  fpsMode=false;falling=false;fallVelocity=0;applyFov();
+  fpsMode=false;falling=false;fallVelocity=0;applyFov(true);
   sprinting=false; sprintBtn?.classList.remove('active');   // sprint doesn't carry over to the next walk
   arStop();
   if(!isTouchUI){document.exitPointerLock();}
@@ -7031,7 +7746,7 @@ function exitFPS(){
   dist=Math.max(dist,(orbit.minDistance||0)+1);
   orbit.target.copy(camera.position).addScaledVector(fwd,dist);
   orbit.enabled=true;
-  orbit.update();
+  orbitKillMomentum();
   document.getElementById('crosshair').style.display='none';
   document.getElementById('mode-badge').textContent='Overview';
   document.getElementById('fps-hint').style.display='none';
@@ -7852,6 +8567,8 @@ function initDateControl(){
 
   const slider=document.getElementById('date-slider');
   slider.min='0'; slider.max=String((TIMELINE_MAX_YEAR-TIMELINE_MIN_YEAR)*4+3);
+  document.getElementById('date-min-label').textContent=TIMELINE_MIN_YEAR;
+  document.getElementById('date-max-label').textContent=TIMELINE_MAX_YEAR;
   slider.addEventListener('input',()=>{
     setCurrentViewDate(quarterUnitToDate(parseInt(slider.value,10)),'quarter');
   });
@@ -8743,13 +9460,21 @@ function initStreetcars(roadGJ){
   }
 }
 
+// Service ended 19 Sep 1955 (CONFIG.streetcars.serviceEnd). Each street's rails were then lifted or paved over in one
+// go, on a day in May–October of one of the next railsGoneYears years (picked by hashing the street name).
+const _streetcarEnd=()=>_isoYearFrac(CONFIG.streetcars?.serviceEnd??'1955-09-19',NO_DIED);
+function streetcarRailsGone(street){
+  const end=_streetcarEnd(), n=CONFIG.streetcars?.railsGoneYears??5, r=mulberry('rails '+street), y=Math.floor(end)+1+Math.floor(r()*n);
+  return y+(121+r()*184)/365;   // 1 May .. 31 Oct
+}
 function tickStreetcars(dt){
   // Each car is visible once currentViewDate reaches its own route's
   // streetcar_start year — no longer tied to the building-era layer toggle.
   const yr=currentViewDate.getFullYear();
-  for(const{year,mesh}of streetcarRailMeshes) mesh.visible = yr>=year;
+  const yf=yearFrac(currentViewDate), over=yf>=_streetcarEnd();
+  for(const{year,gone,mesh}of streetcarRailMeshes) mesh.visible = yr>=year&&yf<gone;
   for(const car of streetcarMeshes){
-    const active = yr>=car.startYear;
+    const active = yr>=car.startYear&&!over;
     car.mesh.visible=active;
     if(!active) continue;
     const tStep=(STREETCAR_SPEED*car.speedMult*dt)/car.route.totalLen;
@@ -8792,7 +9517,7 @@ function tickStreetcars(dt){
 // not a reconstructed timetable. Freight runs less often and longer;
 // yard switchers crawl back and forth on short sidings.
 
-let railBedMesh=null, railRailLineMesh=null, railGeojson=null, railsLoaded=false;
+let railBedMesh=null, railRailLineMesh=null, railGravelMesh=null, railGeojson=null, railsLoaded=false;
 // ── Rail dates (data/rail_history.json, made by tools/date_rails.py) ──
 // born/died per feature (by the geojson `id`); features listed with pieces
 // ("id/0", "id/1" …) are cut at vertex indices so each stretch gets its own
@@ -8849,10 +9574,56 @@ function buildRailRoute(feat){
   return {pts:ordered,dists,totalLen:dists[dists.length-1]};
 }
 
+// ── Yard gravel (CONFIG.rail.yardGravel): the ground between two different tracks closer than maxGapM is gravel. Candidate cells
+// come from sampling either side of every track; a cell is gravel when tracks on opposite sides of it are both near enough
+// (their distances sum to <= maxGapM) and stand at the same time — it lasts while both do ──
+function buildYardGravel(gj){
+  if(railGravelMesh){ railGravelMesh.geometry.dispose(); scene.remove(railGravelMesh); railGravelMesh=null; }
+  const G=CONFIG.rail.yardGravel; if(!G) return;
+  const t0=performance.now(), segs=[], GC=20, grid=new Map(), C=G.cellM, maxG=G.maxGapM;
+  gj.features.forEach((f,fi)=>{ const rb=_isoYearFrac(f.properties.born,NO_BORN), rd=_isoYearFrac(f.properties.died,NO_DIED);
+    for(const line of f.geometry.type==='MultiLineString'?f.geometry.coordinates:[f.geometry.coordinates])
+      for(let i=0;i<line.length-1;i++){ const[a,b]=project(line[i][0],line[i][1]),[c,d]=project(line[i+1][0],line[i+1][1]);
+        const s={fi,x1:a,z1:-b,x2:c,z2:-d,rb,rd}; if(Math.hypot(c-a,d-b)<0.05) continue; segs.push(s);
+        const n=Math.ceil(Math.hypot(c-a,d-b)/GC)+1;
+        for(let k=0;k<=n;k++){ const x=a+(c-a)*k/n, z=-(b+(d-b)*k/n), key=Math.floor(x/GC)+','+Math.floor(z/GC); let L=grid.get(key); if(!L){L=new Set();grid.set(key,L);} L.add(s); } } });
+  const near=(x,z)=>{ const out=new Set(), gx=Math.floor(x/GC), gz=Math.floor(z/GC); for(let i=-1;i<=1;i++) for(let j=-1;j<=1;j++) for(const s of grid.get((gx+i)+','+(gz+j))||[]) out.add(s); return out; };
+  const cells=new Map();
+  for(const s of segs){ const L=Math.hypot(s.x2-s.x1,s.z2-s.z1), px=-(s.z2-s.z1)/L, pz=(s.x2-s.x1)/L;
+    for(let t=0;t<=L;t+=C) for(let o=-maxG;o<=maxG;o+=C){ const x=s.x1+(s.x2-s.x1)*t/L+px*o, z=s.z1+(s.z2-s.z1)*t/L+pz*o; cells.set(Math.floor(x/C)+','+Math.floor(z/C),1); } }
+  const pos=[], col=[], life=[], rnd=mulberry('yardGravel'), gc=new THREE.Color(G.color);
+  for(const k of cells.keys()){
+    const[i,j]=k.split(',').map(Number), x=(i+0.5)*C, z=(j+0.5)*C;
+    const best=new Map();   // feature → {d, side, rb, rd} nearest segment of each track
+    for(const s of near(x,z)){ const dx=s.x2-s.x1, dz=s.z2-s.z1, L2=dx*dx+dz*dz, t=Math.max(0,Math.min(1,((x-s.x1)*dx+(z-s.z1)*dz)/L2));
+      const d=Math.hypot(x-s.x1-dx*t,z-s.z1-dz*t); if(d>maxG) continue;
+      const e=best.get(s.fi); if(!e||d<e.d) best.set(s.fi,{d,nx:(x-s.x1-dx*t)/(d||1),nz:(z-s.z1-dz*t)/(d||1),rb:s.rb,rd:s.rd}); }
+    if(best.size<2) continue;
+    let bb=null; const L=[...best.values()];
+    for(let a=0;a<L.length;a++) for(let b=a+1;b<L.length;b++){ const A=L[a], B=L[b];
+      if(A.nx*B.nx+A.nz*B.nz>-0.5||A.d+B.d>maxG) continue;   // on opposite sides, close enough together
+      const rb=Math.max(A.rb,B.rb), rd=Math.min(A.rd,B.rd); if(rb>=rd) continue;
+      if(!bb||rd-rb>bb[1]-bb[0]) bb=[rb,rd]; }
+    if(!bb) continue;
+    const y=(px,pz)=>surfaceY(px,pz,1,0)+0.1, x0=i*C, z0=j*C, x1=x0+C, z1=z0+C, j2=0.85+rnd()*0.3;
+    pos.push(x0,y(x0,z0),z0, x0,y(x0,z1),z1, x1,y(x1,z0),z0,  x1,y(x1,z0),z0, x0,y(x0,z1),z1, x1,y(x1,z1),z1);
+    for(let v=0;v<6;v++){ col.push(gc.r*j2,gc.g*j2,gc.b*j2); life.push(bb[0],bb[1]); }
+  }
+  if(!pos.length) return;
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  g.setAttribute('aLifespan',new THREE.Float32BufferAttribute(life,2)); g.setAttribute('aBuild',new THREE.Float32BufferAttribute(new Float32Array(life.length*2),4));
+  g.computeVertexNormals();
+  railGravelMesh=new THREE.Mesh(g,tagMaterialForLifespan(new THREE.MeshLambertMaterial({vertexColors:true,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-1})));
+  railGravelMesh.position.x=CONFIG.scene?.buildingOffsetX??0; railGravelMesh.position.z=CONFIG.scene?.buildingOffsetZ??0;
+  railGravelMesh.receiveShadow=true; railGravelMesh.name='yard gravel'; scene.add(railGravelMesh);
+  console.log(`🪨 Yard gravel: ${pos.length/18} cells from ${cells.size} candidates (${Math.round(performance.now()-t0)} ms)`);
+}
 // ── Track bed + rails (visual only — reuses streetcar-rail strip pattern) ──
 function buildRailTracks(geojson){
   if(railBedMesh){railBedMesh.geometry.dispose();scene.remove(railBedMesh);railBedMesh=null;}
   if(railRailLineMesh){railRailLineMesh.geometry.dispose();scene.remove(railRailLineMesh);railRailLineMesh=null;}
+  buildYardGravel(geojson);
   const bedPos=[],bedCol=[],railPos=[],bedLife=[],railLife=[];
   const GAUGE=CONFIG.rail.gaugeHalfWidth, RAIL_W=CONFIG.rail.trainRailHeadWidth, RAIL_H=CONFIG.rail.trainRailHeight;
   for(const feat of geojson.features){
@@ -9084,13 +9855,13 @@ function buildHazeSources(){
   for(const s of srcs){minX=Math.min(minX,s.x);maxX=Math.max(maxX,s.x);minZ=Math.min(minZ,s.z);maxZ=Math.max(maxZ,s.z);}
   minX-=R*1.5;minZ-=R*1.5;maxX+=R*1.5;maxZ+=R*1.5;
   const nx=Math.ceil((maxX-minX)/step), nz=Math.ceil((maxZ-minZ)/step);
-  const B0=1850, BW=5, NB=Math.ceil((1965-B0)/BW)+1;   // bucket 0 = "always" (≤1850)
+  const B0=1850, BW=5, B1=2030, NB=Math.ceil((B1-B0)/BW)+1;   // bucket 0 = "always" (≤1850); to B1 so later demolitions (the East Yards, 1988) clear their smoke too
   const hist=new Float32Array(nx*nz*NB);
   const bucket=y=>y<=B0?0:Math.min(NB-1,1+Math.floor((y-B0)/BW));
   const rc=Math.ceil(R/step), norm=Math.PI*R*R/3;          // ∫(1-d/R) over the disc
   for(const s of srcs){
     const ci=Math.floor((s.x-minX)/step), cj=Math.floor((s.z-minZ)/step), b=bucket(s.born);
-    const bd=s.died!=null&&s.died<1965?bucket(s.died):-1;   // demolished: its smoke goes with it
+    const bd=s.died!=null&&s.died<B1?bucket(s.died):-1;   // demolished (or the track lifted): its smoke goes with it
     for(let j=Math.max(0,cj-rc);j<=Math.min(nz-1,cj+rc);j++)
       for(let i=Math.max(0,ci-rc);i<=Math.min(nx-1,ci+rc);i++){
         const d=Math.hypot(minX+(i+0.5)*step-s.x,minZ+(j+0.5)*step-s.z);
@@ -10349,10 +11120,10 @@ function tickSoundHooks(dt){
   // Autos: loop by era (autoSnd is filled by tickAutos)
   const E=CONFIG.audio.vehicleEras, byHook={};
   for(const[a,b,h]of E.rows) byHook[h]=[];
-  if(E.busShare>0) byHook.busDieselDrive=[];
+  byHook.busDieselDrive=[];
   const row=E.rows.find(r=>W.year>=r[0]&&W.year<r[1]+1);
   for(const a of autoSnd){
-    const h=(E.busShare>0&&W.year>=E.busFrom&&a.rnd2<E.busShare)?'busDieselDrive':row?.[2];
+    const h=(a.bus&&W.year>=E.busFrom)?'busDieselDrive':row?.[2];
     if(h) byHook[h].push(a);
   }
   for(const h in byHook) sfxLoopUpdate(h,byHook[h]);
@@ -10845,10 +11616,13 @@ function tickUtilityPoles(){
   const wiresN=era==='all'?U.wires.all:era==='major'?U.wires.major:U.wires.telegraph, arms=era==='all'?2:1;
   const major=new Set(U.majorStreets.map(s=>s.toLowerCase()));
   const R=U.radius, poles=[], wires=[];
-  const seen=new Set();
+  const seen=new Set(), UG=U.underground;
+  if(UG&&!UG._ring) UG._ring=UG.ring.map(([lo,la])=>{const[x,y]=project(lo,la);return{x,z:-y};});
   for(const s of roadSegs){
     if(yr<s.span[0]||yr>=s.span[1]) continue;
     const nm=(s.name||'').toLowerCase();
+    if(UG&&yr>=UG.from&&pointInPolygon((s.x1+s.x2)/2,(s.z1+s.z2)/2,UG._ring)){   // downtown: wires buried street by street
+      const r=mulberry('underground '+nm); if(yr>=UG.from+r()*(UG.to-UG.from)) continue; }
     if(era==='telegraph'&&nm!=='main') continue;
     if(era==='major'&&!major.has(nm)) continue;
     const mx=(s.x1+s.x2)/2, mz=(s.z1+s.z2)/2;
@@ -10996,7 +11770,7 @@ function initShanties(){
 // Period cars wander the road network (random turn at each intersection,
 // only on roads that exist that year, keeping right). How many by year;
 // early ones tall, boxy and mostly black, later ones lower, longer and
-// coloured. Cars far from the camera respawn near it. Three InstancedMeshes
+// coloured; pickups, vans, delivery trucks and buses take a share by year (autos.types). Cars far from the camera respawn near it. Three InstancedMeshes
 // (body, cabin, wheels) — cheap. Off the street during a parade.
 let autos=null;   // {meshes, cars:[], graph, segsN}
 function _autoGraph(){
@@ -11004,7 +11778,7 @@ function _autoGraph(){
   roadSegs.forEach((s,i)=>{ for(const[e,x,z]of[[0,s.x1,s.z1],[1,s.x2,s.z2]]){ const k=key(x,z); if(!ends.has(k)) ends.set(k,[]); ends.get(k).push({i,e}); } });
   return {ends,key};
 }
-window._debugAutos=()=>autos?{cars:autos.cars.length,drawn:autos.meshes[0].count,placed:autos.cars.filter(c=>c.seg>=0).length}:null;
+window._debugAutos=()=>autos?{cars:autos.cars.length,drawn:autos.meshes[0].count,placed:autos.cars.filter(c=>c.seg>=0).length,types:autos.cars.reduce((o,c)=>(o[c.type]=(o[c.type]||0)+1,o),{})}:null;
 function initAutos(){
   const A=CONFIG.autos; if(!A||OFF.has('vehicles')||!roadSegs.length) return;
   const N=A.max;
@@ -11027,14 +11801,25 @@ function _autoPlace(car,yr,nearCam){
   }
   return false;
 }
+// Each auto is two boxes and its wheels: body (w × h × len, on the axles) and a second box (cw × ch × cl, its bottom cy above
+// the body's, shifted cOff × len forward) — a car's cabin, a pickup's cab, a delivery truck's cargo box, a bus's window band.
 function _autoStyle(car,yr){
-  const A=CONFIG.autos, r=car.rnd;
+  const A=CONFIG.autos, T=A.types??{}, r=car.rnd;
   const early=yr<(A.modernFrom??1928);
-  car.len=early?3.4+r*0.5:4.4+r*0.7; car.w=early?1.6:1.8; car.h=early?1.05:0.85;
-  car.ch=early?1.15:0.75; car.cl=early?1.6:2.2;
-  const pal=early?(r<0.8?A.colorsEarly.slice(0,1):A.colorsEarly):A.colorsLate;
-  car.col=pal[Math.floor(car.rnd2*pal.length)];
+  let type='car', acc=0; for(const k of ['bus','truck','van','pickup']){ if(!T[k]) continue; acc+=sbKey(T[k].share,yr); if(car.rnd3<acc){ type=k; break; } }
+  car.type=type;
+  const pal=early?(r<0.8?A.colorsEarly.slice(0,1):A.colorsEarly):yr>=(A.colorsModernFrom??1e9)?A.colorsModern:A.colorsLate;
+  car.col=pal[Math.floor(car.rnd2*pal.length)]; car.ccol=new THREE.Color(car.col).multiplyScalar(0.8).getHex();
+  car.cOff=-0.1; car.cy=null; car.cw=null; car.wk=1;
   car.speed=(early?A.speedEarly:A.speedLate)*(0.8+r*0.4);
+  if(type==='pickup'){ car.len=early?4.2+r*0.4:4.9+r*0.7; car.w=early?1.65:1.9; car.h=0.95; car.ch=0.85; car.cl=1.8; car.cOff=0.12; }
+  else if(type==='van'){ const vp=T.van.colors??pal; car.col=vp[Math.floor(car.rnd2*vp.length)]; car.ccol=new THREE.Color(car.col).multiplyScalar(0.92).getHex();
+    car.len=4.8+r*0.6; car.w=1.95; car.h=1.85; car.ch=0.06; car.cl=car.len*0.7; car.cOff=-0.05; }
+  else if(type==='truck'){ car.len=early?5.2+r*0.8:6.4+r*1.6; car.w=early?2.0:2.4; car.h=1.5; car.cy=0.55; car.ch=early?1.9:2.5; car.cl=car.len*0.68; car.cOff=-0.15;
+    car.cw=car.w*1.02; car.ccol=T.truck.boxColor??0xE6E6E0; car.wk=1.3; car.speed*=0.85; }
+  else if(type==='bus'){ car.len=early?8.5:11.5+r*0.8; car.w=2.55; car.h=early?2.4:2.9; car.cy=early?1.0:1.35; car.ch=early?0.85:1.0; car.cl=car.len*0.9; car.cOff=0.02;
+    car.cw=car.w*1.02; car.col=T.bus.color??0xE4E2DA; car.ccol=T.bus.windowColor??0x1C2228; car.wk=1.45; car.speed*=0.75; }
+  else { car.len=early?3.4+r*0.5:4.4+r*0.7; car.w=early?1.6:1.8; car.h=early?1.05:0.85; car.ch=early?1.15:0.75; car.cl=early?1.6:2.2; }
 }
 const _auM=new THREE.Matrix4(), _auQ=new THREE.Quaternion(), _auP=new THREE.Vector3(), _auS=new THREE.Vector3(), _auC=new THREE.Color(), _auU=new THREE.Vector3(0,1,0);
 function tickAutos(dt){
@@ -11043,7 +11828,7 @@ function tickAutos(dt){
   if(autos.segsN!==roadSegs.length){ autos.graph=_autoGraph(); autos.segsN=roadSegs.length; for(const c of autos.cars) c.seg=-1; }
   const yr=yearFrac(currentViewDate), want=Math.min(A.max,Math.round(sbKey(A.count,yr)*(A.scale??1)));
   const [mb,mc,mw]=autos.meshes;
-  while(autos.cars.length<want) autos.cars.push({seg:-1,rnd:Math.random(),rnd2:Math.random(),styleYr:-1});
+  while(autos.cars.length<want) autos.cars.push({seg:-1,rnd:Math.random(),rnd2:Math.random(),rnd3:Math.random(),styleYr:-1});
   autos.cars.length=Math.min(autos.cars.length,want);
   const cam=camera.position, far2=(A.spawnRadiusM*1.4)**2, {ends,key}=autos.graph;
   let n=0; autoSnd.length=0;
@@ -11062,16 +11847,16 @@ function tickAutos(dt){
       else { car.dir*=-1; car.t=Math.max(0,Math.min(1,car.t)); }   // dead end: turn round
     }
     const Ls=Math.hypot(s.x2-s.x1,s.z2-s.z1)||1, ux=(s.x2-s.x1)/Ls*car.dir, uz=(s.z2-s.z1)/Ls*car.dir;
-    const lane=Math.min(s.w*0.25,3);   // keep right
+    const lane=Math.min(s.w*0.25,3)+(car.w>2.2?0.3:0);   // keep right
     const x=s.x1+(s.x2-s.x1)*car.t-uz*lane, z=s.z1+(s.z2-s.z1)*car.t+ux*lane;
     if((x-cam.x)**2+(z-cam.z)**2>far2){ car.seg=-1; continue; }          // drifted away: respawn near the camera
     if(parade&&parade.segs.some(([a,b])=>{const dx=b.x-a.x,dz=b.z-a.z,LL=dx*dx+dz*dz||1,t=Math.max(0,Math.min(1,((x-a.x)*dx+(z-a.z)*dz)/LL));return (x-a.x-dx*t)**2+(z-a.z-dz*t)**2<(CONFIG.parades.trafficClearM??25)**2;})) continue;
     const yaw=Math.atan2(ux,uz), y=vehicleY(x,z,0,0,yaw);
-    if((x-cam.x)**2+(z-cam.z)**2<160000) autoSnd.push({id:car,x,y:y+0.8,z,rnd2:car.rnd2});   // sound sources within 400 m
+    if((x-cam.x)**2+(z-cam.z)**2<160000) autoSnd.push({id:car,x,y:y+0.8,z,rnd2:car.rnd2,bus:car.type==='bus'});   // sound sources within 400 m
     _auQ.setFromAxisAngle(_auU,yaw);
     _auM.compose(_auP.set(x,y+0.35,z),_auQ,_auS.set(car.w,car.h,car.len)); mb.setMatrixAt(n,_auM); mb.setColorAt(n,_auC.setHex(car.col));
-    _auM.compose(_auP.set(x-ux*car.len*0.1,y+0.35+car.h,z-uz*car.len*0.1),_auQ,_auS.set(car.w*0.92,car.ch,car.cl)); mc.setMatrixAt(n,_auM); mc.setColorAt(n,_auC.setHex(car.col).multiplyScalar(0.8));
-    _auM.compose(_auP.set(x,y,z),_auQ,_auS.set(car.w/1.6,1,car.len/3.4)); mw.setMatrixAt(n,_auM);
+    _auM.compose(_auP.set(x+ux*car.len*car.cOff,y+0.35+(car.cy??car.h),z+uz*car.len*car.cOff),_auQ,_auS.set(car.cw??car.w*0.92,car.ch,car.cl)); mc.setMatrixAt(n,_auM); mc.setColorAt(n,_auC.setHex(car.ccol));
+    _auM.compose(_auP.set(x,y,z),_auQ,_auS.set(car.w/1.6,car.wk,car.len/3.4)); mw.setMatrixAt(n,_auM);
     n++;
   }
   for(const m of autos.meshes){ m.count=n; m.instanceMatrix.needsUpdate=true; if(m.instanceColor) m.instanceColor.needsUpdate=true; }
@@ -12153,9 +12938,31 @@ function _snowCap(mat,key,lo,hi){   // snow settles on up-facing surfaces (objec
   mat.customProgramCacheKey=()=>key; return mat;
 }
 const moundUniforms={ uMYear:{value:0}, uMFade:{value:CONFIG.cemetery?.moundYears??1}, uMSoil:{value:new THREE.Color(CONFIG.cemetery?.moundSoil??0x4A3828)}, uMGrass:{value:new THREE.Color(CONFIG.cemetery?.grassColor??0x4C8A2E)} };
+// Ground patch: polys [[outer, ...holes]] (lon,lat) draped on the terrain `lift` m up. With no `skip` test, the outline is
+// triangulated as drawn and each triangle subdivided to ~st m so it follows the ground — clean edges; with one, st-metre
+// cells (the cemetery paths, which stop at the river bank). Vertex shade jitter (0.8–1) either way, hashed by position.
 function _groundPatch(polys,color,born,died,lift,st,skip){
   const pos=[], col=[], rnd=mulberry('ground'+polys.length+born), toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
-  for(const poly of polys){   // poly = [outer, ...holes]
+  if(!skip){
+    const jit=(x,z)=>{ const h=Math.sin(Math.round(x*4)*12.9898+Math.round(z*4)*78.233)*43758.5453; return 0.8+0.2*(h-Math.floor(h)); };
+    const V=(x,z)=>{ pos.push(x,sampleTerrainY(x,z)+lift,z); const j=jit(x,z); col.push(j,j,j); };
+    for(const poly of polys){
+      const ring=r=>{ const v=toWz(r).map(q=>new THREE.Vector2(q.x,q.z)); if(v.length>1&&v[0].equals(v[v.length-1])) v.pop(); return v; };
+      let outer=ring(poly[0]); const holes=poly.slice(1).map(ring);
+      if(THREE.ShapeUtils.isClockWise(outer)) outer.reverse(); for(const h of holes) if(!THREE.ShapeUtils.isClockWise(h)) h.reverse();
+      const all=[...outer,...holes.flat()];
+      for(const[a,b,c]of THREE.ShapeUtils.triangulateShape(outer,holes)){
+        const A=all[a]; let B=all[b], C=all[c]; if((B.x-A.x)*(C.y-A.y)-(B.y-A.y)*(C.x-A.x)<0) [B,C]=[C,B];   // CCW in (x,z), so the reversed order below faces up
+        const n=Math.max(1,Math.ceil(Math.max(A.distanceTo(B),B.distanceTo(C),C.distanceTo(A))/st));
+        const P=(i,j)=>{ const u=i/n, v=j/n; return[A.x+(B.x-A.x)*u+(C.x-A.x)*v, A.y+(B.y-A.y)*u+(C.y-A.y)*v]; };   // barycentric grid over the triangle
+        for(let i=0;i<n;i++) for(let j=0;j<n-i;j++){
+          const p0=P(i,j), p1=P(i+1,j), p2=P(i,j+1); V(p0[0],p0[1]); V(p2[0],p2[1]); V(p1[0],p1[1]);   // x,z CCW seen from below → reversed: faces up
+          if(i+j<n-1){ const p3=P(i+1,j+1); V(p1[0],p1[1]); V(p2[0],p2[1]); V(p3[0],p3[1]); }
+        }
+      }
+    }
+  }
+  else for(const poly of polys){   // poly = [outer, ...holes]
     const wz=toWz(poly[0]), holes=poly.slice(1).map(toWz);
     let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
     for(let x=ax;x<bx;x+=st) for(let z=az;z<bz;z+=st){
@@ -12167,7 +12974,8 @@ function _groundPatch(polys,color,born,died,lift,st,skip){
   if(!pos.length) return null;
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.computeVertexNormals();
   tagLifespan(g,_isoYearFrac(born,NO_BORN),_isoYearFrac(died,NO_DIED));
-  const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color,vertexColors:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2}));
+  const off=-2-lift*40;   // higher patches win the depth test (lawn over the park paving below it)
+  const mat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color,vertexColors:true,polygonOffset:true,polygonOffsetFactor:off,polygonOffsetUnits:off}));
   const m=new THREE.Mesh(g,mat); m.receiveShadow=true; scene.add(m); return m;
 }
 // ── Elmwood: black iron fence round the grounds + limestone gate piers at the east entrance (CONFIG.cemetery.fence / .gate) ──
@@ -12238,7 +13046,7 @@ function _cemFenceAndGate(plots,pathRing,founded,tooLow){
     const pierMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:G.pierColor??0xB9AA84,map:st})), capMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:G.capColor??0x8A8068})), plateMat=tagMaterialForLifespan(new THREE.MeshLambertMaterial({map:pt}));
     for(const side of[-1,1]){
       const x=gx+gate.tx*hw*side, z=gz+gate.tz*hw*side, y=sampleTerrainY(x,z)-0.3;
-      const add=(geo,mat,ox,oy,oz,ry)=>{ tagLifespan(geo,bornY,NO_DIED); const m=new THREE.Mesh(geo,mat); m.position.set(x+ox,y+oy,z+oz); m.rotation.y=ry; m.castShadow=true; m.receiveShadow=true; scene.add(m); out.push(m); };
+      const add=(geo,mat,ox,oy,oz,ry)=>{ tagLifespan(geo,bornY,NO_DIED); const m=new THREE.Mesh(geo,mat); m.position.set(x+ox,y+oy,z+oz); m.rotation.y=ry; m.castShadow=true; m.receiveShadow=true; m.customDepthMaterial=makeLifespanDepthMaterial(false); scene.add(m); out.push(m); };
       add(new THREE.BoxGeometry(S,H+0.3,S),pierMat,0,(H+0.3)/2,0,yaw);
       add(new THREE.BoxGeometry(S+0.22,0.22,S+0.22),capMat,0,H+0.3+0.11,0,yaw);
       add(new THREE.ConeGeometry((S+0.22)*0.62,0.32,4),capMat,0,H+0.3+0.22+0.16,0,yaw+Math.PI/4);
@@ -12249,12 +13057,198 @@ function _cemFenceAndGate(plots,pathRing,founded,tooLow){
   }
   return out;
 }
+// ── Park furniture (data/park_features.json): raised seating and planters as low concrete blocks standing on the ground's
+// lowest point under them; planters have a planted top that browns and takes snow with the season. paving: the rest of the
+// block's ground, concrete (lawn and water patches cut out). sculptures: emptyful (see _buildEmptyful) ──
+let parkMeshes=null, parkPaving=[], parkSculpt=[], _mistPool=null;
+// emptyful (from Mike's photo): a flask outline — round-bottomed body narrowing in straight shoulders to a neck capped by a flat
+// ring — as a deep band, tilted, with a level bar across the body for the liquid's surface. Lights on the bar's top shine up onto
+// the metal (a shader light from the bar segment, not a glow) and colour the fog that rises from the bar; under the bar a faint
+// lit water curtain. Summer: fog and curtain, cool colours. Winter: no water or fog, warm colours. Lights at night only.
+function _flaskOutline(R,neckHalf,shoulderV,neckTopV,k){   // centreline, upright, bottom at (0,0): neck-left top → round bottom → neck-right top;
+  // a circle of radius R (needs shoulderV > 2R) with straight shoulders tangent to it, then stretched k× across
+  const C=[0,R], nh=neckHalf/k, tan=(sx)=>{ const dx=sx*nh-C[0], dy=shoulderV-C[1], d=Math.hypot(dx,dy); return Math.atan2(dy,dx)-sx*Math.acos(R/d); };
+  const L=[[-nh,neckTopV],[-nh,shoulderV]]; let a0=tan(-1), a1=tan(1); while(a1<a0) a1+=Math.PI*2;   // round the bottom, left → right
+  for(let j=0;j<=40;j++){ const a=a0+(a1-a0)*j/40; L.push([C[0]+R*Math.cos(a),C[1]+R*Math.sin(a)]); }
+  L.push([nh,shoulderV],[nh,neckTopV]); return L.map(([u,v])=>[u*k,v]);
+}
+function _offsetLine(L,d){ return L.map((p,i)=>{ const a=L[Math.max(0,i-1)], b=L[Math.min(L.length-1,i+1)], l=Math.hypot(b[0]-a[0],b[1]-a[1])||1; return [p[0]-(b[1]-a[1])/l*d, p[1]+(b[0]-a[0])/l*d]; }); }
+function _waterStrandsTex(){
+  const c=document.createElement('canvas'); c.width=256; c.height=16; const g=c.getContext('2d'); g.fillStyle='#000'; g.fillRect(0,0,256,16);
+  g.fillStyle='#fff'; for(let x=2;x<256;x+=8) g.fillRect(x,0,2,16);
+  const t=new THREE.CanvasTexture(c); t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+function _buildEmptyful(Sc){
+  const wz=Sc.ring.slice(0,-1).map(([lo,la])=>{ const[x,y]=project(lo,la); return[x,-y]; });
+  let cx=0,cz=0; for(const[x,z] of wz){cx+=x;cz+=z;} cx/=wz.length; cz/=wz.length;
+  let sxx=0,sxz=0,szz=0; for(const[x,z] of wz){ const a=x-cx,b=z-cz; sxx+=a*a; sxz+=a*b; szz+=b*b; }
+  const ang=0.5*Math.atan2(2*sxz,sxx-szz), dx=Math.cos(ang), dz=Math.sin(ang), yaw=Math.atan2(-dz,dx);   // the footprint's long axis
+  const H=Sc.heightM??10.7, W=Sc.widthM??9.4, band=0.85, D=Sc.depthM??1.3, lift=0.25;
+  const neckTop=H-lift-0.35, R=3.0, shoulder=Math.max(2*R+1,neckTop-2.9), kx=Math.max(1,(W-band)/(2*R)*0.95);
+  const t=(Sc.tiltDeg??14)*Math.PI/180, ct=Math.cos(t), st=Math.sin(t);
+  const C0=_flaskOutline(R,0.75,shoulder,neckTop,kx), A=_offsetLine(C0,band/2), B=_offsetLine(C0,-band/2);
+  const dist=P=>P.reduce((s,[u,v])=>s+Math.hypot(u,v-R),0), [Ai,Bo]=dist(A)<dist(B)?[A,B]:[B,A];
+  const lowV=Math.min(...Bo.map(([u,v])=>u*st+v*ct)), rot=([u,v])=>[u*ct-v*st, u*st+v*ct-lowV+lift];   // tilt, then stand the lowest point at lift
+  const inner=Ai.map(rot), outer=Bo.map(rot);
+  const group=new THREE.Group(), born=_isoYearFrac(Sc.born,NO_BORN), died=_isoYearFrac(Sc.died,NO_DIED);
+  const mat=tagMaterialForLifespan(new THREE.MeshPhongMaterial({color:0xBFC4C9,specular:0xD8DCE0,shininess:70}));
+  const U={uBarA:{value:new THREE.Vector3()},uBarB:{value:new THREE.Vector3()},uLCol:{value:new THREE.Color(0)}};
+  { const prev=mat.onBeforeCompile, pk=mat.customProgramCacheKey;
+    mat.onBeforeCompile=sh=>{ prev(sh); Object.assign(sh.uniforms,U);
+      sh.vertexShader='varying vec3 vEWPos, vEWNrm;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  vEWPos=(modelMatrix*vec4(transformed,1.)).xyz; vEWNrm=normalize(mat3(modelMatrix)*objectNormal);');
+      sh.fragmentShader='varying vec3 vEWPos, vEWNrm;\nuniform vec3 uBarA,uBarB,uLCol;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  { vec3 ab=uBarB-uBarA; float h=clamp(dot(vEWPos-uBarA,ab)/dot(ab,ab),0.,1.); vec3 L=uBarA+ab*h-vEWPos; float d=length(L);
+    float up=smoothstep(-0.6,0.8,vEWPos.y-uBarA.y);   // the fixtures face up: what's above the bar catches the light
+    float ndl=max(dot(normalize(vEWNrm),L/max(d,.001)),0.)*.8+.2;
+    totalEmissiveRadiance+=uLCol*ndl*up/(1.+.035*d*d); }`); };
+    mat.customProgramCacheKey=()=>pk()+'|emptyful'; }
+  const add=(g,m)=>{ tagLifespan(g,born,died); const me=new THREE.Mesh(g,m); me.castShadow=m===mat; me.receiveShadow=true; if(me.castShadow) me.customDepthMaterial=makeLifespanDepthMaterial(false); group.add(me); return me; };
+  // the band (outer line out, inner line back), extruded D deep, centred on the plane
+  const bandG=new THREE.ExtrudeGeometry(new THREE.Shape([...outer,...inner.slice().reverse()].map(([u,v])=>new THREE.Vector2(u,v))),{depth:D,bevelEnabled:false,curveSegments:4});
+  bandG.translate(0,0,-D/2); add(bandG,mat);
+  // the ring capping the neck, square to it
+  const nt=rot([0,neckTop]), ring=new THREE.LatheGeometry([[0.55,0],[1.35,0],[1.35,0.28],[0.55,0.28],[0.55,0]].map(([r,y])=>new THREE.Vector2(r,y)),28);
+  ring.rotateZ(t); ring.translate(nt[0],nt[1],0); add(ring,mat);
+  // the bar: level, at barV, between the inner walls
+  const barV=Sc.barM??3.6, cross=(P,v)=>{ const us=[]; for(let k=0;k<P.length-1;k++){ const[a,b]=[P[k],P[k+1]]; if((a[1]-v)*(b[1]-v)<=0&&a[1]!==b[1]) us.push(a[0]+(b[0]-a[0])*(v-a[1])/(b[1]-a[1])); } return us; };
+  const xs=cross(inner,barV), u0=Math.min(...xs), u1=Math.max(...xs), bh=0.55;
+  const barG=new THREE.BoxGeometry(u1-u0+0.4,bh,D*0.9); barG.translate((u0+u1)/2,barV,0); add(barG,mat);
+  // the water curtain: the inside of the body below the bar
+  const cv=barV-bh/2, poly=[]; for(let k=0;k<inner.length-1;k++){ const a=inner[k], b=inner[k+1];
+    if(a[1]<cv) poly.push(a); if((a[1]-cv)*(b[1]-cv)<0) poly.push([a[0]+(b[0]-a[0])*(cv-a[1])/(b[1]-a[1]),cv]); }
+  const curG=new THREE.ShapeGeometry(new THREE.Shape(poly.map(([u,v])=>new THREE.Vector2(u,v))));
+  { const p=curG.attributes.position, uv=curG.attributes.uv; for(let k=0;k<p.count;k++) uv.setXY(k,p.getX(k)/2.2,p.getY(k)); }
+  const curMat=tagMaterialForLifespan(new THREE.MeshBasicMaterial({color:0xFFFFFF,alphaMap:_waterStrandsTex(),transparent:true,opacity:0.22,depthWrite:false,side:THREE.DoubleSide}));
+  const curtain=add(curG,curMat); curtain.castShadow=false;
+  const y0=sampleTerrainY(cx,cz); group.position.set(cx,y0,cz); group.rotation.y=yaw; group.name='emptyful'; scene.add(group); group.updateMatrixWorld(true);
+  const toW=(u,v)=>new THREE.Vector3(u,v,0).applyMatrix4(group.matrixWorld);
+  U.uBarA.value.copy(toW(u0+0.3,barV+bh/2)); U.uBarB.value.copy(toW(u1-0.3,barV+bh/2));
+  return {group,mat,U,curtain,curMat,born,died,a:U.uBarA.value,b:U.uBarB.value,timer:0};
+}
+function _tickMist(dt){
+  const yf=yearFrac(currentViewDate), night=_nightness, summer=heatSeasonK(season.doy)<0.5, ph=0.5+0.5*Math.sin(performance.now()*0.0003);
+  const col=_wc.a.setHSL(summer?0.48+0.3*ph:(0.96+0.17*ph)%1,1,0.55);   // summer: cyan → blue → violet; winter: red → orange → amber
+  if(!_mistPool){ const tex=makeSmokeTexture(); _mistPool=[];
+    for(let i=0;i<80;i++){ const spr=new THREE.Sprite(new THREE.SpriteMaterial({map:tex,transparent:true,opacity:0,depthWrite:false})); spr.visible=false; scene.add(spr); _mistPool.push({spr,age:0,life:1,v:new THREE.Vector3(),on:false}); } }
+  for(const S of parkSculpt){
+    S.U.uLCol.value.copy(col).multiplyScalar(night*2.2);
+    S.curtain.visible=summer;
+    S.curMat.color.setRGB(1,1,1).lerp(col,night*0.85); S.curMat.opacity=0.18+0.22*night;
+    const live=yf>=S.born&&yf<S.died, near=camera.position.distanceTo(S.a)<900;
+    if(!live||!summer||!near) continue;
+    S.timer-=dt;
+    while(S.timer<0){ S.timer+=0.04;
+      const q=_mistPool.find(p=>!p.on); if(!q) break;
+      q.on=true; q.age=0; q.life=4+Math.random()*3; q.spr.visible=true;
+      q.spr.position.lerpVectors(S.a,S.b,Math.random()); q.spr.position.y+=0.2;
+      q.v.set((Math.random()-0.5)*0.6,0.35+Math.random()*0.6,(Math.random()-0.5)*0.6); }
+  }
+  for(const q of _mistPool){ if(!q.on) continue;
+    q.age+=dt; const f=q.age/q.life; if(f>=1){ q.on=false; q.spr.visible=false; continue; }
+    q.spr.position.addScaledVector(q.v,dt); q.spr.position.x+=_stormWind.x*dt; q.spr.position.z+=_stormWind.z*dt;
+    const sc=1.4+5*f; q.spr.scale.set(sc,sc,1);
+    q.spr.material.opacity=0.6*Math.min(1,f*6)*(1-f);
+    q.spr.material.color.setRGB(1,1,1).lerp(col,night*0.9*(1-0.6*f));   // lit from below: strongest near the bar
+  }
+}
+// wall: planters and pools are a concrete rim (WALL_T thick, its own mesh) round a fill RECESS m below the rim — soil or water
+const _PARK_KIND={seating:{side:0xB9B5AC,top:0xC4C0B6}, planter:{side:0xA8A49B,top:0x4A6A36,wall:true}, pool:{side:0xA8A49B,top:0x3E5E6C,wall:true,water:true},
+  rim:{side:0xA8A49B,top:0xB4B0A6}, corten:{side:0x7B4127,top:0x6A3620}, trellis:{side:0x2E2C2A,top:0x2E2C2A},   // Upper Fort Garry: Heritage Wall, trellis, bastion ring
+  limestone:{side:0xCDBF9C,top:0x557A3A,wall:true,rim:'limerim'}, limerim:{side:0xCDBF9C,top:0xD6CCAE}, woodwall:{side:0x4A4846,top:0x3E3C3A}};   // UFG beds, replica wooden wall
+const _PARK_WALL_T=0.25, _PARK_RECESS=0.2;
+// a structure may stand off the ground (base m: the trellis beam, the bastion ring) and have a hole (ring of [lon,lat])
+function tickParkFeatures(dt=0){
+  if(!_demLoaded||!parkFeatures.length) return;
+  if(!parkMeshes){
+    parkMeshes=[];
+    for(const P of parkFeatures){
+      for(const Pv of [].concat(P.paving??[])){   // one patch or a list (UFG: concrete, then red brick over it); lawn patches (lift 0.06) draw over them
+        const c=Pv.color?parseInt(Pv.color.slice(1),16):0xB4B0A6, m=_groundPatch(Pv.polys,c,Pv.born,Pv.died??null,Pv.lift??0.03,2,null);
+        if(m){ m.userData.col=c; parkPaving.push(m); } }
+      for(const Sc of P.sculptures??[]) if(Sc.kind==='emptyful') parkSculpt.push(_buildEmptyful(Sc));
+    }
+    for(const P of parkFeatures) for(const St of P.structures??[]){
+      const K=_PARK_KIND[St.kind]; if(!K) continue;
+      const pts=St.ring.slice(0,-1).map(([lo,la])=>project(lo,la)), base=St.base??0, y0=Math.min(...pts.map(([x,y])=>sampleTerrainY(x,-y)))-0.15+(base?base+0.15:0), h=(St.h??0.5)-base-(base?0.15:0);
+      const born=_isoYearFrac(St.born??P.born,NO_BORN), died=_isoYearFrac(St.died??P.died,NO_DIED);
+      const add=(shape,depth,kind)=>{ const KK=_PARK_KIND[kind], g=new THREE.ExtrudeGeometry(shape,{depth:depth+0.15,bevelEnabled:false}); g.rotateX(-Math.PI/2); g.translate(0,y0,0);
+        tagLifespan(g,born,died);
+        const top=tagMaterialForLifespan(KK.water?new THREE.MeshPhongMaterial({color:KK.top,shininess:90,specular:0x8899AA}):new THREE.MeshLambertMaterial({color:KK.top}));
+        const side=tagMaterialForLifespan(new THREE.MeshLambertMaterial({color:KK.side}));
+        const m=new THREE.Mesh(g,[top,side]); m.castShadow=true; m.receiveShadow=true; m.customDepthMaterial=makeLifespanDepthMaterial(false); m.userData.kind=kind; scene.add(m); parkMeshes.push(m); };   // no shadow before it's built
+      const outer=pts.map(([x,y])=>new THREE.Vector2(x,y));
+      if(K.wall){   // rim with the inside cut out, then the fill lower down
+        const inner=insetRing(pts,_PARK_WALL_T).map(([x,y])=>new THREE.Vector2(x,y)), rim=new THREE.Shape(outer);
+        rim.holes.push(new THREE.Path(inner)); add(rim,h,K.rim??'rim'); add(new THREE.Shape(inner),h-_PARK_RECESS,St.kind);
+      } else { const sh=new THREE.Shape(outer);
+        if(St.hole) sh.holes.push(new THREE.Path(St.hole.slice(0,-1).map(([lo,la])=>{ const[x,y]=project(lo,la); return new THREE.Vector2(x,y); })));
+        add(sh,h,St.kind); }
+    }
+    console.log(`🪑 Park furniture: ${parkMeshes.length}, paving ${parkPaving.length}, sculptures ${parkSculpt.length}`);
+  }
+  for(const m of parkPaving) m.material.color.set(m.userData.col).lerp(_wc.b.set(CONFIG.scene.ground.winterColor),season.snow*0.9);
+  if(parkSculpt.length) _tickMist(dt);
+  const snow=season.snow, dry=1-Math.max(0,Math.min(1,season.green??1));
+  for(const m of parkMeshes){ const c=m.material[0].color.set(_PARK_KIND[m.userData.kind].top);
+    if(m.userData.kind==='planter'||m.userData.kind==='limestone') c.lerp(_wc.b.set(0x7A6A44),dry*0.7);
+    if(m.userData.kind==='pool') c.lerp(_wc.b.set(0x8A8E8C),Math.max(0,Math.min(1,(heatSeasonK(season.doy)-0.5)*2)));   // drained for the winter: bare concrete under the snow
+    c.lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.9); }
+}
+// ── Other cemeteries (data/cemeteries_other.json, tools/osm_cemeteries.py): OSM outline (lawn), its paths left clear, and
+// headstones on a grid (CONFIG.cemetery.rowGapM × stoneGapM, coarser where a cemetery would pass maxStones), each with its
+// own year — the grid fills from the founding year to full (fillPower) — so a single instanced draw per cemetery shows the
+// right stones at any date (aBorn in the shader). Older grounds mostly upright stones, newer ones mostly flush markers.
+let otherCemStones=[], _ocT=0;
+const _ocUniforms={uYear:buildingYearUniform};
+function _buildOtherCemeteries(){
+  const C=CONFIG.cemetery||{}, toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
+  const geo=new THREE.BoxGeometry(0.12,1,0.55); geo.translate(0,0.5,0);
+  const mat=_snowCap(new THREE.MeshLambertMaterial({color:0x9A9890}),'cemStoneO',0.6,0.9), prev=mat.onBeforeCompile;
+  mat.onBeforeCompile=sh=>{ prev(sh); sh.uniforms.uCityYear=buildingYearUniform;
+    sh.vertexShader='attribute float aBorn; uniform float uCityYear;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  if(uCityYear<aBorn) gl_Position=vec4(0.,0.,-2.,1.);'); };
+  mat.customProgramCacheKey=()=>'cemStoneO';
+  const dmat=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking}); dmat.onBeforeCompile=sh=>{ sh.uniforms.uCityYear=buildingYearUniform;
+    sh.vertexShader='attribute float aBorn; uniform float uCityYear;\n'+sh.vertexShader.replace('#include <project_vertex>','#include <project_vertex>\n  if(uCityYear<aBorn) gl_Position=vec4(0.,0.,-2.,1.);'); };
+  dmat.customProgramCacheKey=()=>'cemStoneOd';
+  const mx=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler(), cc=new THREE.Color(); let total=0;
+  for(const Q of otherCemeteries){
+    const plots=Q.polys.map(p=>({o:toWz(p[0]),h:p.slice(1).map(toWz)})), paths=(Q.paths??[]).map(p=>({o:toWz(p[0]),h:p.slice(1).map(toWz)}));
+    const inPoly=(x,z,P)=>pointInPolygon(x,z,P.o)&&!P.h.some(h=>pointInPolygon(x,z,h)), rnd=mulberry('stones '+Q.name);
+    let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const P of plots) for(const v of P.o){ax=Math.min(ax,v.x);bx=Math.max(bx,v.x);az=Math.min(az,v.z);bz=Math.max(bz,v.z);}
+    const k=Math.max(1,Math.sqrt((Q.areaM2??1)/((C.rowGapM??3.2)*(C.stoneGapM??1.5))/(C.otherMaxStones??30000))), sx=(C.rowGapM??3.2)*k, sz=(C.stoneGapM??1.5)*k;
+    const pts=[];
+    for(let x=Math.floor(ax/sx)*sx;x<bx;x+=sx) for(let z=Math.floor(az/sz)*sz;z<bz;z+=sz){
+      const px=x+(rnd()-0.5)*0.12, pz=z+(rnd()-0.5)*0.12;
+      if(!plots.some(P=>inPoly(px,pz,P))||paths.some(P=>inPoly(px,pz,P))) continue;
+      pts.push({x:px,z:pz,o:rnd(),flush:rnd()<(Q.flushShare??0.3),h:0.7+rnd()*0.5,s:0.9+rnd()*0.3});
+    }
+    if(!pts.length) continue;
+    pts.sort((a,b)=>a.o-b.o);
+    const f0=Q.founded, f1=Q.full??Math.min(2026,f0+90), born=new Float32Array(pts.length), N=pts.length;
+    const im=new THREE.InstancedMesh(geo,mat,N);
+    let cx=0,cz=0;
+    pts.forEach((p,i)=>{ born[i]=f0+Math.pow((i+1)/N,1/(C.fillPower??0.8))*(f1-f0); e.set(0,(rnd()-0.5)*0.05,0); q.setFromEuler(e);
+      mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x,p.z)+0.02,p.z),q,p.flush?new THREE.Vector3(5,0.06,0.75):new THREE.Vector3(p.s,p.h,p.s)); im.setMatrixAt(i,mx);
+      const g=0.55+0.25*p.o; im.setColorAt(i,cc.setRGB(g,g,g*0.97)); cx+=p.x; cz+=p.z; });
+    im.geometry=geo.clone(); im.geometry.setAttribute('aBorn',new THREE.InstancedBufferAttribute(born,1));
+    im.customDepthMaterial=dmat; im.castShadow=true; im.receiveShadow=true; im.instanceMatrix.needsUpdate=true; im.computeBoundingSphere();
+    im.userData={cx:cx/N,cz:cz/N,r:Math.hypot(bx-ax,bz-az)/2,name:Q.name}; im.name='cemetery stones'; scene.add(im); otherCemStones.push(im); total+=N;
+  }
+  console.log(`🪦 Other cemeteries: ${otherCemeteries.length}, ${total} stones`);
+}
+const _YARD_COL={stockyard:0x5E5240,lawn:0x5A8636,pond:0x34505E,bed:0x3E5634,
+  golf_rough:0x5C8432,fairway:0x6E9E3C,tee:0x74A440,green:0x7DB246,bunker:0xD8C9A0,golf_water:0x34505E,cem_lawn:0x557E33};   // golf: data/golf_courses.json; other cemeteries' lawns
+// lift (m over the terrain: later kinds draw over earlier) and cell size (m: big golf courses follow the ground in coarser triangles)
+const _YARD_LIFT={pond:0.1,golf_rough:0.05,fairway:0.06,tee:0.066,green:0.07,bunker:0.072,golf_water:0.09,cem_lawn:0.05}, _YARD_ST={golf_rough:6,fairway:4,cem_lawn:5};
+const _TINTED=new Set(['lawn','pond','bed','golf_rough','fairway','tee','green','golf_water','cem_lawn']), _WET=new Set(['pond','golf_water']), _SAND=new Set(['bunker']);
 function tickGrounds(){
   if(!_demLoaded||!(earlyYards.length||cemetery)) return;
   const C=CONFIG.cemetery||{};
   if(!groundMeshes){
     groundMeshes=[];
-    for(const Y of earlyYards){ const m=_groundPatch(Y.polys,Y.kind==='stockyard'?0x5E5240:0x6E6556,Y.born,Y.died,0.06,3,null); if(m) groundMeshes.push(m); }
+    for(const Y of earlyYards){   // lawn / pond (modern park ground) are small: 1 m cells, tinted by season below
+      const fine=Y.kind==='lawn'||Y.kind==='pond'||Y.kind==='bed', m=_groundPatch(Y.polys,_YARD_COL[Y.kind]??0x6E6556,Y.born,Y.died,_YARD_LIFT[Y.kind]??0.06,_YARD_ST[Y.kind]??(fine||_TINTED.has(Y.kind)||_SAND.has(Y.kind)?(fine?1:3):3),null);
+      if(m){ m.userData.kind=Y.kind; groundMeshes.push(m); } }
     if(cemetery&&!OFF.has('cemetery')){   // ?off=cemetery: skip paths, headstones, mounds, lawn
       const founded=(cemetery.founded||1901)+'-01-01', minY=C.minGroundY??-3.5, tooLow=(x,z)=>sampleTerrainY(x,z)<minY,   // the digitized west edge runs down the river bank in the DEM: nothing below the bank toe
         pm=_groundPatch(cemetery.paths,0xB0A48A,founded,null,0.08,2,tooLow); if(pm) groundMeshes.push(pm);
@@ -12262,7 +13256,14 @@ function tickGrounds(){
       const toWz=ring=>ring.map(([lo,la])=>{const[sx,sy]=project(lo,la);return{x:sx,z:-sy};});
       const plots=cemetery.plots.map(p=>({o:toWz(p[0]),h:p.slice(1).map(toWz)})), paths=cemetery.paths.map(p=>({o:toWz(p[0]),h:p.slice(1).map(toWz)})),
         inPoly=(x,z,P)=>pointInPolygon(x,z,P.o)&&!P.h.some(h=>pointInPolygon(x,z,h)), rnd=mulberry('headstones'), sx=C.rowGapM??2.4, sz=C.stoneGapM??3.4, pts=[];
-      for(const P of plots){ const wz=P.o;
+      if(elmRows){   // Mike's drawing of the rows (data/elmwood_rows.json, tools/elmwood_rows.py): already in fill order
+        // kind 0 upright headstone (graves on both sides of the line, so the stones stand back to back), 1 flush stone, 2 dense larger stones
+        const n=elmRows.stones.length;
+        elmRows.stones.forEach(([lo,la,f,k],i)=>{ const[sx2,sy2]=project(lo,la), x=sx2, z=-sy2; if(tooLow(x,z)) return;
+          pts.push({x,z,o:i/n,r:(90-f)*Math.PI/180+(rnd()-0.5)*0.05,h:k===2?1.0+rnd()*0.5:0.7+rnd()*0.5,s:k===2?1.15+rnd()*0.3:0.9+rnd()*0.3,k}); });
+        for(const[L,c] of [[elmRows.strips,0xB4B0A6],[elmRows.beds,0x6A4A3A]]) if(L?.length){ const m=_groundPatch(L.map(r=>[r]),c,founded,null,c===0xB4B0A6?0.075:0.07,1,null); if(m) groundMeshes.push(m); }
+      }
+      else for(const P of plots){ const wz=P.o;
         let ax=1e9,bx=-1e9,az=1e9,bz=-1e9; for(const q of wz){ax=Math.min(ax,q.x);bx=Math.max(bx,q.x);az=Math.min(az,q.z);bz=Math.max(bz,q.z);}
         for(let x=Math.floor(ax/sx)*sx;x<bx;x+=sx) for(let z=Math.floor(az/sz)*sz;z<bz;z+=sz){   // one global grid, so rows line up across plots
           const px=x+(rnd()-0.5)*0.12, pz=z+(rnd()-0.5)*0.12;
@@ -12287,7 +13288,7 @@ function tickGrounds(){
       else { const f0=cemetery.founded||1901, f1=C.fullYear??1990; for(let i=0;i<N;i++) born[i]=f0+Math.pow((i+1)/N,1/(C.fillPower??0.8))*(f1-f0); }
       const geo=new THREE.BoxGeometry(0.12,1,0.55); geo.translate(0,0.5,0);   // graves lie head-to-west: the stone stands at the west end, thin in x, facing east
       const im=new THREE.InstancedMesh(geo,_snowCap(new THREE.MeshLambertMaterial({color:0x9A9890}),'cemStone',0.6,0.9),pts.length), mx=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler(), cc=new THREE.Color();
-      pts.forEach((p,i)=>{ e.set(0,p.r,0); q.setFromEuler(e); mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x,p.z)+0.02,p.z),q,new THREE.Vector3(p.s,p.h,p.s)); im.setMatrixAt(i,mx); const g=0.55+0.25*p.o; im.setColorAt(i,cc.setRGB(g,g,g*0.97)); });
+      pts.forEach((p,i)=>{ e.set(0,p.r,0); q.setFromEuler(e); mx.compose(new THREE.Vector3(p.x,sampleTerrainY(p.x,p.z)+0.02,p.z),q,p.k===1?new THREE.Vector3(5,0.06,0.75):new THREE.Vector3(p.s,p.h,p.s)); im.setMatrixAt(i,mx); const g=0.55+0.25*p.o; im.setColorAt(i,cc.setRGB(g,g,g*0.97)); });
       im.instanceMatrix.needsUpdate=true; im.castShadow=true; im.receiveShadow=true; im.count=0; im.frustumCulled=false; scene.add(im);
       // fresh-grave mounds: a low earth dome in front (+z, the face of the stone), flattening and greening over CONFIG.cemetery.moundYears
       const ML=C.moundLength??2, MW=C.moundWidth??0.9, MH=C.moundHeight??0.22, mg=new THREE.SphereGeometry(1,12,6,0,Math.PI*2,0,Math.PI/2);
@@ -12304,8 +13305,15 @@ function tickGrounds(){
       mound.instanceMatrix.needsUpdate=true; scene.add(mound);
       cemStones={mesh:im,mound,total:pts.length,founded:cemetery.founded||1901}; console.log(`🪦 Cemetery headstones: ${pts.length}`);
     }
+    if(otherCemeteries.length) _buildOtherCemeteries();
     console.log(`🏭 Yards built: ${earlyYards.length}`);
   }
+  if(otherCemStones.length&&((_ocT-=1)<0)){ _ocT=20;   // every ~20 frames: hide the far ones
+    const p=camera.position, D=(C.otherDrawM??3000)+Math.max(0,p.y)*0.5; for(const m of otherCemStones) m.visible=Math.hypot(m.userData.cx-p.x,m.userData.cz-p.z)<D+m.userData.r; }
+  const snow=season.snow, dry=1-Math.max(0,Math.min(1,season.green??1));
+  for(const m of groundMeshes){ const k=m.userData.kind; if(!_TINTED.has(k)&&!_SAND.has(k)) continue;
+    m.material.color.set(_YARD_COL[k]); if(!_WET.has(k)&&!_SAND.has(k)) m.material.color.lerp(_wc.b.set(0x8A8458),dry*0.7*(k==='green'?0.4:1));   // greens are watered
+    m.material.color.lerp(_wc.b.set(CONFIG.scene.ground.winterColor),snow*0.9); }
   if(cemStones){
     const yf=yearFrac(window.currentViewDate||new Date());
     let n;
@@ -12323,7 +13331,10 @@ window._debugCemTerrain=()=>{ if(!cemetery) return null; const toWz=ring=>ring.m
     const rows=[]; for(let x=ax;x<=bx;x+=10){ let mn=1e9,mx=-1e9,n=0; for(let z=az;z<=bz;z+=4){ if(!pointInPolygon(x,z,o)) continue; const y=sampleTerrainY(x,z); mn=Math.min(mn,y);mx=Math.max(mx,y);n++; } if(n) rows.push([Math.round(x),+mn.toFixed(1),+mx.toFixed(1)]); }
     out[k].push({bbox:[ax,bx,az,bz].map(Math.round),cols:rows}); } return out; };
 window._debugBump=()=>Object.fromEntries(Object.entries(wallMatsAll).map(([k,a])=>[k,{mats:a.length,withBump:a.filter(m=>m.bumpMap).length}]));
-window._debugGrounds=()=>({yards:earlyYards.length,cem:!!cemetery,meshes:groundMeshes&&groundMeshes.length,stones:cemStones&&[cemStones.total,cemStones.mesh.count],interments:cemCum&&cemCum.total});
+// What a vertical ray at (lon,lat) hits, top down: [{name, type, kind, colour, y}] — for "what is this surface?" questions
+window._debugPick=(lon,lat)=>{ const[x,y]=project(lon,lat), rc=new THREE.Raycaster(new THREE.Vector3(x,5000,-y),new THREE.Vector3(0,-1,0));
+  return rc.intersectObjects(scene.children,true).slice(0,8).map(h=>({name:h.object.name,type:h.object.type,kind:h.object.userData?.kind,col:(Array.isArray(h.object.material)?h.object.material[0]:h.object.material)?.color?.getHexString?.(),y:+h.point.y.toFixed(2),vis:h.object.visible})); };
+window._debugGrounds=()=>({park:parkMeshes&&parkMeshes.length,paving:parkPaving.length,sculpt:parkSculpt.length,mist:_mistPool?_mistPool.filter(q=>q.on).length:null,parkTrees:riverTreeMeshes.reduce((n,e)=>n+(e.list?e.list.filter(t=>t.g0===0.3).length:0),0),yards:earlyYards.length,cem:!!cemetery,meshes:groundMeshes&&groundMeshes.length,stones:cemStones&&[cemStones.total,cemStones.mesh.count],interments:cemCum&&cemCum.total});
 function tickTrains(dt){
   // Gate rails by the VIEWED DATE (the growth scrubber), not the layer name.
   // The old parseInt(activeLayer) gave NaN->9999 for the 'pastforward' layer,
@@ -12522,6 +13533,8 @@ function startLoop(){
     _t(tickGlassLOD);
     _t(tickStreetLabels);
     _t(tickOuterTerrain);
+    _t(tickCityTiles);
+    _t(tickObstructionLights); _t(tickLandmarks);
     _t(tickDetailLOD);
     _t(tickFires,dt);
     _t(tickFireEngines,dt);
@@ -12538,7 +13551,7 @@ function startLoop(){
     _t(tickAnimals,dt);
     _t(tickDrifts,dt);
     _t(tickMarshes);
-    _t(tickGrounds);
+    _t(tickGrounds); _t(tickParkFeatures,dt);
     _t(tickCreekTerrain);
     _t(tickSoundHooks,dt);
     _t(tickFootsteps,dt);
@@ -12546,6 +13559,8 @@ function startLoop(){
     _t(tickWeather,dt);
     _t(tickFloes,dt);
     _t(tickTrainAudio,dt);
+    _t(tickFovBlend,dt);
+    _t(tickCityTrees,dt);
     _t(tickChimneySmoke,dt);    plumeUniforms.uPlumeTime.value=now*0.001;
     if(_frameN===1 && window.pfDiag) gpuCensus('first render');
     }catch(e){ _loopError(e); }   // an update that throws every frame must not freeze the view
@@ -12553,6 +13568,7 @@ function startLoop(){
       if(!_glLost){   // after a context loss, rendering only throws
         const fd=scene.fog?.density, fk=CONFIG.altitude?.fogToo===false?1:hazeAltK();   // distance fog fades out with the haze
         if(fd!==undefined&&fk<1) scene.fog.density=fd*fk;
+        tickSunShadow();
         renderer.render(scene,camera);
         if(fd!==undefined) scene.fog.density=fd;
       }
@@ -12795,17 +13811,21 @@ const DAY_MS=86400000;
 // before/after their dates, and under buildings like the riverbank trees); trails are
 // extra roads in buildRoads.
 let earlyVeg=null;
-let earlyBridges=[], earlyMarshes=[], earlyYards=[], cemetery=null, cemCum=null, cemTrees=null;
+let earlyBridges=[], earlyMarshes=[], earlyYards=[], otherCemeteries=[], elmRows=null, cemetery=null, cemCum=null, cemTrees=null, parkFeatures=[];
 async function loadEarlyBridges(){
   const f=CONFIG.terrain?.creek?.bridge?.file, pf=CONFIG.terrain?.creek?.marshFile;
   const getJSON=async u=>{ const r=await fetch(u+DATA_V); return r.ok?r.json():null; };
   await Promise.all([
     (async()=>{ if(!f) return; try{ const j=await getJSON(f); if(j){ earlyBridges=j.bridges||[]; console.log(`🌉 Listed creek bridges: ${earlyBridges.length}`); } }catch(e){ console.warn('Creek bridges: failed to load',e); } })(),
     (async()=>{ if(!pf) return; try{ const j=await getJSON(pf); if(j){ earlyMarshes=j.marshes||[]; console.log(`🌾 Marshes: ${earlyMarshes.length}`); } }catch(e){ console.warn('Marshes: failed to load',e); } })(),
-    (async()=>{ try{ const j=await getJSON('./data/early_yards.json'); if(j) earlyYards=j.yards||[]; }catch(e){ console.warn('Yards: failed to load',e); } })(),
+    (async()=>{ try{ const j=await getJSON('./data/early_yards.json'); if(j) earlyYards=earlyYards.concat(j.yards||[]); }catch(e){ console.warn('Yards: failed to load',e); } })(),
+    (async()=>{ if(OFF.has('golf')) return; try{ const j=await getJSON('./data/golf_courses.json'); if(j) for(const G of j.courses) for(const P of G.parts) earlyYards.push({name:G.name+': '+P.kind,kind:P.kind,born:G.born,died:G.died??null,polys:P.polys}); }catch(e){ console.warn('Golf courses: failed to load',e); } })(),
+    (async()=>{ if(OFF.has('cemetery')) return; try{ const j=await getJSON('./data/cemeteries_other.json'); if(j){ otherCemeteries=j.cemeteries||[]; for(const Q of otherCemeteries) earlyYards.push({name:Q.name+': lawn',kind:'cem_lawn',born:String(Q.founded)+'-01-01',died:null,polys:Q.polys}); } }catch(e){ console.warn('Cemeteries: failed to load',e); } })(),
+    (async()=>{ try{ const j=await getJSON('./data/park_features.json'); if(j) parkFeatures=j.parks||[]; }catch(e){ console.warn('Park features: failed to load',e); } })(),
     (async()=>{ try{ const j=await getJSON('./data/elmwood_years.json'); if(j){ const iv=j.interments, ys=Object.keys(iv).map(Number).sort((a,b)=>a-b); let c=0; cemCum={years:{},total:0}; for(const y of ys){ cemCum.years[y]=[c,iv[y]]; c+=iv[y]; } cemCum.total=c; } }catch(e){ console.warn('Cemetery interments: failed to load',e); } })(),
     (async()=>{ try{ const tf=CONFIG.cemetery?.treesFile; if(tf){ const j=await getJSON(tf); if(j) cemTrees=j.trees; } }catch(e){ console.warn('Cemetery trees: failed to load',e); } })(),
     (async()=>{ try{ const j=await getJSON('./data/cemeteries.json'); if(j) cemetery=j; }catch(e){ console.warn('Cemetery: failed to load',e); } })(),
+    (async()=>{ try{ const j=await getJSON('./data/elmwood_rows.json'); if(j?.stones?.length) elmRows=j; }catch(e){ console.warn('Elmwood rows: failed to load',e); } })(),
   ]);
 }
 async function loadEarlyVegetation(){
@@ -13109,6 +14129,89 @@ function tickFloes(dt){
   floeMesh.instanceMatrix.needsUpdate=true;
 }
 
+// Leaf density (instance attribute aLeaf 0..1): the crown keeps its size and loses patches of foliage instead — a ~45 cm cell
+// of the crown (in the tree's own space, so the pattern rides along with it) is drawn when its hash is below aLeaf. Spring
+// fills a crown in, autumn thins it out; the shadow-map material gets the same test so bare trees cast sparse shadows.
+// ── OSM trees (data/trees/, tools/osm_trees.py) ─────────────────────
+// Individual trees and the woods in OpenStreetMap, city-wide, in 500 m tiles. Unlike the river/park trees (CPU-updated
+// per tree), everything time- and season-dependent runs in the shader, so a tile is one instanced draw per shape:
+// growth from the planting year (aTree.x; the tool dates it from the buildings around it / the ones it replaced), leaf-out
+// and leaf-drop by a per-tree phase against the same leaf/autumn values as the other trees, autumn colour per species,
+// conifers (shape cone) evergreen. Tiles beyond drawM are hidden; beyond nearM only farShare of each tile's trees draw.
+const cityTrees={tiles:[],u:{uLeaf:{value:1},uAut:{value:0},uLate:{value:new THREE.Color()},uSpring:{value:new THREE.Color()},uAutCols:{value:[]}},t:0};
+const _CT_SHAPES=['vase','round','tall','cone'];
+function _cityTreePatch(M,crown,depth){
+  M.onBeforeCompile=sh=>{
+    sh.uniforms.uCityYear=buildingYearUniform; Object.assign(sh.uniforms,cityTrees.u);
+    sh.vertexShader=`attribute vec4 aTree; attribute vec3 aTCol; uniform float uCityYear,uLeaf,uAut; uniform vec3 uLate,uSpring,uAutCols[4];
+      varying float vLeaf; varying vec3 vLeafP, vTCol;\n`+sh.vertexShader.replace('#include <begin_vertex>',`#include <begin_vertex>
+      { float age=uCityYear-aTree.x, ever=step(2.5,aTree.w);
+        float gr=age<0.?0.:0.12+0.88*(1.-exp(-age/${(CONFIG.cityTrees?.tauYears??30).toFixed(1)}));
+        float sLeaf=mix(clamp((uLeaf-aTree.y)/.5,0.,1.),1.,ever);
+        ${crown?'if(sLeaf<.02) gr=0.;':''}
+        transformed*=gr; vLeaf=sLeaf; vLeafP=(instanceMatrix*vec4(position,1.)).xyz;
+        vec3 c=aTCol; float a=clamp((uAut-aTree.z)/.6,0.,1.)*(1.-ever);
+        int si=int(aTree.w+.5); vec3 ac=si==0?uAutCols[0]:(si==1?uAutCols[1]:uAutCols[2]);
+        if(uAut>0.){ c=mix(c,ac,a); c=mix(c,uLate,(1.-sLeaf)*.8*a); } else c=mix(c,uSpring,(1.-sLeaf)*.7*(1.-ever));
+        vTCol=c; }`);
+    sh.fragmentShader='varying float vLeaf; varying vec3 vLeafP, vTCol;\n'+sh.fragmentShader.replace('void main() {',
+      'void main() {\n'+(crown?'  if(vLeaf<0.999){ vec3 c=floor(vLeafP*2.2); if(fract(sin(dot(c,vec3(12.9898,78.233,37.719)))*43758.5453)>vLeaf) discard; }\n':''))
+      +'';
+    if(crown&&!depth) sh.fragmentShader=sh.fragmentShader.replace('#include <color_fragment>','#include <color_fragment>\n  diffuseColor.rgb=vTCol;');
+  };
+  M.customProgramCacheKey=()=>'cityTree'+(crown?'C':'W')+(depth?'d':'');
+}
+async function initCityTrees(){
+  const C=CONFIG.cityTrees; if(!C?.index||OFF.has('trees')||OFF.has('citytrees')) return;
+  let I, buf; try{ const r=await fetch(C.index+DATA_V); if(!r.ok) return; I=await r.json();
+    const b=await fetch(C.index.replace(/\.json$/,'.bin')+DATA_V); if(!b.ok) return; buf=await b.arrayBuffer(); }catch(e){ console.warn('City trees: failed to load',e); return; }
+  const SN=SEASON, au=cityTrees.u; au.uLate.value.set(SN.lateAutumnColor); au.uSpring.value.set(SN.springLeafColor);
+  au.uAutCols.value=['American elm','green ash','cottonwood','spruce'].map(k=>new THREE.Color(SN.autumnColors[k]??0xB89434));
+  const pal=(CONFIG.trees.crownColors).concat(C.coniferColors??[0x22381E,0x2A4224,0x1E3220]).map(c=>new THREE.Color(c));
+  const dv=new DataView(buf), REC=I.recordBytes;   // per tree: int16 x, z (dm from the tile origin), int16 plant year, uint16 scale ×1000, uint8 rot, sy, shape, colour
+  const mats={}; for(const crown of[true,false]){ const m=new THREE.MeshLambertMaterial({color:crown?0xFFFFFF:CONFIG.trees.barkColor}), d=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking});
+    _cityTreePatch(m,crown,false); _cityTreePatch(d,crown,true); mats[crown]={m,d}; }
+  const arch=_CT_SHAPES.map(s=>_treeArchetype(s)), mx=new THREE.Matrix4(), q=new THREE.Quaternion(), sv=new THREE.Vector3(), pv=new THREE.Vector3(), up=new THREE.Vector3(0,1,0);
+  let total=0;
+  for(const[key,[off,n,ox,oz]] of Object.entries(I.tiles)){
+    const per=_CT_SHAPES.map(()=>[]);
+    for(let i=0;i<n;i++){ const o=(off+i)*REC;
+      const x=ox+dv.getInt16(o,true)/10, z=oz+dv.getInt16(o+2,true)/10, plant=dv.getInt16(o+4,true), sc=dv.getUint16(o+6,true)/1000, rot=dv.getUint8(o+8)/255*6.283, sy=0.85+dv.getUint8(o+9)/255*0.3, sh=dv.getUint8(o+10), ci=dv.getUint8(o+11);
+      per[sh].push([x,z,plant,sc,rot,sy,ci]); }
+    const group=new THREE.Group(), meshes=[]; let cx=0,cz=0,cnt=0;
+    per.forEach((list,si)=>{ if(!list.length) return;
+      const N=list.length, aT=new Float32Array(N*4), aC=new Float32Array(N*3), h=(a,b)=>{ const v=Math.sin(a*12.9898+b*78.233)*43758.5453; return v-Math.floor(v); };
+      const G=arch[si], wood=new THREE.InstancedMesh(G.wood.clone(),mats[false].m,N), crown=new THREE.InstancedMesh(G.crown.clone(),mats[true].m,N);
+      list.forEach(([x,z,plant,sc,rot,sy,ci],i)=>{
+        const y=sampleTerrainY(x,z)-0.3; q.setFromAxisAngle(up,rot); mx.compose(pv.set(x,y,z),q,sv.set(sc,sc*sy,sc)); wood.setMatrixAt(i,mx); crown.setMatrixAt(i,mx);
+        aT.set([plant,h(x,z)*0.5,h(z,x)*0.4,si],i*4); const c=pal[Math.min(ci,pal.length-1)]; aC.set([c.r,c.g,c.b],i*3); cx+=x; cz+=z; cnt++; });
+      for(const m of[wood,crown]){ m.geometry.setAttribute('aTree',new THREE.InstancedBufferAttribute(aT,4)); m.geometry.setAttribute('aTCol',new THREE.InstancedBufferAttribute(aC,3));
+        m.customDepthMaterial=mats[m===crown].d; m.castShadow=true; m.receiveShadow=true; m.instanceMatrix.needsUpdate=true; m.computeBoundingSphere(); m.userData.n=N; group.add(m); meshes.push(m); }
+    });
+    group.visible=false; scene.add(group); cityTrees.tiles.push({group,meshes,x:cx/Math.max(1,cnt),z:cz/Math.max(1,cnt),n:cnt}); total+=cnt;
+  }
+  console.log(`🌳 OSM trees: ${total} in ${cityTrees.tiles.length} tiles`);
+}
+function tickCityTrees(dt){
+  if(!cityTrees.tiles.length) return;
+  cityTrees.u.uLeaf.value=_treeLeaf; cityTrees.u.uAut.value=_treeAut;
+  if((cityTrees.t-=dt)>0) return; cityTrees.t=0.4;
+  const C=CONFIG.cityTrees, p=camera.position, alt=Math.max(0,p.y-sampleTerrainY(p.x,p.z)), far=C.drawM+alt*0.5, near=C.nearM;
+  for(const T of cityTrees.tiles){
+    const d=Math.hypot(T.x-p.x,T.z-p.z), vis=d<far; T.group.visible=vis; if(!vis) continue;
+    const share=d<near?1:Math.max(C.farShare,1-(d-near)/(far-near)*(1-C.farShare)*1.5);
+    for(const m of T.meshes){ const n=Math.max(1,Math.floor(m.userData.n*Math.min(1,share)*(C.share??1))); if(m.count!==n) m.count=n; }
+  }
+}
+function _leafDensityPatch(M){
+  M.onBeforeCompile=sh=>{
+    sh.vertexShader='attribute float aLeaf;\nvarying float vLeaf;\nvarying vec3 vLeafP;\n'+sh.vertexShader.replace('#include <begin_vertex>',
+      '#include <begin_vertex>\n  vLeaf=aLeaf;\n  #ifdef USE_INSTANCING\n  vLeafP=(instanceMatrix*vec4(position,1.)).xyz;\n  #else\n  vLeafP=position;\n  #endif');
+    sh.fragmentShader='varying float vLeaf;\nvarying vec3 vLeafP;\n'+sh.fragmentShader.replace('void main() {',
+      'void main() {\n  if(vLeaf<0.999){ vec3 c=floor(vLeafP*2.2); if(fract(sin(dot(c,vec3(12.9898,78.233,37.719)))*43758.5453)>vLeaf) discard; }');
+  };
+  M.customProgramCacheKey=()=>'leafDensity';
+}
 // ── Tree phenology ──
 // leaf 0→1 = leaf-out (May) / 1→0 = leaf-drop (Oct); autumn 0→1 = colour turn.
 // Each tree has its own phase so a stand turns and drops gradually.
@@ -13123,7 +14226,7 @@ function updateTreeBuildings(){
     e.list.forEach((t,i)=>{
       if(!t.hide&&t.plant==null) return;
       let h=false, gr=1; if(t.hide) for(let k=0;k<t.hide.length;k+=2) if(yf>=t.hide[k]-0.5&&yf<t.hide[k+1]){h=true;break;}
-      if(t.plant!=null){ const a=yf-t.plant, G=CONFIG.cemetery||{}; if(a<0) h=true; else gr=Math.round((0.08+0.92*(1-Math.exp(-a/(G.treeTauYears??60))))*100)/100; }
+      if(t.plant!=null){ const a=yf-t.plant, G=CONFIG.cemetery||{}; if(a<0) h=true; else { const g0=t.g0??0.08; gr=Math.round((g0+(1-g0)*(1-Math.exp(-a/(t.tau??G.treeTauYears??60))))*100)/100; } }
       if(h===!!t.hid&&gr===t.gr) return;
       t.hid=h; t.gr=gr; changed=true;
       _tq.setFromAxisAngle(_brY,t.rot);
@@ -13142,7 +14245,8 @@ function updateTreeSeason(leaf,autumn){
     if(!e.crown||!e.list) continue;
     e.list.forEach((t,i)=>{
       const sLeaf=Math.max(0,Math.min(1,(leaf-t.phase)/0.5));            // this tree's leaf fullness
-      const k=t.hid||sLeaf<0.02?0:t.sc*(t.gr??1)*(0.4+0.6*sLeaf);
+      const k=t.hid||sLeaf<0.02?0:t.sc*(t.gr??1);   // full size; sLeaf thins the foliage (aLeaf) rather than shrinking the crown
+      if(e.mesh.geometry.attributes.aLeaf) e.mesh.geometry.attributes.aLeaf.array[i]=sLeaf;
       _tq.setFromAxisAngle(_brY,t.rot);
       _tm.compose(_tp.set(t.x,t.y,t.z),_tq,_ts.set(k,k*t.sy,k));
       e.mesh.setMatrixAt(i,_tm);
@@ -13157,6 +14261,7 @@ function updateTreeSeason(leaf,autumn){
       e.mesh.setColorAt(i,_tc);
     });
     e.mesh.instanceMatrix.needsUpdate=true;
+    if(e.mesh.geometry.attributes.aLeaf) e.mesh.geometry.attributes.aLeaf.needsUpdate=true;
     if(e.mesh.instanceColor) e.mesh.instanceColor.needsUpdate=true;
   }
 }
@@ -13622,6 +14727,11 @@ renderer.render(scene,camera);
   await applyDEM();
   await initOuterTerrain();   // after the DEM: its seam follows the inner terrain
   initDiedReview();           // ?review=died only
+  initCityTiles();            // the city beyond the hand-built buildings (loads by distance, in tickCityTiles)
+  initLandmarks();            // Richardson Building etc. (tools/landmarks.json); ?off=landmarks
+  initObstacles();            // tall OSM masts/chimneys + their obstruction lights; ?off=obstacles
+  initWaterTowers();          // CONFIG.waterTowers; ?off=watertowers
+  initCityTrees();            // OSM trees and woods (data/trees/); ?off=citytrees
   await loadWaterLevels();   // after the DEM: absolute datums need its refElev
   loadMoisture();
   loadStorms();

@@ -1,0 +1,191 @@
+{
+  "note": "Hand-kept built years for OSM footprints the assessment roll has no year for (non-residential). Key: OSM id (way/123 or relation/45). Wins over every other source in tools/build_building_tiles.py and tools/died_upper_bounds.py. Fill from data/review_undated_footprints.geojson. `names`: display-name overrides for the hover panel, keyed the same way. `heights`: {osm id: {m, source}} where OSM has no height. `colours`: {osm id: {colour: '#RRGGBB', source}} wall colour where OSM has none. A `names` entry may add periods: [[from, to, name], …] — the earlier names, by year (decimal years ok); name is the current one.",
+  "years": {
+    "way/71930591": {
+      "year": 1979,
+      "source": "One Evergreen Place — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/71930586": {
+      "year": 1982,
+      "source": "Seven Evergreen Place — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/71930596": {
+      "year": 1984,
+      "source": "Eleven Evergreen Place — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/655293496": {
+      "year": 2018,
+      "source": "225 Carlton (True North Square Tower Two) — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/655082369": {
+      "year": 2018,
+      "source": "Scotiabank Tower, 242 Hargrave — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/908569019": {
+      "year": 2024,
+      "source": "Wawanesa Tower — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/33194163": {
+      "year": 1970,
+      "source": "Chateau 100 — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/73316226": {
+      "year": 1969,
+      "source": "Radisson Hotel Winnipeg Downtown — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/157041911": {
+      "year": 1989,
+      "source": "Fort Garry Place I–III — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    },
+    "way/28990057": {
+      "year": 1985,
+      "source": "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg (Bell MTS Place I, 96 m, 24 floors, 1985)"
+    },
+    "way/306637812": {
+      "year": 1958,
+      "source": "https://mhs.mb.ca/docs/sites/winnipegpostofficegraham.shtml (built Dec 1954–late 1957, after 1953–54 foundations; 11 storeys north, 5 south) + https://www.winnipegarchitecture.ca/266-graham-avenue/ (1953–58)"
+    },
+    "way/25682586": {
+      "year": 1958,
+      "source": "https://mhs.mb.ca/docs/sites/winnipegpostofficegraham.shtml (built Dec 1954–late 1957, after 1953–54 foundations; 11 storeys north, 5 south) + https://www.winnipegarchitecture.ca/266-graham-avenue/ (1953–58)"
+    },
+    "way/26968126": {
+      "year": 1975,
+      "source": "Winnipeg Convention Centre, opened Jan 1975 — https://www.wcc.mb.ca/50-anniversary/"
+    },
+    "way/352385021": {
+      "year": 2016,
+      "source": "RBC Convention Centre expansion (south of York, on a parking lot; built late 2012–Mar 2016) — https://www.cbc.ca/1.3315646"
+    },
+    "way/33068578": {
+      "year": 1972,
+      "source": "Holiday Inn (now Delta), 1971–72, Libling Michener — https://winnipegarchitecture.ca/?p=3260"
+    },
+    "way/33068582": {
+      "year": 1973,
+      "source": "Holiday Tower South, 1973 (SKYDB) — https://www.skydb.net/building/648366820/holiday-tower-south-winnipeg/"
+    },
+    "way/33068586": {
+      "year": 1973,
+      "source": "Holiday Tower North — same year as the south tower (guess); https://en.wikipedia.org/wiki/Lakeview_Square"
+    },
+    "way/33068588": {
+      "year": 1974,
+      "source": "Carlton Square, Lakeview Square (completed 1974; this building's own year a guess) — https://en.wikipedia.org/wiki/Lakeview_Square"
+    },
+    "way/33068607": {
+      "year": 1974,
+      "source": "Two Lakeview Square (Lakeview Square completed 1974; own year a guess) — https://en.wikipedia.org/wiki/Lakeview_Square"
+    },
+    "way/28989800": {
+      "year": 1976,
+      "source": "Woodsworth Building, built 1973–76 — https://mhs.mb.ca/docs/sites/woodsworthbuilding.shtml"
+    },
+    "way/130926987": {
+      "year": 1988,
+      "source": "Royal Winnipeg Ballet, opened Jan 1988 — https://www.winnipegarchitecture.ca/royal-winnipeg-ballet/"
+    },
+    "way/73316249": {
+      "year": 1932,
+      "source": "Winnipeg Auditorium (now Manitoba Archives), 1931–32 — https://mhs.mb.ca/docs/sites/winnipegauditorium.shtml"
+    },
+    "way/103601129": {
+      "year": 1911,
+      "source": "Winnipeg Union Station, opened 1911 (OSM start_date; https://en.wikipedia.org/wiki/Union_Station_(Winnipeg)). Mike, 2026-10-23: it was missing (pfviewer has no piece there, and the pre-1939 merge circle skipped it)"
+    },
+    "way/32554693": {
+      "year": 1911,
+      "source": "Union Station train shed / platform level (OSM building=train_station, 123 Main); with the station (guess)"
+    },
+    "way/306582264": {
+      "year": 1911,
+      "source": "Union Station track-level building (OSM building=train_station, 89 Main); with the station (guess)"
+    }
+  },
+  "names": {
+    "way/307761957": {
+      "name": "Red River Point",
+      "source": "Mike, 2026-10-22: Google Maps calls 360 Cumberland Ave 'Red River Point - Avenue Living'; OSM still has 'Cumberland House'"
+    },
+    "way/14869890": {
+      "name": "Canada Life Centre",
+      "periods": [
+        [
+          2004,
+          2017.41,
+          "MTS Centre"
+        ],
+        [
+          2017.41,
+          2021.46,
+          "Bell MTS Place"
+        ]
+      ],
+      "source": "https://en.wikipedia.org/wiki/Canada_Life_Centre (opened 16 Nov 2004; Bell MTS Place 30 May 2017; Canada Life Centre announced 15 Jun 2021)"
+    },
+    "way/28990057": {
+      "name": "Bell MTS Place",
+      "periods": [
+        [
+          1985,
+          2017.41,
+          "MTS Place"
+        ]
+      ],
+      "source": "OSM old_name 'MTS Place;MTS Place Main;Bank of Montreal Tower'; Bell MTS since Bell bought MTS (2017). The earlier names' years are guesses"
+    },
+    "way/306637812": {
+      "name": "Winnipeg Police Headquarters",
+      "periods": [
+        [
+          1958,
+          2016.4,
+          "Dominion Post Office"
+        ]
+      ],
+      "source": "MHS: Dominion Post Office Building / Winnipeg Police Building; police moved in early summer 2016 (CBC) — the post office name until then is a simplification"
+    },
+    "way/25682586": {
+      "name": "Winnipeg Police Headquarters",
+      "periods": [
+        [
+          1958,
+          2016.4,
+          "Dominion Post Office"
+        ]
+      ],
+      "source": "MHS: Dominion Post Office Building / Winnipeg Police Building; police moved in early summer 2016 (CBC) — the post office name until then is a simplification"
+    },
+    "way/73316249": {
+      "name": "Manitoba Archives Building",
+      "periods": [
+        [
+          1932,
+          1971,
+          "Winnipeg Auditorium"
+        ]
+      ],
+      "source": "https://mhs.mb.ca/docs/sites/winnipegauditorium.shtml (bought by the province 1970, archives from 1971)"
+    }
+  },
+  "heights": {
+    "way/73316226": {
+      "m": 98.5,
+      "source": "Radisson Hotel Winnipeg Downtown, 29 floors — https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+    }
+  },
+  "colours": {
+    "way/33164889": {
+      "colour": "#8E4A36",
+      "source": "Mike, 2026-10-22: 207 Donald Street is red brick"
+    },
+    "way/14869890": {
+      "colour": "#A9573C",
+      "source": "Mike, 2026-10-22: non-glass parts terracotta"
+    },
+    "way/307460807": {
+      "colour": "#A8A49B",
+      "source": "Mike, 2026-10-22: non-glass parts concrete"
+    }
+  }
+}

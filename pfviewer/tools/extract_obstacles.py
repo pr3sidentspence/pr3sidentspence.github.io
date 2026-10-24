@@ -1,0 +1,45 @@
+"""extract_obstacles.py — tall masts, towers and chimneys from OSM, for pfviewer's aviation obstruction lights.
+
+    python tools/extract_obstacles.py manitoba.osm.pbf OUT.json [W,E,S,N]   (metres from the Forks; default ±19.6 km)
+
+man_made = mast | tower | communications_tower | chimney (and tower:type = communication) with a height tag of at
+least MIN_H metres; nodes and closed ways (centroid). Output {fields, items: [[x, z, heightDm, kind, born, name], ...]}
+in the viewer frame (x east, z south). born = start_date year, else 0 (the viewer's placeholder)."""
+import sys, json, math, re, osmium
+C_LON, C_LAT = -97.135515, 49.895396
+MLON = 111320*math.cos(math.radians(C_LAT)); MLAT = 111320
+MIN_H = 30
+KINDS = ['mast', 'tower', 'chimney']
+W, E, S, N = [float(v) for v in (sys.argv[3] if len(sys.argv) > 3 else '-19600,19600,-19600,19600').split(',')]
+
+def height(t):
+    try: return float(re.sub(r'[^0-9.]', '', t.get('height') or '') or 0)
+    except ValueError: return 0
+
+def kind(t):
+    m = t.get('man_made')
+    if m in ('mast', 'communications_tower') or t.get('tower:type') == 'communication': return 'mast'
+    if m == 'chimney': return 'chimney'
+    if m == 'tower': return 'tower'
+
+items = []
+class H(osmium.SimpleHandler):
+    def add(self, t, lon, lat):
+        k = kind(t); h = height(t)
+        if not k or h < MIN_H: return
+        x, z = (lon - C_LON)*MLON, -(lat - C_LAT)*MLAT
+        if not (W <= x <= E and S <= -z <= N): return
+        m = re.match(r'\s*~?(\d{4})', t.get('start_date') or '')
+        items.append([round(x, 1), round(z, 1), int(round(h*10)), KINDS.index(k), int(m.group(1)) if m else 0, t.get('name') or t.get('operator')])
+    def node(self, n): self.add(n.tags, n.location.lon, n.location.lat)
+    def way(self, w):
+        if not w.is_closed() or not kind(w.tags): return
+        try: pts = [(nd.lon, nd.lat) for nd in w.nodes][:-1]
+        except osmium.InvalidLocationError: return
+        self.add(w.tags, sum(p[0] for p in pts)/len(pts), sum(p[1] for p in pts)/len(pts))
+H().apply_file(sys.argv[1], locations=True)
+items.sort(key=lambda r: -r[2])
+json.dump({'fields': 'x, z (m, viewer frame), heightDm, kind (index into kinds), born (0 = unknown), name',
+           'kinds': KINDS, 'source': 'tools/extract_obstacles.py', 'attribution': '© OpenStreetMap contributors (ODbL)', 'items': items},
+          open(sys.argv[2], 'w'), separators=(',', ':'), ensure_ascii=False)
+print(len(items), 'obstacles'); [print(' ', r) for r in items[:25]]

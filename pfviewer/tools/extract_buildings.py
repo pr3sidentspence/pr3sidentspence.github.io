@@ -7,7 +7,9 @@ C_LON, C_LAT = -97.135515, 49.895396
 kx = 111320*math.cos(math.radians(C_LAT)); ky = 111320
 W, E, S, N = [float(v) for v in sys.argv[3].split(',')]
 x0, x1, y0, y1 = C_LON+W/kx, C_LON+E/kx, C_LAT+S/ky, C_LAT+N/ky
-KEEP = ('building', 'building:levels', 'height', 'roof:shape', 'roof:levels', 'start_date', 'name', 'amenity', 'shop', 'addr:housenumber', 'addr:street')
+KEEP = ('building', 'building:levels', 'height', 'roof:shape', 'roof:levels', 'start_date', 'name', 'amenity', 'shop', 'addr:housenumber', 'addr:street',
+        'wikidata', 'wikipedia', 'heritage', 'construction_date', 'building:start_date', 'old_name',
+        'layer', 'location', 'level', 'min_height', 'building:min_level')
 fab = osmium.geom.WKBFactory(); out = open(sys.argv[2], 'w'); n = 0; from collections import Counter; kinds = Counter()
 class H(osmium.SimpleHandler):
     def area(self, a):

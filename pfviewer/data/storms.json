@@ -1,5 +1,5 @@
 {
- "source": "Winnipeg daily climate (St John's College 1872–1938, Airport 1938–) via ECCC api.weather.gc.ca; documented events from Wikipedia fatal-tornado list, Manitoba Free Press accounts, ECCC records. No daily records before 1872; no gust data before 1955.",
+ "source": "Winnipeg daily climate (St John's College 1872–1938, Airport 1938–) via ECCC api.weather.gc.ca; documented events from Wikipedia fatal-tornado list, Manitoba Free Press accounts, ECCC records. No daily records before 1872; no gust data before 1955. From 1966: tools/extend_storms.py (\"record-auto\": rain >= 55 mm in a day; >= 25 mm precipitation below freezing within 3 days, read as cm of snow).",
  "storms": [
   {
    "type": "blizzard",
@@ -405,6 +405,276 @@
    "intensity": 0.7,
    "source": "record",
    "note": "29 cm, −27 °C, gusts 60 km/h"
+  },
+  {
+   "type": "blizzard",
+   "start": "1966-03-03",
+   "end": "1966-03-05",
+   "peak": "1966-03-04",
+   "intensity": 1.0,
+   "source": "documented",
+   "note": "35.6 cm, winds 113 km/h, drifts to the eaves; the city shut for two days (CHVN / ECCC)"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1967-07-07",
+   "end": "1967-07-07",
+   "peak": "1967-07-07",
+   "intensity": 0.74,
+   "source": "record-auto",
+   "note": "64 mm, 20 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1968-06-30",
+   "end": "1968-06-30",
+   "peak": "1968-06-30",
+   "intensity": 0.73,
+   "source": "record-auto",
+   "note": "61 mm, 13 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1970-08-29",
+   "end": "1970-08-29",
+   "peak": "1970-08-29",
+   "intensity": 0.7,
+   "source": "record-auto",
+   "note": "56 mm, 18 °C mean"
+  },
+  {
+   "type": "blizzard",
+   "start": "1971-10-29",
+   "end": "1971-10-31",
+   "peak": "1971-10-30",
+   "intensity": 0.64,
+   "source": "record-auto",
+   "note": "~28 cm snow (28 mm precipitation) over 3 days, -5 °C"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1978-05-25",
+   "end": "1978-05-25",
+   "peak": "1978-05-25",
+   "intensity": 0.72,
+   "source": "record-auto",
+   "note": "60 mm, 19 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1978-09-12",
+   "end": "1978-09-12",
+   "peak": "1978-09-12",
+   "intensity": 0.7,
+   "source": "record-auto",
+   "note": "55 mm, 9 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1981-08-05",
+   "end": "1981-08-05",
+   "peak": "1981-08-05",
+   "intensity": 0.71,
+   "source": "record-auto",
+   "note": "57 mm, 19 °C mean"
+  },
+  {
+   "type": "blizzard",
+   "start": "1983-03-06",
+   "end": "1983-03-07",
+   "peak": "1983-03-06",
+   "intensity": 0.69,
+   "source": "record-auto",
+   "note": "~30 cm snow (30 mm precipitation) over 2 days, -10 °C"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1984-06-16",
+   "end": "1984-06-16",
+   "peak": "1984-06-16",
+   "intensity": 0.72,
+   "source": "record-auto",
+   "note": "60 mm, 21 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1984-06-21",
+   "end": "1984-06-21",
+   "peak": "1984-06-21",
+   "intensity": 0.77,
+   "source": "record-auto",
+   "note": "70 mm, 22 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1985-08-17",
+   "end": "1985-08-17",
+   "peak": "1985-08-17",
+   "intensity": 0.8,
+   "source": "record-auto",
+   "note": "77 mm, 11 °C mean"
+  },
+  {
+   "type": "blizzard",
+   "start": "1986-11-07",
+   "end": "1986-11-08",
+   "peak": "1986-11-08",
+   "intensity": 0.73,
+   "source": "record-auto",
+   "note": "~33 cm snow (33 mm precipitation) over 2 days, -9 °C"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1987-08-14",
+   "end": "1987-08-14",
+   "peak": "1987-08-14",
+   "intensity": 0.71,
+   "source": "record-auto",
+   "note": "57 mm, 16 °C mean"
+  },
+  {
+   "type": "blizzard",
+   "start": "1989-01-05",
+   "end": "1989-01-07",
+   "peak": "1989-01-07",
+   "intensity": 0.62,
+   "source": "record-auto",
+   "note": "~26 cm snow (26 mm precipitation) over 3 days, -20 °C"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1991-06-25",
+   "end": "1991-06-25",
+   "peak": "1991-06-25",
+   "intensity": 0.74,
+   "source": "record-auto",
+   "note": "64 mm, 21 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1993-07-25",
+   "end": "1993-07-25",
+   "peak": "1993-07-25",
+   "intensity": 0.83,
+   "source": "record-auto",
+   "note": "84 mm, 19 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1993-08-08",
+   "end": "1993-08-08",
+   "peak": "1993-08-08",
+   "intensity": 0.78,
+   "source": "record-auto",
+   "note": "72 mm, 21 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1994-07-03",
+   "end": "1994-07-03",
+   "peak": "1994-07-03",
+   "intensity": 0.76,
+   "source": "record-auto",
+   "note": "68 mm, 19 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "1996-07-16",
+   "end": "1996-07-16",
+   "peak": "1996-07-16",
+   "intensity": 0.72,
+   "source": "record-auto",
+   "note": "59 mm, 18 °C mean"
+  },
+  {
+   "type": "blizzard",
+   "start": "1996-11-15",
+   "end": "1996-11-17",
+   "peak": "1996-11-17",
+   "intensity": 0.68,
+   "source": "record-auto",
+   "note": "~30 cm snow (30 mm precipitation) over 3 days, -9 °C"
+  },
+  {
+   "type": "blizzard",
+   "start": "1997-04-04",
+   "end": "1997-04-06",
+   "peak": "1997-04-05",
+   "intensity": 1.0,
+   "source": "documented",
+   "note": "48 cm in about a day, 24-hour whiteout; the melt fed the Flood of the Century (CBC)"
+  },
+  {
+   "type": "blizzard",
+   "start": "1999-04-02",
+   "end": "1999-04-04",
+   "peak": "1999-04-04",
+   "intensity": 0.64,
+   "source": "record-auto",
+   "note": "~28 cm snow (28 mm precipitation) over 3 days, -2 °C"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "2000-07-07",
+   "end": "2000-07-07",
+   "peak": "2000-07-07",
+   "intensity": 0.75,
+   "source": "record-auto",
+   "note": "67 mm, 21 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "2001-07-16",
+   "end": "2001-07-16",
+   "peak": "2001-07-16",
+   "intensity": 0.74,
+   "source": "record-auto",
+   "note": "64 mm, 22 °C mean"
+  },
+  {
+   "type": "blizzard",
+   "start": "2004-12-29",
+   "end": "2004-12-31",
+   "peak": "2004-12-30",
+   "intensity": 0.6,
+   "source": "record-auto",
+   "note": "~25 cm snow (25 mm precipitation) over 3 days, -15 °C"
+  },
+  {
+   "type": "blizzard",
+   "start": "2021-11-10",
+   "end": "2021-11-12",
+   "peak": "2021-11-10",
+   "intensity": 0.71,
+   "source": "record-auto",
+   "note": "~32 cm snow (32 mm precipitation) over 3 days, -4 °C"
+  },
+  {
+   "type": "blizzard",
+   "start": "2022-04-12",
+   "end": "2022-04-15",
+   "peak": "2022-04-13",
+   "intensity": 0.9,
+   "source": "documented",
+   "note": "spring blizzard, north winds gusting 70–90 km/h; forecast 24–45 cm for Winnipeg (gauges caught ~13 mm; measured total not found) (CBC, Manitoba EMO)"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "2022-08-15",
+   "end": "2022-08-15",
+   "peak": "2022-08-15",
+   "intensity": 0.79,
+   "source": "record-auto",
+   "note": "74 mm, 21 °C mean"
+  },
+  {
+   "type": "thunderstorm",
+   "start": "2026-06-09",
+   "end": "2026-06-09",
+   "peak": "2026-06-09",
+   "intensity": 0.79,
+   "source": "record-auto",
+   "note": "74 mm, 22 °C mean"
   }
  ]
 }

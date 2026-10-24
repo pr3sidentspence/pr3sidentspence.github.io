@@ -1,0 +1,240 @@
+{
+"note": "Wikidata years for OSM buildings with a wikidata tag, queried 2026-10-21 (tools/build_building_tiles.py). Opening date (P1619) if present, else inception (P571) only for items that are structures (P31/P279* Q811979) \u2014 organisation inceptions are not building dates.",
+"years": {
+"Q630212": {
+"year": 2014,
+"source": "P1619 opening",
+"label": "Canadian Museum for Human Rights"
+},
+"Q656928": {
+"year": 2004,
+"source": "P1619 opening",
+"label": "Canada Life Centre"
+},
+"Q2102577": {
+"year": 1959,
+"source": "P1619 opening",
+"label": "Polo Park"
+},
+"Q2936910": {
+"year": 1990,
+"source": "P571 inception (structure)",
+"label": "201 Portage"
+},
+"Q2942774": {
+"year": 1972,
+"source": "P571 inception (structure)",
+"label": "Saint Boniface Cathedral"
+},
+"Q3095569": {
+"year": 1911,
+"source": "P1619 opening",
+"label": "Union Station"
+},
+"Q3145493": {
+"year": 1913,
+"source": "P1619 opening",
+"label": "Fort Garry Hotel"
+},
+"Q3285980": {
+"year": 2009,
+"source": "P1619 opening",
+"label": "Manitoba Hydro Place"
+},
+"Q3431400": {
+"year": 1969,
+"source": "P1619 opening",
+"label": "Richardson Building"
+},
+"Q3813381": {
+"year": 1947,
+"source": "P571 inception (structure)",
+"label": "Ross House Museum"
+},
+"Q4635641": {
+"year": 1979,
+"source": "P1619 opening",
+"label": "360 Main"
+},
+"Q5000839": {
+"year": 1907,
+"source": "P1619 opening",
+"label": "Burton Cummings Theatre"
+},
+"Q5158964": {
+"year": 1928,
+"source": "P571 inception (structure)",
+"label": "Concordia Hospital"
+},
+"Q5159775": {
+"year": 1912,
+"source": "P571 inception (structure)",
+"label": "Confederation Building"
+},
+"Q5171819": {
+"year": 1915,
+"source": "P1619 opening",
+"label": "Cornish Library"
+},
+"Q5311555": {
+"year": 1984,
+"source": "P1619 opening",
+"label": "Duckworth Centre"
+},
+"Q5595855": {
+"year": 1880,
+"source": "P571 inception (structure)",
+"label": "Granite Curling Club"
+},
+"Q6060946": {
+"year": 1999,
+"source": "P1619 opening",
+"label": "Investors Group Athletic Centre"
+},
+"Q6381818": {
+"year": 2010,
+"source": "P1619 opening",
+"label": "Hockey for All Centre"
+},
+"Q6749975": {
+"year": 1905,
+"source": "P571 inception (structure)",
+"label": "Manitoba Club"
+},
+"Q6750086": {
+"year": 1920,
+"source": "P1619 opening",
+"label": "Manitoba Legislative Building"
+},
+"Q6858876": {
+"year": 1977,
+"source": "P571 inception (structure)",
+"label": "Millennium Library"
+},
+"Q7129578": {
+"year": 1967,
+"source": "P1619 opening",
+"label": "Pan Am Pool"
+},
+"Q7231430": {
+"year": 1987,
+"source": "P571 inception (structure)",
+"label": "Portage Place"
+},
+"Q7284716": {
+"year": 1953,
+"source": "P571 inception (structure)",
+"label": "Rainbow Stage"
+},
+"Q7457369": {
+"year": 1981,
+"source": "P571 inception (structure)",
+"label": "Seven Oaks General Hospital"
+},
+"Q7457370": {
+"year": 1952,
+"source": "P571 inception (structure)",
+"label": "Seven Oaks House Museum"
+},
+"Q7459970": {
+"year": 1950,
+"source": "P571 inception (structure)",
+"label": "Shaarey Zedek Synagogue"
+},
+"Q7722464": {
+"year": 1909,
+"source": "P571 inception (structure)",
+"label": "The Children's Hospital of Winnipeg"
+},
+"Q7885387": {
+"year": 1904,
+"source": "P571 inception (structure)",
+"label": "Union Bank Building"
+},
+"Q8025815": {
+"year": 1980,
+"source": "P571 inception (structure)",
+"label": "Winnipeg Square"
+},
+"Q14875031": {
+"year": 1890,
+"source": "P571 inception (structure)",
+"label": "Grace Hospital"
+},
+"Q14875050": {
+"year": 1981,
+"source": "P1619 opening",
+"label": "Max Bell Centre"
+},
+"Q16632352": {
+"year": 1967,
+"source": "P1619 opening",
+"label": "St. James Civic Centre"
+},
+"Q17111686": {
+"year": 1914,
+"source": "P1619 opening",
+"label": "Pantages Playhouse Theatre"
+},
+"Q21188163": {
+"year": 1968,
+"source": "P1619 opening",
+"label": "Centennial Concert Hall"
+},
+"Q30640299": {
+"year": 2017,
+"source": "P1619 opening",
+"label": "Outlet Collection Winnipeg"
+},
+"Q38284817": {
+"year": 1921,
+"source": "P1619 opening",
+"label": "The Garrick"
+},
+"Q50036888": {
+"year": 1979,
+"source": "P571 inception (structure)",
+"label": "Pan Am Clinic"
+},
+"Q61812963": {
+"year": 1915,
+"source": "P571 inception (structure)",
+"label": "McGregor Armoury"
+},
+"Q62080942": {
+"year": 1914,
+"source": "P571 inception (structure)",
+"label": "St. Luke\u2019s Anglican Church"
+},
+"Q87472061": {
+"year": 1960,
+"source": "P571 inception (structure)",
+"label": "Norquay Building"
+},
+"Q87473525": {
+"year": 1964,
+"source": "P571 inception (structure)",
+"label": "Mall Centre"
+},
+"Q91305310": {
+"year": 1913,
+"source": "P571 inception (structure)",
+"label": "Electric Railway Chambers"
+},
+"Q102220328": {
+"year": 1913,
+"source": "P571 inception (structure)",
+"label": "Bank of Montreal branch"
+},
+"Q106773837": {
+"year": 1853,
+"source": "P571 inception (structure)",
+"label": "Upper Fort Garry Gate"
+},
+"Q111693563": {
+"year": 1926,
+"source": "P571 inception (structure)",
+"label": "Q111693563"
+}
+}
+}

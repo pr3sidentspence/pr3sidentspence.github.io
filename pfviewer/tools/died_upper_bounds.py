@@ -12,7 +12,9 @@ stood past Y: that is an upper bound on its died date. Lists every such pair for
 
 Old buildings = every building file pfviewer autoloads (data/pastforward_2026_*.geojson), with building_history.json
 `set.died` applied. A newer footprint counts when it covers >= OVERLAP of either footprint's area and its year is
-after the old building's born year. Categories (`auto` ones are applied by tools/apply_died_bounds.py, the rest are
+after the old building's born year. The newer footprint's year: building_years.json / wikidata_years.json (osm_years.py),
+else its parcel's roll Year Built, else an OSM start_date. A non-roll year <= EARLY_NONROLL is never applied
+automatically (Goad drew many such buildings in pieces that one OSM outline now covers). Categories (`auto` ones are applied by tools/apply_died_bounds.py, the rest are
 for review — pfviewer ?review=died):
   contradicts        its died date is later than the bound
   same_building      footprints nearly identical (IoU >= SAME_IOU), the new one at most SAME_GROW × the old with the old
@@ -23,6 +25,7 @@ for review — pfviewer ?review=died):
   possible_addition  the old footprint is (almost) wholly inside one SAME_GROW–ADD_GROW × its size: may still stand
                      with an addition — review
   replaced  (auto)   the new footprint covers >= AUTO_COVER of the old one: it can't still stand
+  replaced_early     the same, but by a non-roll year <= EARLY_NONROLL — review
   small_overlap      the rest — review
 Already-consistent pairs (died <= bound) are left out, so applied ones drop off the list on the next run."""
 import sys, os, csv, json, math
@@ -31,15 +34,18 @@ from shapely import wkt, STRtree
 from shapely.geometry import shape, mapping
 from shapely import transform as sh_transform
 import numpy as np
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from osm_years import known_year
 
 csv.field_size_limit(1 << 30)
 HERE = os.path.dirname(os.path.abspath(__file__)); DATA = os.path.join(HERE, '..', 'data')
 OLD_FILES = ['pastforward_2026_assessment.geojson', 'pastforward_2026_osm.geojson', 'pastforward_2026_mcphillips1910.geojson',
-             'pastforward_2026_stb1880.geojson', 'pastforward_2026_legislature_osm.geojson', 'pastforward_2026_ogilvie_stack.geojson']
+             'pastforward_2026_stb1880.geojson', 'pastforward_2026_legislature_osm.geojson', 'pastforward_2026_ogilvie_stack.geojson', 'pastforward_2026_additions.geojson']
 OVERLAP, SAME_IOU = 0.2, 0.7
 AUTO_COVER, INSIDE = 0.4, 0.9           # replaced: new covers >= AUTO_COVER of old; 'inside': >= INSIDE
 SAME_GROW, ADD_GROW = 1.5, 3.0          # new/old area ratios for same_building / possible_addition (old inside)
 SHIFT_M, SHIFT_IOU = 4, 0.6             # misalignment test
+EARLY_NONROLL = 1915
 GOAD_YEAR = 1906   # a building standing at the 1906 survey can't have been replaced by one the roll dates <= 1906
 C_LON, C_LAT = -97.135515, 49.895396
 MLON = 111320*math.cos(math.radians(C_LAT)); MLAT = 111320
@@ -97,11 +103,14 @@ with open(osm_path) as fh:
         if oid in old_osm: continue            # already a pfviewer building — compare only against others
         pt = g.representative_point()
         hit = [i for i in ptree.query(pt, predicate='within')]
-        if not hit: continue
-        i = hit[0]
-        new.append({'osm_id': oid, 'year': pyear[i], 'address': paddr[i], 'osm_building': p.get('building'), 'geo': geo}); new_g.append(g)
+        ky, kb = known_year(oid, p)
+        if kb in ('manual', 'wikidata') or (ky and not hit): year, basis = ky, kb
+        elif hit: year, basis = pyear[hit[0]], 'roll'
+        else: continue
+        addr = p.get('name') or (paddr[hit[0]] if hit else None)
+        new.append({'osm_id': oid, 'year': year, 'basis': basis, 'address': addr, 'osm_building': p.get('building'), 'geo': geo}); new_g.append(g)
 ntree = STRtree(new_g); atree = STRtree(all_g)
-print(len(new), 'OSM footprints with a parcel year')
+print(len(new), 'dated OSM footprints', dict(Counter(n['basis'] for n in new)))
 
 def aligned_iou(g):
     """Best IoU of g, shifted by up to SHIFT_M in 1 m steps, with any OSM footprint."""
@@ -136,15 +145,15 @@ for oi, (pr, geo) in enumerate(old):
         cat = 'same_building'
     elif dy is not None: cat = 'contradicts'
     elif a >= INSIDE and grow <= ADD_GROW: cat = 'possible_addition'
-    elif a >= AUTO_COVER: cat = 'replaced'
+    elif a >= AUTO_COVER: cat = 'replaced' if n['basis'] == 'roll' or Y > EARLY_NONROLL else 'replaced_early'
     elif aligned_iou(g) >= SHIFT_IOU: cat = 'misaligned'
     else: cat = 'small_overlap'
     cats[cat] += 1
     rows.append({'pf_uid': pr.get('pf_uid'), 'name': pr.get('name'), 'file': pr['_file'], 'born': pr['born'], 'died': died,
                  'died_basis': pr.get('died_basis'), 'bound_year': Y, 'category': cat, 'by_osm_id': n['osm_id'],
-                 'by_address': n['address'], 'by_osm_building': n['osm_building'], 'cover_old': round(a, 2), 'cover_new': round(b, 2),
+                 'by_address': n['address'], 'by_osm_building': n['osm_building'], 'by_basis': n['basis'], 'cover_old': round(a, 2), 'cover_new': round(b, 2),
                  'iou': round(iou, 2), 'grow': round(grow, 2), 'auto': cat == 'replaced', 'cx': round(g.centroid.x, 1), 'cz': round(-g.centroid.y, 1), '_geo': geo, '_by': n['geo']})
-ORDER = ['contradicts', 'possible_addition', 'small_overlap', 'replaced', 'misaligned', 'same_building']
+ORDER = ['contradicts', 'replaced_early', 'possible_addition', 'small_overlap', 'replaced', 'misaligned', 'same_building']
 rows.sort(key=lambda r: (ORDER.index(r['category']), r['bound_year']))
 print(dict(cats))
 

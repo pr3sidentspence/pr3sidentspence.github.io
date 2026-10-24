@@ -8,7 +8,8 @@ died_basis replaced_by_later_building, replaced_by = its address. Only buildings
 running it twice changes nothing. Rebuilding pastforward_2026_assessment.geojson (merge_assessment.py) or
 pastforward_2026_stb1880.geojson (stb1880_ingest.py) drops these again: re-run died_upper_bounds.py, then this.
 
-First applied 2026-10-21 on top of commit ff2a002 (the state before it)."""
+First applied 2026-10-21 on top of commit ff2a002 (the state before it): 525 from roll years. Second run the same day
+(on top of a972fb8): 590 more from Wikidata / OSM start_date years of non-residential buildings (osm_years.py)."""
 import sys, os, json
 from collections import Counter
 HERE = os.path.dirname(os.path.abspath(__file__)); DATA = os.path.join(HERE, '..', 'data')

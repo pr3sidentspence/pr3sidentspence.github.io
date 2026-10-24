@@ -31,7 +31,7 @@ const _SFX_CLASS = {
 const _sfx = (cls, file, o = {}) => ({ path: `./sounds/${file}.mp3`, ..._SFX_CLASS[cls], ...o });
 
 export const CONFIG = {
-  dataVersion: '2026-10-21a',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
+  dataVersion: '2026-10-23f',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
 
   // ── Data files ──────────────────────────────────────────────────────
   // GeoJSON layers loaded automatically on startup. Add/remove/rename
@@ -44,10 +44,12 @@ export const CONFIG = {
       './data/pastforward_2026_fort_douglas.geojson',    // Fort Douglas (1813-1826/52): PLACEHOLDER footprints (tools/fort_douglas.py)
       './data/pastforward_2026_mcphillips1910.geojson',   // 1910 McPhillips map outside the Goad sheets (Mike's digitization; tools/mcphillips1910_ingest.py)
       './data/pastforward_2026_stb1880.geojson',          // St Boniface buildings from the 1880 bird's-eye view (tools/stb1880_ingest.py; deduped against the master)
+      './data/pastforward_2026_stockyards.geojson',       // Union Stockyards (1913–1988) + packing plants, reconstructed (tools/stockyards.py)
       './data/pastforward_2026_ogilvie_stack.geojson',    // Ogilvie Flour Mill smoke stack 1897–2005 (Mike's digitization; demolished by implosion — fire animation, fire_days)
       './data/pastforward_2026_bridges.geojson',          // generated bridge succession per crossing (City chronology + MHS)
       './data/pastforward_2026_seine_bridges.geojson',    // timber bridges over the Seine at Provencher, the railway and Marion (tools/seine_bridges.py)
       './data/pastforward_2026_legislature_osm.geojson',   // Legislative Building + dome, Government House, outbuildings, drives/paths — OSM (ODbL)
+      './data/pastforward_2026_additions.geojson',        // later additions drawn from Mike's site sketches (Holy Trinity's 1960s/70s wings)
       // './data/pastforward_2026.geojson',  // dated growth master without assessment data (no OSM) — swap back by un-commenting
       './data/early_creeks.geojson',                 // creeks of 1874 traced from Graham (1984) Fig. 1 — tools/early_creeks.py
       './data/wpg_rivers.geojson',
@@ -245,12 +247,16 @@ export const CONFIG = {
       shadowMapSize: 2048,     // higher = sharper shadows, slower to render
       shadowNear: 10, shadowFar: 2200,
       shadowBounds: { left: -900, right: 900, top: 900, bottom: -900 },
+      // the shadow camera follows the view: half-width = distance to the look point × k, within [minHalf, maxHalf] m
+      // (2048 texels: 0.25 m at 250, 1.4 m at 1400); walking: fpsHalf m, centred fpsAheadM ahead
+      shadowFollow: { k: 1.1, minHalf: 250, maxHalf: 1600, fpsHalf: 300, fpsAheadM: 150 },
       shadowBias: -0.0003,
     },
   },
 
   camera: {
     fov: 68,
+    fovBlendS: 0.8,   // walk ⇄ orbit: ease between their two FoVs over this many seconds (0 = jump)
     near: 0.5,
     far: 30000,
     pixelRatioCap: 2,    // caps device pixel ratio for perf on hi-DPI screens
@@ -260,13 +266,13 @@ export const CONFIG = {
   // ── Altitude ────────────────────────────────────────────────────────
   // maxM: the ceiling (default = the orbit's maxDistance). Haze (city smoke haze + distance fog) is full below
   // hazeFadeFromM and gone at hazeGoneFrac × maxM. Flying (walk mode, E/Q) speeds up with height: ×flySpeedAtMax at maxM.
-  altitude: { maxM: 3000, hazeFadeFromM: 150, hazeGoneFrac: 0.8, fadePower: 2, fogToo: true, flySpeedAtMax: 5, flySpeedCurve: 0.6 },   // fly speed ×(1+4·(alt/max)^curve): ×2 at 300 m, ×3 at 1 km, ×5 at the ceiling (curve 1 would be linear: only ×1.4 at 300 m)   // fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
+  altitude: { maxM: 6000, hazeFadeFromM: 150, hazeGoneFrac: 0.4, fadePower: 2, fogToo: true, flySpeedAtMax: 5, flySpeedCurve: 0.6 },   // fly speed ×(1+4·(alt/max)^curve): ×2 at 300 m, ×3 at 1 km, ×5 at the ceiling (curve 1 would be linear: only ×1.4 at 300 m)   // hazeGoneFrac 0.4 of 6000 keeps haze gone by 2400 m as before; fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
 
   orbitControls: {
     dampingFactor: 0.07,
     maxPolarAngle: 0.98,   // × Math.PI — 1.0 would let you flip under the ground
     minDistance: 2,
-    maxDistance: 6000,     // generous: the ceiling is on ALTITUDE (CONFIG.altitude.maxM = 3000) — a distance cap alone stopped oblique views at ~half that height
+    maxDistance: 12000,    // generous: the ceiling is on ALTITUDE (CONFIG.altitude.maxM = 6000) — a distance cap alone stopped oblique views at ~half that height
     dollyIn: 0.94,         // zoom-in factor per scroll/tap
   },
 
@@ -330,12 +336,12 @@ export const CONFIG = {
     detailDistance: 1500,  // parapets, roof caps, chimneys hidden beyond this (m)
     // Feature properties kept in memory after load (everything else in the
     // data files is dropped at load — add a name here if new code needs it)
-    keepProps: ['id','uid','pf_uid','name','address','material','floors','type','roof_type','area_m2',
+    keepProps: ['id','uid','pf_uid','chimney','name','address','material','floors','type','roof_type','area_m2',
                 'born','died','born_basis','died_basis','died_by','died_cause','cause_of_death','fire_days','taper_top','smoke_stack','replaced_by','fires',
                 'base_floors','parapet','construction_months','no_windows','source_file','group','cohort',
                 'heritage_name','heritage_date','heritage_url','footprint_source','osm_id',
                 'st_name','st_type','streetcar_start','rail_class','wall_color','wall_stripes','window_arch','window_mullions','window_sides',
-                'assess_use','roof_height','roof_color','bridge_style','bridge_fit','fence_height','fence_gap','fence_width','fence_thickness','fence_color'],
+                'assess_use','roof_height','roof_color','shed_down_bearing','portico','church','names','bridge_style','bridge_fit','fence_height','fence_gap','fence_width','fence_thickness','fence_color'],
     floorHeight: 4.2,    // metres per floor (Victorian commercial average)
     // Roofs over complex outlines (> 14 points, or roof_type 'wings'): one ridge per convex wing,
     // ridge height = pitch × half the wing's short side, capped at maxRidgeM
@@ -432,6 +438,7 @@ export const CONFIG = {
       tubeBaseH: 3.5, tubePerFloor: 0.75, tubePerSqrtArea: 0.075, tubeMaxH: 12, tubeR0: 0.5, tubeRPerSqrtArea: 0.04, tubeMinR: 0.7, tubeMaxR: 2.0, tubeTopRatio: 0.7 },
     // Minimum floors before a chimney is placed.
     minFloors: 0.5,
+    minAreaM2: 4,            // no stack on a footprint smaller than this (Upper Fort Garry's flag pole); props.chimney false also stops it
     // Offset chimneys from building centroid by up to this fraction of √(area_m2).
     placementRadius: 0.22,
     // Shared sprite pool — hard cap on simultaneous smoke sprites city-wide.
@@ -665,6 +672,8 @@ export const CONFIG = {
     trainRailHeadWidth: 0.10, trainRailHeight: 0.20,
     gaugeHalfWidth: 0.7175,
     throughLineBedWidth: 4.0, sidingBedWidth: 2.4,
+    // Gravel on the ground between two tracks less than maxGapM apart (yards, double track): cellM squares, there while both tracks are
+    yardGravel: { maxGapM: 9, cellM: 1.5, color: 0x5C5852 },
     // The freight/passenger rail network is hidden before this year on the
     // timeline. ~1881 = the CPR main line reaching Winnipeg (approximate — not
     // a hard historical date; adjust here). NOTE: the full 1906 network is
@@ -917,6 +926,9 @@ export const CONFIG = {
     height: 9.5, armLength: 2.2,
     sag: 0.7, sagSegments: 4,
     color: 0x5A4A3A, wireColor: 0x1A1816,
+    // Downtown (ring: lon,lat — the Assiniboine to the CPR main line, Balmoral/Memorial to the Red) the wires went underground
+    // street by street between from and to (each street's year hashed from its name). Years are a GUESS — not checked.
+    underground: { from: 1955, to: 1975, ring: [[-97.1530, 49.8835], [-97.1280, 49.8835], [-97.1280, 49.9060], [-97.1530, 49.9060]] },
   },
 
   // ── Event cues ──────────────────────────────────────────────────────
@@ -1042,13 +1054,23 @@ export const CONFIG = {
   // spawnRadiusM). Early: tall, boxy, mostly black; from modernFrom:
   // lower, longer, coloured. Speeds m/s (stylised).
   autos: {
-    count: [[1902,0],[1905,3],[1912,20],[1920,45],[1930,70],[1945,95],[1955,140]],
-    max: 150, scale: 1,
+    count: [[1902,0],[1905,3],[1912,20],[1920,45],[1930,70],[1945,95],[1955,140],[1975,170],[2000,190],[2026,200]],
+    max: 200, scale: 1,
     spawnRadiusM: 900,
     modernFrom: 1928,
     speedEarly: 6, speedLate: 10,
     colorsEarly: [0x141414, 0x1E2A3A, 0x3A1E1E, 0x2A3A2A],
     colorsLate:  [0x141414, 0x5A6E8A, 0x7A2A24, 0x2E4A3A, 0xB8B0A0, 0x8A7A5A, 0x3A4A6A],
+    colorsModernFrom: 1990,    // from here mostly white, silver, grey and black
+    colorsModern: [0xE8E8E4, 0xB4B8BC, 0x6A6E72, 0x141414, 0x1C1C1E, 0xD8D8D4, 0x8A1E1E, 0x2A3E66],
+    // Other vehicles: share of all autos by year (interpolated; 0 before the first year). Dimensions in buildAutoTypes (index.html).
+    // Bus colours and the shares are guesses. Buses sound like a diesel bus from audio.vehicleEras.busFrom.
+    types: {
+      pickup: { share: [[1925,0],[1930,0.04],[1955,0.1],[1985,0.14],[2026,0.18]] },
+      van:    { share: [[1955,0],[1960,0.02],[1985,0.08],[2026,0.07]], colors: [0xE8E6E0, 0xE8E6E0, 0xB8B0A0, 0x2A3A5A, 0x6A6E72] },
+      truck:  { share: [[1912,0],[1918,0.04],[1950,0.06],[2026,0.05]], boxColor: 0xE6E6E0 },   // delivery box trucks
+      bus:    { share: [[1918,0],[1925,0.015],[1960,0.03],[2026,0.03]], color: 0xE4E2DA, windowColor: 0x1C2228 },
+    },
   },
 
   // ── Fire engines ────────────────────────────────────────────────────
@@ -1234,6 +1256,12 @@ export const CONFIG = {
     barkColor: 0x4A4036,
   },
 
+  // ── OSM trees (initCityTrees; data/trees/osm_trees.json + .bin from tools/osm_trees.py) ──
+  // Individual trees and woods from OpenStreetMap. drawM: tiles within this (+ half the camera's height) draw; past nearM
+  // fewer of each tile's trees draw, down to farShare. share: of all trees (phones less). tauYears: growth to full size.
+  cityTrees: { index: './data/trees/osm_trees.json', drawM: 2500, nearM: 900, farShare: 0.25, share: 1, tauYears: 30,
+    coniferColors: [0x22381E, 0x2A4224, 0x1E3220] },
+
   // ── Sidewalks ───────────────────────────────────────────────────────
   // Plank walks on both sides of a street where enough has been built (see buildSidewalks): `minBuildings` within radiusM of a 10 m stretch
   // earns a walk (from residentialFrom — the 1882 boom — or eraStart, 1873, on business streets), `businessBuildings` makes it a business street whose
@@ -1309,8 +1337,22 @@ export const CONFIG = {
   // ── Marshes (the ellipses on the 1881 map) ───────────────────────────
   cemetery: { treesFile: './data/cemetery_trees.json', treeSpreadYears: 55, treeJitterYears: 8, treeTauYears: 60, treeMinScale: 0.5, treeScalePerRating: 0.9, grassColor: 0x4A6330, fence: { height: 1.8, spacing: 2.4, fadeNear: 70, fadeFar: 150, color: 0x16161A },   // black iron fence round the grounds (a texture card per ~2.4 m, dithered out with distance)
     gate: { halfWidthM: 3.2, pierSize: 0.8, pierHeight: 2.7, pierColor: 0xB9AA84, capColor: 0x8A8068 },   // stone piers at the east entrance (where the path meets the east edge)
-    moundLength: 2, moundWidth: 0.9, moundHeight: 0.22, moundYears: 0.5, moundSoil: 0x4A3828, minGroundY: -3.5, fullYear: 1990, fillPower: 0.8, rowGapM: 3.2, stoneGapM: 1.5 },   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
+    moundLength: 2, moundWidth: 0.9, moundHeight: 0.22, moundYears: 0.5, moundSoil: 0x4A3828, minGroundY: -3.5, fullYear: 1990, fillPower: 0.8, rowGapM: 3.2, stoneGapM: 1.5,
+    otherDrawM: 3000, otherMaxStones: 30000 },   // other cemeteries (data/cemeteries_other.json): drawn within otherDrawM; a big one gets a coarser grid past otherMaxStones   // Elmwood headstones follow data/elmwood_years.json (cumulative interments); rowGapM = east-west spacing of rows, stoneGapM = spacing along a row; fullYear/fillPower are only the fallback if that file is missing
   marsh: { color: 0x5A6A38, dormantColor: 0x7A6A44, lift: 0.07, mosquitoAnchors: 30 },   // wet ground draped on the terrain
+
+  // ── Water towers (initWaterTowers): tank on four braced legs. heightM = top of the roof's level ball; tankR / tankH the
+  // straight side. phases when it was raised. Sources: historicplaces.ca 8133 and MHS (St. Boniface Waterworks; Union Stockyards).
+  waterTowers: [
+    { name: 'St. Boniface Waterworks water tower', lon: -97.10146, lat: 49.89269, born: 1936, colour: '#26282A', tankR: 4.2, tankH: 6.4,
+      text: 'CITY OF ST. BONIFACE', textBearings: [0, 180],   // painted on the north and south faces
+      phases: [ { from: 1936, to: 1945, heightM: 38 }, { from: 1945, heightM: 45.8 } ],   // 45.8 m today; "extended upward in 1945" — the 1936 height is a guess
+      note: '552 Plinguet St; built 1936 to replace the 1904 tower, raised 1945, out of service in the 1970s, municipally designated' },
+    { name: 'St. Boniface Waterworks water tower (1904)', lon: -97.10115, lat: 49.89255, born: 1904, died: 1936, colour: '#4A4C4E', tankR: 3.6, tankH: 6,
+      heightM: 42.7, note: '"about 140 feet", 100,000 gallons (MHS). Same works; its exact spot is a guess' },
+    { name: 'Union Stockyards water tower', lon: -97.0895282, lat: 49.8804231, born: 1913, colour: '#8E9294', tankR: 3.4, tankH: 5,
+      heightM: 27.4, note: "Mike's point; MHS: a 90-foot water tower with the yards (opened 14 Aug 1913), still standing (2014, 2024 photos). Built year with the yards and the colour are guesses" },
+  ],
 
   // ── Tipis at the Forks ──────────────────────────────────────────────
   // Camps on the point at the Forks until about 1870. Each tipi goes up within appearDays after the snow is gone, comes down
@@ -1342,7 +1384,7 @@ export const CONFIG = {
   // one-line change).
   timeline: {
     minYear: 1850,
-    maxYear: 1960,
+    maxYear: 2026,   // was 1960; the assessment roll's newest Year Built (city tiles)
     startDate: '1850-01-01',      // date shown on first load (YYYY-MM-DD, local)
     playSpeedDaysPerSecond: 45,   // ⏩ fast-forward rate (years pass)
     // ▶ slow play: 2 days/s ≈ 3 minutes per year. wrapWithinYear loops
@@ -1482,6 +1524,8 @@ export const CONFIG = {
                              // across all ~29 matched routes (~170km combined).
     carsPerDirectionMin: 1,  // floor so even the shortest routes still get a car
     laneOffset: 2.5,         // metres from centreline
+    serviceEnd: '1955-09-19',  // the last streetcar ran down Portage (heritagewinnipeg.com); cars stop here
+    railsGoneYears: 5,         // each street's rails lifted / paved over during one summer within this many years after
     electrificationYear: 1891, // horse carts (below) vanish at this year — a global
                                 // "streetcar era begins" cutoff, separate from each
                                 // route's own streetcar_start (see data/wpg_roads_streetcar.geojson)
@@ -1661,7 +1705,7 @@ export const CONFIG = {
       car1930s40sIdle:  _sfx('vehicle', 'car-1930s-40s-idle',  { loop: true, maxConcurrent: 2, gain: 0.4 }),  // not wired
       car1950sDrive:    _sfx('vehicle', 'car-1950s-drive',   { loop: true, maxConcurrent: 3, gain: 0.5 }),
       car1950sIdle:     _sfx('vehicle', 'car-1950s-idle',    { loop: true, maxConcurrent: 2, gain: 0.4 }),   // not wired
-      busDieselDrive:   _sfx('vehicle', 'bus-diesel-drive',  { loop: true, maxConcurrent: 2, gain: 0.6 }),   // only if audio.vehicleEras.busShare > 0
+      busDieselDrive:   _sfx('vehicle', 'bus-diesel-drive',  { loop: true, maxConcurrent: 2, gain: 0.6 }),   // buses (autos.types.bus), from audio.vehicleEras.busFrom
       busDieselIdle:    _sfx('vehicle', 'bus-diesel-idle',   { loop: true, maxConcurrent: 2, gain: 0.5 }),   // not wired
       carHorn:          _sfx('foley',   'car-horn',          { gain: 0.7, refDistance: 20, rolloffPower: 1.6, maxDistance: 500, minGap: 4, variants: 4, duck: 0.2 }),
       bicycleBell:      _sfx('foley',   'bicycle-bell',      { gain: 0.5, minGap: 8 }),                       // not wired: no cyclists
@@ -1748,8 +1792,8 @@ export const CONFIG = {
       tickSeconds: 0.1,       // how often mob/site hooks are gathered
     },
     // Motor vehicles: which loop plays for an auto by year (first row containing the year wins).
-    // busShare = share of autos (from the bus year on) that sound like a diesel bus — there is no bus model yet, so 0.
-    vehicleEras: { rows: [[1900, 1927, 'carModelTDrive'], [1928, 1949, 'car1930s40sDrive'], [1950, 2100, 'car1950sDrive']], busFrom: 1950, busShare: 0,
+    // Buses (autos.types.bus) play busDieselDrive from busFrom; before that they use the era's car loop.
+    vehicleEras: { rows: [[1900, 1927, 'carModelTDrive'], [1928, 1949, 'car1930s40sDrive'], [1950, 2100, 'car1950sDrive']], busFrom: 1950,
                    hornChance: 0.08 },   // chance an auto honks when it turns at a junction near the camera (carHorn)
     // Trains: idle ↔ running crossfade, whistle at departure/arrival, onboard bed near a moving train
     train: { fadeSeconds: 2.5, startLeadSeconds: 34, startFadeSeconds: 4, startRange: 900, whistleOnDepart: 0.3, whistleOnArrive: 0.15, whistleRandomPerSec: 1 / 900, onboardRadius: 14, onboardFade: 22 },
@@ -1807,6 +1851,44 @@ export const CONFIG = {
     },
   },
 
+  // ── City tiles ───────────────────────────────────────────────────────
+  // The rest of the city as plain shapes: OSM footprints dated from the assessment roll, in 1 km tiles
+  // (tools/build_building_tiles.py → data/tiles/b). Loaded within loadRadiusM of the camera (half the altitude
+  // counts as distance), dropped past unloadRadiusM; maxPending fetches at once. roofPitch = gable rise per metre
+  // of half-width. Colours: houses and garages by era (siding) with shingle roofs, the rest by kind.
+  cityTiles: {
+    index: './data/tiles/b/index.json',
+    loadRadiusM: 5000, unloadRadiusM: 6000, maxPending: 4, roofPitch: 0.55, snowColor: 0xF2F4F7,
+    castShadow: true,   // outer-city buildings (and landmarks) cast shadows where the sun's shadow box reaches (lighting.sun.shadowFollow)
+    palette: {
+      siding: {
+        pre1940: [0xE8E2D2, 0xD9D2BE, 0xB8C4B0, 0xA9B4BC, 0xE2DCC8, 0x9C8C74],
+        mid:     [0xF0EEE6, 0xE8DDB0, 0xBCD0DC, 0xC8DCC4, 0xE0C8BC, 0xD8D0C0],
+        late:    [0xC8B898, 0x9C7E5E, 0xB8A888, 0xA8A49C, 0xD4C8B0, 0x7E6A54],
+        new:     [0x9A9C9E, 0x55585C, 0xE8E8E4, 0xA89C8C, 0x6E7478, 0xC8C4BC],
+      },
+      shingles: [0x3C3C3E, 0x4A4038, 0x2A2A2C, 0x5A5650, 0x4C5248],
+      walls: {
+        apartments:    [0x8E4A3A, 0xA0705A, 0xC0A888, 0x7A4434, 0xB8B0A4],
+        commercial:    [0xB8AE9C, 0x9C9A96, 0x8E5A48, 0xC8C0B0],
+        industrial:    [0xB4B8BA, 0x9EA4A8, 0xC8C4B8],
+        institutional: [0x8E5442, 0xB49A7C, 0xA8A098],
+        other:         [0xA89C88, 0x9A9690, 0xB8AC98],
+      },
+      flatRoof: [0x6E6C68, 0x5C5A58, 0x7E7A72],
+    },
+  },
+
+  // ── Aviation obstruction lights ─────────────────────────────────────
+  // Red lights on anything at least minHeightM tall (Transport Canada: structures of 90 m and up are lit) from fromYear:
+  // medium-intensity red flashing at night (flashPerMin, every light on one structure in step), steady red part-way
+  // down tall masts, white strobes by day above strobeAboveM. City-tile buildings, landmarks (their antennas too) and
+  // the OSM masts/chimneys that have a height tag (obstacles: tools/extract_obstacles.py; most OSM towers have none).
+  obstructionLights: {
+    minHeightM: 90, strobeAboveM: 150, fromYear: 1946, flashPerMin: 30, strobePerMin: 40, sizePx: 5,   // red ones are night-only, as in reality
+    obstacles: './data/tiles/b/obstacles.json', mastPlaceholderYear: 1960,
+  },
+
   // ── Low-memory (mobile) profile ──────────────────────────────────────
   // Deep-merged over this config on touch devices (or ?profile=mobile);
   // ?profile=desktop skips it. Same shape as the settings it overrides.
@@ -1816,6 +1898,8 @@ export const CONFIG = {
     earlyVegetation: { density: 0.4 },            // fewer trees in the early stands
     signs: { radiusM: 45, max: 120, atlasPx: [1024, 512] },
     terrain:  { segments: 300, outer: { hiRadiusM: 2000 } },   // 40 m grid (DEM is resampled); fewer full-resolution outer tiles
+    cityTiles: { loadRadiusM: 2500, unloadRadiusM: 3000 },
+    cityTrees: { drawM: 1500, nearM: 600, share: 0.6 },
     // Only buildings within 3 km. Small details and real window glass only near the camera:
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
     // (painted windows cover the distance). Phones share one GPU process across all tabs.

@@ -1,0 +1,387 @@
+{
+  "note": "Hand-kept: OSM buildings drawn by pfviewer's landmark renderer instead of the plain city tiles (tools/build_building_tiles.py copies each to data/tiles/b/landmarks.json with its volumes). Keyed by OSM id. footprint: 'rect' (the outline's minimum rotated rectangle, height heightM), 'outline' (as drawn, heightM) or 'parts' (the OSM building:parts with their own min/max heights; building:material mirror|glass → curtain wall; volumeStyles overrides by part id, e.g. {\"w123\": {\"type\": \"blank\"}}; a part can also take min/max, wall (its own colour), type band (a ring of ribbon windows over a solid sill, always lit at night), roof {h, k, colour} (a sloped roof rising h m to the ring shrunk k× toward its centre) or skip: true). facade: type punched|curtain|blank|frit|frame, floorH (default heightM/floors), bayM (punched window bay), curtainBayM, winW/winH (share of bay/storey), cornerM (solid pier), lobbyM. topBand: {m, type} — the top m of the tallest volume (mechanical penthouse). wall / glass / curtain / roof colours. signs: [{kind: text|image|richardsonR, text, fg, bg, underline, src, aspect, size (m), height (m above ground; default the top band's middle), bearings (compass directions it faces; the tallest volume's nearest face), u (0..1 along that face), from, to (years it hung)}]. name: a string, or [[from, to, name], …] when it changed. antennas: [[east m, north m, height m, radius m]] from the tallest volume's centroid. Years and details marked (guess) want checking. phases: [{from, to, facade, wall, glass, curtain, topBand}] — facades that changed (re-cladding); each gets its own walls for its years. Buildings at least AUTO_LANDMARK_M (45 m) tall are landmarks automatically with defaults guessed from OSM; an entry here overrides those defaults.",
+  "landmarks": {
+    "way/28072420": {
+      "name": "Richardson Building",
+      "style": "tower",
+      "born": 1969,
+      "sources": [
+        "https://www.wikidata.org/wiki/Q3431400",
+        "OSM way 28072420 (height 124.1, 34 levels)",
+        "photos from Mike, 2026-10-21"
+      ],
+      "footprint": "rect",
+      "heightM": 124.1,
+      "floors": 34,
+      "facade": {
+        "type": "punched",
+        "bayM": 2.2,
+        "winW": 0.42,
+        "winH": 0.5,
+        "cornerM": 1.6,
+        "lobbyM": 4.5
+      },
+      "topBand": {
+        "m": 10.9,
+        "type": "blank"
+      },
+      "wall": "#B7B0A3",
+      "glass": "#2E3640",
+      "signs": [
+        {
+          "kind": "richardsonR",
+          "bearings": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "u": 0.2,
+          "size": 7.5
+        }
+      ],
+      "antennas": [
+        [
+          -8,
+          6,
+          21,
+          0.35
+        ],
+        [
+          -3,
+          9,
+          15,
+          0.25
+        ],
+        [
+          9,
+          4,
+          9,
+          0.2
+        ]
+      ]
+    },
+    "way/102585905": {
+      "name": "201 Portage",
+      "style": "tower",
+      "born": 1990,
+      "sources": [
+        "https://en.wikipedia.org/wiki/201_Portage",
+        "OSM way 102585905 and its building:parts (mirror = glass)",
+        "photos and SketchUp model (ahsy, 3D Warehouse) from Mike, 2026-10-22"
+      ],
+      "footprint": "parts",
+      "floors": 33,
+      "facade": {
+        "type": "punched",
+        "floorH": 3.85,
+        "bayM": 2.0,
+        "winW": 0.5,
+        "winH": 0.45,
+        "cornerM": 1.0,
+        "lobbyM": 6,
+        "curtainBayM": 1.5
+      },
+      "wall": "#CBBFA8",
+      "glass": "#2E3640",
+      "curtain": "#5E86A6",
+      "signs": [
+        {
+          "kind": "text",
+          "text": "TD",
+          "fg": "#FFFFFF",
+          "bg": "#008A00",
+          "from": 1990,
+          "to": 2000,
+          "bearings": [
+            135
+          ],
+          "size": 6,
+          "note": "TD Centre 1990; when the TD sign came down (guess 2000)"
+        },
+        {
+          "kind": "image",
+          "src": "./data/landmarks/canwest_globe.jpg",
+          "from": 2000,
+          "to": 2011,
+          "bearings": [
+            135,
+            315
+          ],
+          "size": 7,
+          "note": "Canwest globe (texture from the SketchUp model); removed 11 Jan 2011; start year a guess"
+        },
+        {
+          "kind": "text",
+          "text": "RBC",
+          "fg": "#FFFFFF",
+          "bg": "#0051A5",
+          "underline": "#FFD200",
+          "from": 2013,
+          "bearings": [
+            315
+          ],
+          "size": 5,
+          "note": "RBC Dominion Securities in the penthouse from late 2012 (Google 3D shows the sign)"
+        },
+        {
+          "kind": "text",
+          "text": "BMO",
+          "fg": "#0079C1",
+          "bg": "#FFFFFF",
+          "aspect": 2,
+          "from": 2016,
+          "bearings": [
+            135
+          ],
+          "size": 4,
+          "note": "in Mike's photo; years unknown (guess)"
+        }
+      ]
+    },
+    "way/840979089": {
+      "name": "300 Main",
+      "born": 2022,
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg",
+        "https://en.wikipedia.org/wiki/300_Main_(Winnipeg)",
+        "black glass curtain wall like 360 Main's reclad (winnipegarchitecture.ca)"
+      ],
+      "footprint": "parts",
+      "facade": {
+        "type": "curtain",
+        "curtainBayM": 1.5,
+        "floorH": 3.2
+      },
+      "curtain": "#1C2329",
+      "wall": "#2C3035"
+    },
+    "way/28152031": {
+      "name": [
+        [
+          1979,
+          2010,
+          "Commodity Exchange Tower"
+        ],
+        [
+          2010,
+          null,
+          "360 Main"
+        ]
+      ],
+      "born": 1979,
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg",
+        "https://www.winnipegarchitecture.ca/360-main-street/",
+        "Mike, 2026-10-22: concrete before the glass re-cladding; Wikipedia list: Commodity Exchange Tower 1979–2010"
+      ],
+      "footprint": "parts",
+      "floors": 31,
+      "phases": [
+        {
+          "to": 2018,
+          "facade": {
+            "type": "punched",
+            "bayM": 1.6,
+            "winW": 0.86,
+            "winH": 0.36,
+            "cornerM": 0.8
+          },
+          "wall": "#A9A59B",
+          "glass": "#3A3E42",
+          "note": "original: concrete with rows of windows (Mike); window proportions a guess"
+        },
+        {
+          "from": 2018,
+          "facade": {
+            "type": "curtain",
+            "curtainBayM": 1.5
+          },
+          "curtain": "#1C2329",
+          "wall": "#2C3035",
+          "note": "re-clad 2018 in black glass curtain wall with an exposed uniform framing grid"
+        }
+      ]
+    },
+    "way/106471754": {
+      "name": "Manitoba Hydro Place",
+      "born": 2008,
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg",
+        "https://kpmb.com/project/manitoba-hydro-place",
+        "https://www.hydro.mb.ca/corporate/mhplace/building.shtml",
+        "photo from Mike, 2026-10-22 (solar chimney top)"
+      ],
+      "footprint": "parts",
+      "facade": {
+        "type": "curtain",
+        "curtainBayM": 1.5,
+        "floorH": 4.2
+      },
+      "curtain": "#88A8BC",
+      "wall": "#9AA3A8",
+      "note": "twin 18-storey glass towers in an A on a 3-storey podium, double-skin east/west faces, low-iron glass south atrium. Solar chimney = OSM part w105995699 (the tallest, 112.5 m; Mike): the top ~8 floors (topBand 34 m) mostly empty glass in an open frame, below that glass with a painted pattern (frit).",
+      "volumeStyles": {
+        "w105995699": {
+          "type": "frit"
+        }
+      },
+      "topBand": {
+        "m": 34,
+        "type": "frame"
+      }
+    },
+    "way/908569019": {
+      "name": "Wawanesa Tower",
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+      ],
+      "footprint": "parts",
+      "facade": {
+        "type": "curtain",
+        "curtainBayM": 1.5
+      },
+      "curtain": "#5F7F96",
+      "note": "True North Square / Wawanesa: glass towers (2018–2024); details unchecked"
+    },
+    "way/655293496": {
+      "name": "225 Carlton",
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+      ],
+      "footprint": "parts",
+      "facade": {
+        "type": "curtain",
+        "curtainBayM": 1.5
+      },
+      "curtain": "#5F7F96",
+      "note": "True North Square / Wawanesa: glass towers (2018–2024); details unchecked"
+    },
+    "way/655082369": {
+      "name": "Scotiabank Tower",
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg"
+      ],
+      "footprint": "parts",
+      "facade": {
+        "type": "curtain",
+        "curtainBayM": 1.5
+      },
+      "curtain": "#5F7F96",
+      "note": "True North Square / Wawanesa: glass towers (2018–2024); details unchecked"
+    },
+    "way/28990057": {
+      "name": [
+        [
+          1985,
+          2017.41,
+          "MTS Place"
+        ],
+        [
+          2017.41,
+          null,
+          "Bell MTS Place"
+        ]
+      ],
+      "born": 1985,
+      "sources": [
+        "https://en.wikipedia.org/wiki/List_of_tallest_buildings_in_Winnipeg (Bell MTS Place I, 96 m, 24 floors, 1985)",
+        "OSM way 28990057 (old_name 'MTS Place;MTS Place Main;Bank of Montreal Tower')",
+        "Mike's photo of the Bank of Montreal, 2026-10-22 (the tower behind it)"
+      ],
+      "footprint": "outline",
+      "floors": 24,
+      "facade": {
+        "type": "punched",
+        "bayM": 1.7,
+        "winW": 0.4,
+        "winH": 0.78,
+        "cornerM": 1.2,
+        "lobbyM": 6
+      },
+      "wall": "#C2B7A2",
+      "glass": "#2B3036",
+      "signs": [
+        {
+          "kind": "text",
+          "text": "Bell MTS",
+          "fg": "#00549A",
+          "aspect": 3,
+          "from": 2017.41,
+          "bearings": [
+            0,
+            90,
+            180,
+            270
+          ],
+          "size": 4,
+          "note": "Mike: currently branded Bell MTS; faces and size a guess"
+        }
+      ],
+      "note": "pale stone piers with tall dark window strips (from the photo); earlier names and their years a guess"
+    },
+    "way/157041911": {
+      "name": "Fort Garry Place",
+      "born": 1989,
+      "sources": [
+        "https://skyscraperpage.com/b4295 (finished 1989; north tower 31 floors)",
+        "https://www.cp24.com/news/canada/2026/08/26/iconic-winnipeg-restaurant-space-reopening/ (the revolving restaurant: Prairie 360, closed 2020; Dos Pampas Skyline 2026)",
+        "OSM building:parts of way/157041911 (the round top: w307822749/50/51, w307825656, w1386846343)",
+        "Mike's photo, 2026-10-23: oxidized-copper top, sloped roofs, two rings of wrap-around windows lit at night"
+      ],
+      "footprint": "parts",
+      "floors": 27,
+      "facade": {
+        "type": "punched",
+        "floorH": 3.0,
+        "bayM": 3.0,
+        "winW": 0.55,
+        "winH": 0.5,
+        "cornerM": 1.2
+      },
+      "note": "North tower (Fort Garry Place II) topped by a revolving restaurant (30th floor) and lounge (31st): two copper drums with ribbon windows under sloped copper roofs, a cupola and mast. Tier heights from the photo (guess).",
+      "volumeStyles": {
+        "w307822750": {
+          "min": 80,
+          "max": 84,
+          "type": "band",
+          "wall": "#6E9E8C",
+          "roof": {
+            "h": 2.0,
+            "k": 0.68,
+            "colour": "#6E9E8C"
+          }
+        },
+        "w307822749": {
+          "min": 86,
+          "max": 89,
+          "type": "band",
+          "wall": "#6E9E8C",
+          "roof": {
+            "h": 2.2,
+            "k": 0.2,
+            "colour": "#6E9E8C"
+          }
+        },
+        "w307822751": {
+          "skip": true
+        },
+        "w307825656": {
+          "skip": true
+        },
+        "w1386846343": {
+          "skip": true
+        }
+      },
+      "glass": "#2B3138",
+      "antennas": [
+        [
+          0,
+          0,
+          9,
+          0.22
+        ]
+      ]
+    }
+  }
+}
