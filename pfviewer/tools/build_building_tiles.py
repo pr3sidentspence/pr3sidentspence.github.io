@@ -25,7 +25,7 @@ neighbours); the median year of the NEAR_K nearest dated buildings within NEAR_M
 outside Winnipeg have no roll). Each building keeps a code for which (BASIS).
 
 Height (metres): OSM height; OSM building:levels; the roll's Building Type (storeys) for the parcel's main building;
-else a default by kind and size. Gable roofs on near-rectangular houses and garages, flat otherwise.
+else a default by kind and size. Pitched roofs (ridge bearing given) on houses and garages under 400 m², flat otherwise. building_years.json `died` ends one.
 
 Kind: OSM building tag; a generic tag (building=yes, residential, ...) takes the parcel's Property Use Code instead.
 
@@ -291,6 +291,7 @@ def _names(v):   # a name, or [[from, to, name], …] when it changed (periods: 
     return [list(q) for q in v['periods']] + [[v['periods'][-1][1], None, v['name']]]
 NAMES = {k: _names(v) for k, v in json.load(open(os.path.join(HERE, 'building_years.json'))).get('names', {}).items()}
 COLOURS = {k: int(v['colour'][1:], 16) + 1 for k, v in json.load(open(os.path.join(HERE, 'building_years.json'))).get('colours', {}).items()}
+DIED = {k: int(v['year']) for k, v in json.load(open(os.path.join(HERE, 'building_years.json'))).get('died', {}).items()}   # demolished since OSM mapped them
 for b in blds:
     g, p = b['g'], b['p']; c = g.centroid
     if b['oid'] in old_ids:
@@ -343,9 +344,9 @@ for b in blds:
              'industrial': 7.0 if a < 3000 else 9.0, 'institutional': 8.0, 'other': 4.0 if a < 400 else 6.0}[kind]
     # roof
     roof = 0
-    if kind in ('house', 'garage') and g.area < 400 and h < 12:
+    if kind in ('house', 'garage') and g.area < 400 and h < 12:   # any shape: the viewer splits it into rectangles (or hips the outline)
         r = g.minimum_rotated_rectangle
-        if g.area/r.area >= 0.85:
+        if True:
             q = list(r.exterior.coords)
             e1 = (q[1][0]-q[0][0], q[1][1]-q[0][1]); e2 = (q[2][0]-q[1][0], q[2][1]-q[1][1])
             L = e1 if math.hypot(*e1) >= math.hypot(*e2) else e2
@@ -369,7 +370,7 @@ for b in blds:
         flat = []
         for x, yn in ring: flat += [int(round((x - x0)*10)), int(round((-yn - z0)*10))]
         metas[(tx, tz)].append(meta)
-        tiles[(tx, tz)].append([y, 0, int(round(top*10)), KINDS.index(kind), BASIS.index(basis), rf, int(round(bottom*10)), col] + flat)
+        tiles[(tx, tz)].append([y, DIED.get(b['oid'], 0), int(round(top*10)), KINDS.index(kind), BASIS.index(basis), rf, int(round(bottom*10)), col] + flat)
     first = len(tiles[(tx, tz)])
     if b.get('parts'):
         lv = 3.0 if kind in ('house', 'apartments') else 4.0

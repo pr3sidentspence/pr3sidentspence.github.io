@@ -1,5 +1,5 @@
 {
-  "note": "Hand-kept: OSM buildings drawn by pfviewer's landmark renderer instead of the plain city tiles (tools/build_building_tiles.py copies each to data/tiles/b/landmarks.json with its volumes). Keyed by OSM id. footprint: 'rect' (the outline's minimum rotated rectangle, height heightM), 'outline' (as drawn, heightM) or 'parts' (the OSM building:parts with their own min/max heights; building:material mirror|glass → curtain wall; volumeStyles overrides by part id, e.g. {\"w123\": {\"type\": \"blank\"}}; a part can also take min/max, wall (its own colour), type band (a ring of ribbon windows over a solid sill, always lit at night), roof {h, k, colour} (a sloped roof rising h m to the ring shrunk k× toward its centre) or skip: true). facade: type punched|curtain|blank|frit|frame, floorH (default heightM/floors), bayM (punched window bay), curtainBayM, winW/winH (share of bay/storey), cornerM (solid pier), lobbyM. topBand: {m, type} — the top m of the tallest volume (mechanical penthouse). wall / glass / curtain / roof colours. signs: [{kind: text|image|richardsonR, text, fg, bg, underline, src, aspect, size (m), height (m above ground; default the top band's middle), bearings (compass directions it faces; the tallest volume's nearest face), u (0..1 along that face), from, to (years it hung)}]. name: a string, or [[from, to, name], …] when it changed. antennas: [[east m, north m, height m, radius m]] from the tallest volume's centroid. Years and details marked (guess) want checking. phases: [{from, to, facade, wall, glass, curtain, topBand}] — facades that changed (re-cladding); each gets its own walls for its years. Buildings at least AUTO_LANDMARK_M (45 m) tall are landmarks automatically with defaults guessed from OSM; an entry here overrides those defaults.",
+  "note": "Hand-kept: OSM buildings drawn by pfviewer's landmark renderer instead of the plain city tiles (tools/build_building_tiles.py copies each to data/tiles/b/landmarks.json with its volumes). Keyed by OSM id. footprint: 'rect' (the outline's minimum rotated rectangle, height heightM), 'outline' (as drawn, heightM) or 'parts' (the OSM building:parts with their own min/max heights; building:material mirror|glass → curtain wall; volumeStyles overrides by part id, e.g. {\"w123\": {\"type\": \"blank\"}}; a part can also take min/max, wall (its own colour), type band (a ring of ribbon windows over a solid sill, always lit at night), roof {h, k, colour} (a sloped roof rising h m to the ring shrunk k× toward its centre) or skip: true). facade: type punched|curtain|blank|frit|frame, floorH (default heightM/floors), bayM (punched window bay), curtainBayM, winW/winH (share of bay/storey), cornerM (solid pier), lobbyM. topBand: {m, type} — the top m of the tallest volume (mechanical penthouse). wall / glass / curtain / roof colours. signs: [{kind: text|image|richardsonR, text, fg, bg, underline, src, aspect, size (m), height (m above ground; default the top band's middle), bearings (compass directions it faces; the tallest volume's nearest face), u (0..1 along that face), from, to (years it hung)}]. name: a string, or [[from, to, name], …] when it changed. antennas: [[east m, north m, height m, radius m]] from the tallest volume's centroid. Years and details marked (guess) want checking. phases: [{from, to, facade, wall, glass, curtain, topBand}] — facades that changed (re-cladding); each gets its own walls for its years. Buildings at least AUTO_LANDMARK_M (45 m) tall are landmarks automatically with defaults guessed from OSM; an entry here overrides those defaults. crownLight: {m, colour, minM} — night wash down the walls from lights under the roof overhang, fading over m metres, on volumes at least minM tall (Halo).",
   "landmarks": {
     "way/28072420": {
       "name": "Richardson Building",
@@ -981,6 +981,36 @@
             "colour": "#5A5E62"
           }
         }
+      ]
+    },
+    "way/1128066091": {
+      "name": "Halo",
+      "born": 2021,
+      "wall": "#CFCCC4",
+      "crownLight": {
+        "m": 9,
+        "colour": "#FFF2DC",
+        "minM": 20
+      },
+      "sources": [
+        "Mike, 2026-10-26: Halo apartments, 'only about 5 years old' (year an estimate; the roll has no year for apartment blocks, the tiles had 1985/86 from the neighbours)",
+        "OSM way 1128066091 (15 levels)",
+        "night photo from Mike, 2026-10-26: walls washed by light from the overhang at the top"
+      ]
+    },
+    "way/1128066090": {
+      "name": "Halo",
+      "born": 2021,
+      "wall": "#CFCCC4",
+      "crownLight": {
+        "m": 9,
+        "colour": "#FFF2DC",
+        "minM": 20
+      },
+      "sources": [
+        "Mike, 2026-10-26: Halo apartments, 'only about 5 years old' (year an estimate; the roll has no year for apartment blocks, the tiles had 1985/86 from the neighbours)",
+        "OSM way 1128066090 (16 levels)",
+        "night photo from Mike, 2026-10-26"
       ]
     }
   }

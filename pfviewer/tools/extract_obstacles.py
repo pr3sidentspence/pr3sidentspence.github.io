@@ -13,8 +13,14 @@ KINDS = ['mast', 'tower', 'chimney']
 W, E, S, N = [float(v) for v in (sys.argv[3] if len(sys.argv) > 3 else '-19600,19600,-19600,19600').split(',')]
 
 def height(t):
-    try: return float(re.sub(r'[^0-9.]', '', t.get('height') or '') or 0)
-    except ValueError: return 0
+    """OSM height → metres ("30", "30 m", "30'", "98 ft", "12'6\""); unreadable = 0. Feet matter: way/502520305
+    (height=30', a small tower by the Red) was read as a 30 m obstruction."""
+    s = str(t.get('height') or '').strip().lower().split(';')[0]
+    m = re.match(r"^\s*([0-9.]+)\s*'\s*(?:([0-9.]+)\s*\")?\s*$", s)
+    if m: return float(m.group(1))*0.3048 + (float(m.group(2))*0.0254 if m.group(2) else 0)
+    m = re.match(r'^\s*([0-9.]+)\s*(m|ft|feet)?\s*$', s)
+    if not m: return 0
+    v = float(m.group(1)); return v*0.3048 if m.group(2) in ('ft', 'feet') else v
 
 def kind(t):
     m = t.get('man_made')

@@ -82,6 +82,11 @@ EXTRAS = [
   {'id': 1010, 'name': 'CN over the Assiniboine to Union Station', 'line': 'cn_highline', 'born': '1908-06-01', 'died': None,
    'pts': [(281, 1118), (246, 989), (242, 974)],
    'basis': 'OSM CN Rivers subdivision over the Assiniboine east of Main St; year a guess (winnipegarchitecture.ca: High-Line Bridge 1905)'},
+  # The NP&M / CN line south from the Fort Rouge yards down the west side of Pembina to the Perimeter (Mike, 2026-10-25: the
+  # main line ended where the Goad sheet does). OSM's Letellier Subdivision, joined to feature 14's end; simplified to 1 m.
+  {'id': 1011, 'name': 'CN Letellier Subdivision south along Pembina (the NP&M line to Morris and Emerson)', 'line': 'npm_forks', 'born': '1889-09-01', 'died': None,
+   'pts': [(-1126, 4322), (-1125, 4425), (-1137, 4450), (-1156, 4480), (-1162, 4504), (-1301, 4658), (-1331, 4695), (-1348, 4725), (-1358, 4749), (-1366, 4778), (-1371, 4810), (-1372, 4832), (-1370, 4868), (-1325, 5064), (-1320, 5103), (-1320, 5135), (-1341, 5470), (-1360, 5825), (-1373, 6012), (-1373, 6034), (-1376, 6064), (-1413, 6727), (-1517, 8478), (-1538, 8869), (-1551, 8994), (-1592, 9694), (-1594, 9824), (-1677, 11227), (-1806, 13504), (-1803, 13593), (-1788, 13689), (-1764, 13780), (-1743, 13837), (-1700, 13932), (-1617, 14108), (-1327, 14734)],
+   'basis': "OSM CN Letellier Subdivision (way/14042794, 146821975 …), from the end of feature 14 in the Fort Rouge yards to the Perimeter; Mike, 2026-10-25: the line should carry on down Pembina's west side. Year = the NP&M line (npm_forks, 1889), which came in from the south this way; inherited, not checked"},
   {'id': 1001, 'name': 'CPR to the Louise Bridge (gap)', 'line': 'cpr_louise', 'born': '1881-07-26', 'died': None,
    'pts': [(770, -992), (860, -980), (979, -942)],
    'basis': 'joins feature 70 to feature 280 on the CPR route to the Louise Bridge (schematic)'},

@@ -31,7 +31,7 @@ const _SFX_CLASS = {
 const _sfx = (cls, file, o = {}) => ({ path: `./sounds/${file}.mp3`, ..._SFX_CLASS[cls], ...o });
 
 export const CONFIG = {
-  dataVersion: '2026-10-23f',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
+  dataVersion: '2026-10-26a',   // cache-buster for data files; bump when anything in data/ changes (or add ?fresh to the URL)
 
   // ── Data files ──────────────────────────────────────────────────────
   // GeoJSON layers loaded automatically on startup. Add/remove/rename
@@ -208,7 +208,7 @@ export const CONFIG = {
     },
     // Road vertex-colour gradient: edge = dry/snowy shoulder, centre = wet/mud
     // wheel-rut tracks. Each is an [r,g,b] byte triple (0-255).
-    roadFade: [1800, 3200],  // metres from camera: roads full → gone (only the most distant roads alias and z-fight)
+    roadFade: [4500, 8000],  // metres from camera: roads full → gone (was 1800–3200; Mike wanted them further out — watch for aliasing / z-fighting far off)
     roadColors: {
       summerEdge: [18, 17, 15], summerCentre: [5, 5, 4],
       winterEdge: [245, 246, 250], winterCentre: [32, 28, 24],
@@ -266,7 +266,8 @@ export const CONFIG = {
   // ── Altitude ────────────────────────────────────────────────────────
   // maxM: the ceiling (default = the orbit's maxDistance). Haze (city smoke haze + distance fog) is full below
   // hazeFadeFromM and gone at hazeGoneFrac × maxM. Flying (walk mode, E/Q) speeds up with height: ×flySpeedAtMax at maxM.
-  altitude: { maxM: 6000, hazeFadeFromM: 150, hazeGoneFrac: 0.4, fadePower: 2, fogToo: true, flySpeedAtMax: 5, flySpeedCurve: 0.6 },   // fly speed ×(1+4·(alt/max)^curve): ×2 at 300 m, ×3 at 1 km, ×5 at the ceiling (curve 1 would be linear: only ×1.4 at 300 m)   // hazeGoneFrac 0.4 of 6000 keeps haze gone by 2400 m as before; fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
+  altitude: { maxM: 6000, hazeFadeFromM: 150, hazeGoneFrac: 0.4, fadePower: 2, fogToo: true, flySpeedAtMax: 5, flySpeedCurve: 0.6, flySpeedScale: 3 },   // flySpeedScale: every flying speed × this once 10 m up (Mike, 2026-10-26: "triple flying speeds"); walking unchanged
+    // fly speed ×(1+4·(alt/max)^curve): ×2 at 300 m, ×3 at 1 km, ×5 at the ceiling (curve 1 would be linear: only ×1.4 at 300 m)   // hazeGoneFrac 0.4 of 6000 keeps haze gone by 2400 m as before; fog ×(1−t)² with t = 0 at 150 m, 1 at 2400 m: ~40% left at 1 km, ~15% at 1.5 km
 
   orbitControls: {
     dampingFactor: 0.07,
@@ -519,6 +520,16 @@ export const CONFIG = {
       // untouched, regional rise kept (strength 0 = off; see flattenDEM)
       flatten: { radiusM: 300, strength: 0.85, bankSlope: 0.08, bufferM: 40, featherM: 20,
                  minAboveWater: 1, maxMoveM: 2.5 } },   // minAboveWater: below startY+this = river channel (St Boniface ground sits ~2 m above normal water)
+    // Embankments, bridge approaches and overpass ramps are in the LiDAR long before they were built: within halfWidthM
+    // (+featherM; railHalfWidthM for rails — yards and bridge fills are wide) of a rail, road or bridge, raised strips narrower than ~2·openM are lowered until that feature's born
+    // year (see buildRailGrade). nearWaterM: that close to the river only rails and bridges count (keeps natural bank
+    // crests); approachM: roads this far past a bridge in bridgesFile take its first bridge's year. roadBorn overrides
+    // road_born by street name. Changes under minMoveM ignored, capped at maxMoveM.
+    embankments: { openM: 120, halfWidthM: 40, railHalfWidthM: 110, featherM: 30, nearWaterM: 60, approachM: 250, minMoveM: 0.2, maxMoveM: 15,
+                   bridgesFile: './data/pastforward_2026_bridges.geojson',
+                   catchRailM: 400, otherBorn: 1950, otherMinM: 1.0,   // raised strips (≥otherMinM) outside every corridor: a rail's year within catchRailM, else otherBorn (a guess: dikes, modern fill)
+                   extraRailsFile: './data/osm_rails_extra.json',   // OSM lines the rail data lacks (tools/osm_rails.py; all born 1910, a guess)
+                   roadBorn: { 'Disraeli Fwy': 1960, 'Disraeli Bridge': 1960 } },
     // Brown's Creek: a shallow valley carved along its line while it exists
     // (filled in since — the LiDAR is flat there); cosine profile, metres
     // Short segments a→b [lon,lat] along the Seine through the spots where bridge decks cut the LiDAR channel (carved to bedY — deliberately below the
@@ -806,6 +817,12 @@ export const CONFIG = {
     segments: {
       12728: ['1881-01-01', null],   // Main St, bridge head → through the SE wall
       12729: ['1881-01-01', null],   // Main St, through the NE bastion → north
+      // Southwest Transitway (buses only: autos.busOnlyRoads). Stage 1, Main/Stradbrook to Jubilee, opened April 2012; stage 2,
+      // Jubilee south along the rail line to the U of M, April 2020 — both dates from memory, not checked. The roll-neighbour
+      // years it had (1919–1970) were wrong.
+      25816: ['2012-04-08', null], 25823: ['2012-04-08', null], 25828: ['2012-04-08', null], 25829: ['2012-04-08', null],
+      25830: ['2012-04-08', null], 25831: ['2012-04-08', null], 27293: ['2012-04-08', null], 27294: ['2012-04-08', null],
+      28156: ['2020-04-12', null], 28157: ['2020-04-12', null],
     },
     extra: [
       { name: 'Main St detour east of Upper Fort Garry', born: null, died: '1881-01-01', width: 9,
@@ -936,7 +953,10 @@ export const CONFIG = {
     color: 0x5A4A3A, wireColor: 0x1A1816,
     // Downtown (ring: lon,lat — the Assiniboine to the CPR main line, Balmoral/Memorial to the Red) the wires went underground
     // street by street between from and to (each street's year hashed from its name). Years are a GUESS — not checked.
-    underground: { from: 1955, to: 1975, ring: [[-97.1530, 49.8835], [-97.1280, 49.8835], [-97.1280, 49.9060], [-97.1530, 49.9060]] },
+    // newFrom: streets first built in or after this year never get poles — newer subdivisions had their wires underground from
+    // the start (Mike, 2026-10-26: "my guess would be in the 1960s"; the year is a GUESS). A street's year is its road_born (outer
+    // streets) or its first nearby building's.
+    underground: { from: 1955, to: 1975, ring: [[-97.1530, 49.8835], [-97.1280, 49.8835], [-97.1280, 49.9060], [-97.1530, 49.9060]], newFrom: 1965 },
   },
 
   // ── Event cues ──────────────────────────────────────────────────────
@@ -1073,6 +1093,8 @@ export const CONFIG = {
     colorsModern: [0xE8E8E4, 0xB4B8BC, 0x6A6E72, 0x141414, 0x1C1C1E, 0xD8D8D4, 0x8A1E1E, 0x2A3E66],
     // Other vehicles: share of all autos by year (interpolated; 0 before the first year). Dimensions in buildAutoTypes (index.html).
     // Bus colours and the shares are guesses. Buses sound like a diesel bus from audio.vehicleEras.busFrom.
+    busway: { perKm: 1.6, max: 24 },   // buses that only run the busOnlyRoads, per km of it open that year (both directions; Mike: "it should be busy with buses")
+    busOnlyRoads: ['Southwest Transit Corridor'],   // st_name: buses only — cars, vans, trucks never spawn on or turn into these (Mike, 2026-10-26)
     types: {
       pickup: { share: [[1925,0],[1930,0.04],[1955,0.1],[1985,0.14],[2026,0.18]] },
       van:    { share: [[1955,0],[1960,0.02],[1985,0.08],[2026,0.07]], colors: [0xE8E6E0, 0xE8E6E0, 0xB8B0A0, 0x2A3A5A, 0x6A6E72] },
@@ -1903,6 +1925,21 @@ export const CONFIG = {
       },
       flatRoof: [0x6E6C68, 0x5C5A58, 0x7E7A72],
     },
+    // Every house has a flue (Mike, 2026-10-26: gas furnaces and water tanks — at least a metal pipe, steaming in the
+    // cold). brickShare by era (<1930, <1950, <1975, later) is the share with a masonry chimney on the ridge; the rest get a
+    // metal B-vent through the roof slope. Both puff like the hand-built stacks (CONFIG.chimneys): coal smoke before the
+    // building's gas switch year, then winter vapour only. Shares are guesses.
+    chimneys: { brickShare: [0.85, 0.75, 0.5, 0.15], flue: { halfM: 0.08, aboveRoofM: 0.9, colour: 0x9C9EA0 }, smoke: true },
+  },
+
+  // ── City fences (tools/parcel_fences.py → data/tiles/f) ────────────
+  // Back- and side-yard fences on the property lines of houses built 1946 on (the City's assessment parcels): never in
+  // front yards; a fence between neighbours from just behind the house front, returns from the lot lines to the house.
+  // Chain link before the 1970s mostly, wood privacy after (a guess, made in the tool). Loaded within loadRadiusM.
+  cityFences: {
+    index: './data/tiles/f/index.json', loadRadiusM: 900, unloadRadiusM: 1150, maxPending: 2, stepM: 8,
+    heights: [1.2, 1.8],   // [chain link, wood] m
+    chainColour: 0x9A9EA0, woodColours: [0x8A6A48, 0x7A6450, 0x9C8C74, 0x6E6A62, 0xA08C6E],
   },
 
   // ── Aviation obstruction lights ─────────────────────────────────────
@@ -1925,6 +1962,7 @@ export const CONFIG = {
     signs: { radiusM: 45, max: 120, atlasPx: [1024, 512] },
     terrain:  { segments: 300, outer: { hiRadiusM: 2000 } },   // 40 m grid (DEM is resampled); fewer full-resolution outer tiles
     cityTiles: { loadRadiusM: 2500, unloadRadiusM: 3000 },
+    cityFences: { loadRadiusM: 500, unloadRadiusM: 650 },
     cityTrees: { drawM: 1500, nearM: 600, share: 0.6 },
     // Only buildings within 3 km. Small details and real window glass only near the camera:
     // meshes are uploaded to the GPU the first time they're visible, so far tiles never use GPU memory
@@ -1937,6 +1975,7 @@ export const CONFIG = {
     seasons:  { floeCount: 450 },
     streetLights: { spacing: 70, radius: 1800, outer: { drawM: 1400 } },
     roads: { outer: { radiusM: 8000, sampleStep: 40 } },
+    scene: { roadFade: [3000, 5000] },
     trains:   { maxCars: 25 },
     storms:   { snowpack: { drifts: { radius: 150, max: 300 } } },
     animals:  { radius: { horse: 200, cow: 260, pig: 160, dog: 140, cat: 90, chicken: 80 }, max: { horse: 90, cow: 90, pig: 40, dog: 60, cat: 60, chicken: 140 } },

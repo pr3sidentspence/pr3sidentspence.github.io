@@ -1,5 +1,5 @@
 {
-  "note": "Hand-kept built years for OSM footprints the assessment roll has no year for (non-residential). Key: OSM id (way/123 or relation/45). Wins over every other source in tools/build_building_tiles.py and tools/died_upper_bounds.py. Fill from data/review_undated_footprints.geojson. `names`: display-name overrides for the hover panel, keyed the same way. `heights`: {osm id: {m, source}} where OSM has no height. `colours`: {osm id: {colour: '#RRGGBB', source}} wall colour where OSM has none. A `names` entry may add periods: [[from, to, name], …] — the earlier names, by year (decimal years ok); name is the current one.",
+  "note": "Hand-kept built years for OSM footprints the assessment roll has no year for (non-residential). Key: OSM id (way/123 or relation/45). Wins over every other source in tools/build_building_tiles.py and tools/died_upper_bounds.py. Fill from data/review_undated_footprints.geojson. `names`: display-name overrides for the hover panel, keyed the same way. `heights`: {osm id: {m, source}} where OSM has no height. `colours`: {osm id: {colour: '#RRGGBB', source}} wall colour where OSM has none. A `names` entry may add periods: [[from, to, name], …] — the earlier names, by year (decimal years ok); name is the current one. `died`: {osm id: {year, source}} — demolished since OSM mapped it (whole years: the tiles store years as integers).",
   "years": {
     "way/71930591": {
       "year": 1979,
@@ -180,6 +180,14 @@
     "way/1044672921": {
       "year": 2022,
       "source": "Royal Aviation Museum of Western Canada, opened 2022 (from memory — check) — Mike, 2026-10-23: add the airport"
+    },
+    "way/1128066091": {
+      "year": 2021,
+      "source": "Mike, 2026-10-26: Halo apartments, 'only about 5 years old' (year an estimate; the roll has no year for apartment blocks, the tiles had 1985/86 from the neighbours)"
+    },
+    "way/1128066090": {
+      "year": 2021,
+      "source": "Mike, 2026-10-26: Halo apartments, 'only about 5 years old' (year an estimate; the roll has no year for apartment blocks, the tiles had 1985/86 from the neighbours)"
     }
   },
   "names": {
@@ -270,6 +278,12 @@
     "relation/4189076": {
       "colour": "#E4DDCB",
       "source": "Manitoba Tyndall stone, white against the dark terminal (westenddumplings); Mike's postcard, 2026-10-24"
+    }
+  },
+  "died": {
+    "way/112885533": {
+      "year": 2024,
+      "source": "Mike, 2026-10-25: the structure at the centre of St. Mary's Cemetery (520 Osborne) was demolished between March and August 2024"
     }
   }
 }
